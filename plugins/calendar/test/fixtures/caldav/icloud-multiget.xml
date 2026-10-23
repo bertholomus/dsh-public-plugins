@@ -1,0 +1,28 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<multistatus xmlns='DAV:'>
+<response>
+<href>/1234567890/calendars/home/0F1E2D3C-4B5A-6978-8796-A5B4C3D2E1F0.ics</href>
+<propstat>
+<prop>
+<getetag>"mhd6x2kp"</getetag>
+<calendar-data xmlns='urn:ietf:params:xml:ns:caldav'><![CDATA[BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Apple Inc.//macOS 15.0//EN
+BEGIN:VEVENT
+UID:0F1E2D3C-4B5A-6978-8796-A5B4C3D2E1F0
+DTSTAMP:20261001T120000Z
+DTSTART;TZID=America/Los_Angeles:20261012T093000
+DTEND;TZID=America/Los_Angeles:20261012T103000
+SUMMARY:Standup <daily> & notes ]] still text
+END:VEVENT
+END:VCALENDAR
+]]></calendar-data>
+</prop>
+<status>HTTP/1.1 200 OK</status>
+</propstat>
+</response>
+<response>
+<href>/1234567890/calendars/home/gone-meanwhile.ics</href>
+<status>HTTP/1.1 404 Not Found</status>
+</response>
+</multistatus>

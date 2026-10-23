@@ -1,0 +1,7 @@
+# The plugin's own bundle row. Your profile's cordis.patch.yml addresses the
+# same id ("calendar") to change its settings: where it keeps its store and
+# log, the time zone, the sync interval, whether agents may change calendars
+# (agentChanges), and the Google and Microsoft sign-in clients.
+- insert:
+    - id: calendar
+      name: dsh-plugin-calendar

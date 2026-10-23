@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:CS="http://calendarserver.org/ns/" xmlns:A="http://apple.com/ns/ical/" xmlns:CY="http://cyrusimap.org/ns/">
+  <D:response>
+    <D:href>/dav/calendars/user/alice@fastmail.com/</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:resourcetype>
+          <D:collection/>
+        </D:resourcetype>
+        <D:current-user-privilege-set>
+          <D:privilege>
+            <D:read/>
+          </D:privilege>
+          <D:privilege>
+            <D:bind/>
+          </D:privilege>
+        </D:current-user-privilege-set>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+    <D:propstat>
+      <D:prop>
+        <D:displayname/>
+        <C:supported-calendar-component-set/>
+        <A:calendar-color/>
+      </D:prop>
+      <D:status>HTTP/1.1 404 Not Found</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/dav/calendars/user/alice@fastmail.com/Default/</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:resourcetype>
+          <D:collection/>
+          <C:calendar/>
+        </D:resourcetype>
+        <D:displayname>Calendar</D:displayname>
+        <D:current-user-privilege-set>
+          <D:privilege>
+            <D:read/>
+          </D:privilege>
+          <D:privilege>
+            <D:write-content/>
+          </D:privilege>
+          <D:privilege>
+            <D:bind/>
+          </D:privilege>
+          <D:privilege>
+            <D:unbind/>
+          </D:privilege>
+          <D:privilege>
+            <C:read-free-busy/>
+          </D:privilege>
+          <D:privilege>
+            <C:schedule-send/>
+          </D:privilege>
+        </D:current-user-privilege-set>
+        <C:supported-calendar-component-set>
+          <C:comp name="VEVENT"/>
+        </C:supported-calendar-component-set>
+        <A:calendar-color>#3a429c</A:calendar-color>
+        <A:calendar-order>3</A:calendar-order>
+        <C:calendar-timezone-id>Europe/London</C:calendar-timezone-id>
+        <C:calendar-timezone>BEGIN:VCALENDAR&#13;
+VERSION:2.0&#13;
+PRODID:-//CyrusIMAP.org/Cyrus 3.13.0//EN&#13;
+BEGIN:VTIMEZONE&#13;
+TZID:Europe/London&#13;
+BEGIN:STANDARD&#13;
+DTSTART:19701025T020000&#13;
+RRULE:FREQ=YEARLY;BYMONTH=10;BYDAY=-1SU&#13;
+TZOFFSETFROM:+0100&#13;
+TZOFFSETTO:+0000&#13;
+TZNAME:GMT&#13;
+END:STANDARD&#13;
+END:VTIMEZONE&#13;
+END:VCALENDAR&#13;
+</C:calendar-timezone>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+    <D:propstat>
+      <D:prop>
+        <C:calendar-description/>
+      </D:prop>
+      <D:status>HTTP/1.1 404 Not Found</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/dav/calendars/user/alice%40fastmail.com/b1c2d3e4-5f60-4718-92a3-b4c5d6e7f809/</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:resourcetype>
+          <D:collection/>
+          <C:calendar/>
+        </D:resourcetype>
+        <D:displayname>Bob&apos;s &quot;team&quot; calendar</D:displayname>
+        <D:current-user-privilege-set>
+          <D:privilege>
+            <D:read/>
+          </D:privilege>
+          <D:privilege>
+            <C:read-free-busy/>
+          </D:privilege>
+        </D:current-user-privilege-set>
+        <C:supported-calendar-component-set>
+          <C:comp name="VEVENT"/>
+          <C:comp name="VTODO"/>
+        </C:supported-calendar-component-set>
+        <C:calendar-description>Bob&#8217;s plans &#x2014; read only</C:calendar-description>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/dav/calendars/user/alice@fastmail.com/Inbox/</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:resourcetype>
+          <D:collection/>
+          <C:schedule-inbox/>
+        </D:resourcetype>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/dav/calendars/user/alice@fastmail.com/Outbox/</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:resourcetype>
+          <D:collection/>
+          <C:schedule-outbox/>
+        </D:resourcetype>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+</D:multistatus>

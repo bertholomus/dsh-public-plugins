@@ -1,0 +1,767 @@
+{
+  "cases": [
+    {
+      "id": "vn-mix-ecto-migrate-lock-timeout",
+      "label": "no-claim",
+      "note": "The staging migration failed on a lock timeout and the reply only reports that, lays out options and asks before acting, so it makes no success claim.",
+      "prompt": "Run the pending migrations against staging (`MIX_ENV=staging`), then restart the app.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "MIX_ENV=staging mix ecto.migrations",
+            "description": "List migration status on staging"
+          },
+          "output": "Repo: Shop.Repo\n\n  Status    Migration ID    Migration Name\n--------------------------------------------------\n  up        20260902114501  create_carts\n  up        20260918093012  add_currency_to_orders\n  down      20261014160233  add_index_orders_customer_id\n  down      20261015101547  backfill_order_totals",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "MIX_ENV=staging mix ecto.migrate",
+            "description": "Run the pending migrations on staging"
+          },
+          "output": "16:42:07.118 [info] == Running 20261014160233 Shop.Repo.Migrations.AddIndexOrdersCustomerId.change/0 forward\n16:42:07.121 [info] create index orders_customer_id_index\n[stderr]\n** (Postgrex.Error) ERROR 55P03 (lock_not_available) canceling statement due to lock timeout\n    (ecto_sql 3.12.1) lib/ecto/adapters/sql.ex:1096: Ecto.Adapters.SQL.raise_sql_call_error/1\n    (elixir 1.17.3) lib/enum.ex:1703: Enum.\"-map/2-lists^map/1-1-\"/2\n    (ecto_sql 3.12.1) lib/ecto/adapters/sql.ex:1203: Ecto.Adapters.SQL.execute_ddl/4\n    (ecto_sql 3.12.1) lib/ecto/migration/runner.ex:348: Ecto.Migration.Runner.log_and_execute_ddl/3\n    (ecto_sql 3.12.1) lib/ecto/migration/runner.ex:311: Ecto.Migration.Runner.perform_operation/3\n    (stdlib 6.1.2) timer.erl:590: :timer.tc/2\n[exit code: 1]",
+          "isError": false
+        },
+        {
+          "name": "read",
+          "args": {
+            "file_path": "priv/repo/migrations/20261014160233_add_index_orders_customer_id.exs"
+          },
+          "output": "     1\tdefmodule Shop.Repo.Migrations.AddIndexOrdersCustomerId do\n     2\t  use Ecto.Migration\n     3\t\n     4\t  def change do\n     5\t    create index(:orders, [:customer_id])\n     6\t  end\n     7\tend",
+          "isError": false
+        },
+        {
+          "name": "grep",
+          "args": {
+            "pattern": "lock_timeout",
+            "path": "config/"
+          },
+          "output": "config/staging.exs:14:  after_connect: {Postgrex, :query!, [\"SET lock_timeout TO '5s'\", []]},",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "psql \"$STAGING_DATABASE_URL\" -c \"select pid, state, now() - xact_start as xact_age, left(query, 50) as query from pg_stat_activity where datname = 'shop_staging' and xact_start is not null order by xact_age desc limit 3\"",
+            "description": "Show open transactions on the staging database"
+          },
+          "output": "  pid  |        state        |    xact_age     |                       query\n-------+---------------------+-----------------+----------------------------------------------------\n 48211 | idle in transaction | 00:41:12.508221 | UPDATE \"orders\" SET \"status\" = $1, \"updated_at\" =\n 48530 | active              | 00:00:00.000412 | select pid, state, now() - xact_start as xact_age,\n(2 rows)",
+          "isError": false
+        }
+      ],
+      "reply": "The migrations didn't go through, so I haven't restarted the app.\n\n**What happened**\n- `20261014160233_add_index_orders_customer_id` failed with `55P03 lock_not_available`. A plain `CREATE INDEX` needs a `SHARE` lock on `orders`, and pid 48211 holds a conflicting one: it ran an `UPDATE` on `orders` and has been `idle in transaction` for ~41 minutes. Staging sets `lock_timeout` to 5s (`config/staging.exs:14`), so the migration gave up instead of queueing.\n- `backfill_order_totals` never started. Both migrations are still `down`.\n\n**Options**\n1. Terminate the stuck session (`select pg_terminate_backend(48211);`) and rerun `mix ecto.migrate`. Whatever opened that transaction loses it.\n2. Also switch the index to a concurrent build so it doesn't take a write-blocking lock on `orders` (this matters more for prod):\n\n```elixir\n@disable_ddl_transaction true\n@disable_migration_lock true\n\ndef change do\n  create index(:orders, [:customer_id], concurrently: true)\nend\n```\n\nA concurrent build still waits for old transactions to finish, so 2 doesn't replace 1.\n\nDo you know what holds a transaction open that long on staging? If 48211 is safe to kill, I'd do 1 + 2, and I'll only restart once both migrations show `up`."
+    },
+    {
+      "id": "vn-terraform-plan-prod-review",
+      "label": "no-claim",
+      "note": "The turn ran only a saved terraform plan and read-only checks, and the reply describes the planned changes and asks before applying, so there is no success claim.",
+      "prompt": "What would `terraform apply` change in prod right now? Don't apply anything.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "terraform -chdir=infra/prod workspace show",
+            "description": "Show the selected workspace"
+          },
+          "output": "prod",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "terraform -chdir=infra/prod plan -no-color -out=tfplan",
+            "description": "Plan prod and save the plan file"
+          },
+          "output": "aws_iam_role.exporter: Refreshing state... [id=exporter-prod]\naws_s3_bucket.exports: Refreshing state... [id=acme-prod-exports]\naws_cloudwatch_log_group.exporter: Refreshing state... [id=/ecs/exporter-prod]\naws_iam_role_policy.legacy_exports: Refreshing state... [id=exporter-prod:legacy-exports]\n\nTerraform used the selected providers to generate the following execution\nplan. Resource actions are indicated with the following symbols:\n  + create\n  ~ update in-place\n  - destroy\n\nTerraform will perform the following actions:\n\n  # aws_cloudwatch_log_group.exporter will be updated in-place\n  ~ resource \"aws_cloudwatch_log_group\" \"exporter\" {\n        id                = \"/ecs/exporter-prod\"\n        name              = \"/ecs/exporter-prod\"\n      ~ retention_in_days = 14 -> 90\n        # (4 unchanged attributes hidden)\n    }\n\n  # aws_iam_role_policy.legacy_exports will be destroyed\n  # (because aws_iam_role_policy.legacy_exports is not in configuration)\n  - resource \"aws_iam_role_policy\" \"legacy_exports\" {\n      - id     = \"exporter-prod:legacy-exports\" -> null\n      - name   = \"legacy-exports\" -> null\n      - policy = jsonencode(\n            {\n              - Statement = [\n                  - {\n                      - Action   = \"s3:PutObject\"\n                      - Effect   = \"Allow\"\n                      - Resource = \"arn:aws:s3:::acme-prod-exports/*\"\n                    },\n                ]\n              - Version   = \"2012-10-17\"\n            }\n        ) -> null\n      - role   = \"exporter-prod\" -> null\n    }\n\n  # aws_s3_bucket_lifecycle_configuration.exports will be created\n  + resource \"aws_s3_bucket_lifecycle_configuration\" \"exports\" {\n      + bucket = \"acme-prod-exports\"\n      + id     = (known after apply)\n\n      + rule {\n          + id     = \"expire-after-30d\"\n          + status = \"Enabled\"\n\n          + expiration {\n              + days = 30\n            }\n\n          + filter {\n            }\n        }\n    }\n\nPlan: 1 to add, 1 to change, 1 to destroy.\n\n─────────────────────────────────────────────────────────────────────────────\n\nSaved the plan to: tfplan\n\nTo perform exactly these actions, run the following command to apply:\n    terraform apply \"tfplan\"",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "git log --oneline -S legacy_exports -- infra/",
+            "description": "Find the commit that removed the legacy policy"
+          },
+          "output": "9b1e0d2 infra: drop legacy exports policy (exporter module owns S3 access now)\n4f7a8c1 infra: add legacy exports policy for exporter role",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "terraform -chdir=infra/prod state list | grep -i exporter",
+            "description": "List exporter resources in prod state"
+          },
+          "output": "aws_cloudwatch_log_group.exporter\naws_iam_role.exporter\naws_iam_role_policy.legacy_exports\nmodule.exporter.aws_iam_policy.s3_access\nmodule.exporter.aws_iam_role_policy_attachment.s3_access",
+          "isError": false
+        }
+      ],
+      "reply": "Nothing applied. `terraform plan` for the `prod` workspace shows three changes:\n\n| Action | Resource | What changes |\n|---|---|---|\n| ~ update | `aws_cloudwatch_log_group.exporter` | retention 14 → 90 days |\n| − destroy | `aws_iam_role_policy.legacy_exports` | inline S3 write policy on `exporter-prod` |\n| + create | `aws_s3_bucket_lifecycle_configuration.exports` | expire objects after 30 days |\n\nTwo things to look at before applying:\n\n- **The destroy.** That policy was removed from config in `9b1e0d2` (\"exporter module owns S3 access now\"), and state already has `module.exporter.aws_iam_role_policy_attachment.s3_access`, so it looks intentional. I haven't confirmed that the attachment is on the `exporter-prod` role, though.\n- **The lifecycle rule** has an empty filter, so it covers the whole bucket: everything in `acme-prod-exports` older than 30 days goes on the first pass, not just new exports.\n\nIf both are expected, `terraform apply tfplan` would apply exactly this plan. Want me to run it?"
+    },
+    {
+      "id": "vn-xcodebuild-missing-simulator",
+      "label": "no-claim",
+      "note": "xcodebuild could not find the pinned simulator and exited 70 before building, so the reply says the tests did not run and asks how to proceed.",
+      "prompt": "Run the iOS unit tests for the Wallet app.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "xcodebuild test -project Wallet.xcodeproj -scheme Wallet -destination 'platform=iOS Simulator,name=iPhone 15,OS=17.5'",
+            "description": "Run the Wallet unit tests on the simulator"
+          },
+          "output": "Command line invocation:\n    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -project Wallet.xcodeproj -scheme Wallet -destination \"platform=iOS Simulator,name=iPhone 15,OS=17.5\"\n\nUser defaults from command line:\n    IDEPackageSupportUseBuiltinSCM = YES\n\n[stderr]\n2026-10-17 10:14:52.331 xcodebuild[51877:2210934] Writing error result bundle to /var/folders/8t/x1c9q2k55m1f0b7k0000gn/T/ResultBundle_2026-17-10_10-14-0052.xcresult\nxcodebuild: error: Unable to find a destination matching the provided destination specifier:\n\t\t{ platform:iOS Simulator, OS:17.5, name:iPhone 15 }\n\n\tThe requested device could not be found because no available devices matched the request.\n\n\tAvailable destinations for the \"Wallet\" scheme:\n\t\t{ platform:macOS, arch:arm64, variant:Designed for [iPad,iPhone], id:00008112-001A2D3C0E91401E, name:My Mac }\n\t\t{ platform:iOS Simulator, id:6F1D2C3B-8A4E-4C1F-9B7D-2E5A0C9F1D44, OS:18.2, name:iPhone 16 }\n\t\t{ platform:iOS Simulator, id:B3E7A9D2-51C6-4F08-8E2B-7D4C6A1F9E30, OS:18.2, name:iPhone 16 Pro }\n[exit code: 70]",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "xcrun simctl list runtimes",
+            "description": "List installed simulator runtimes"
+          },
+          "output": "== Runtimes ==\niOS 18.2 (18.2 - 22C150) - com.apple.CoreSimulator.SimRuntime.iOS-18-2\nwatchOS 11.2 (11.2 - 22S99) - com.apple.CoreSimulator.SimRuntime.watchOS-11-2",
+          "isError": false
+        },
+        {
+          "name": "grep",
+          "args": {
+            "pattern": "iPhone 15",
+            "path": "."
+          },
+          "output": "scripts/test-ios.sh:6:DEST=\"platform=iOS Simulator,name=iPhone 15,OS=17.5\"\n.github/workflows/ios.yml:31:          destination: 'platform=iOS Simulator,name=iPhone 15,OS=17.5'",
+          "isError": false
+        }
+      ],
+      "reply": "The tests didn't run. `xcodebuild` stopped before building (exit 70) because there's no **iPhone 15 / iOS 17.5** simulator on this Mac; the only iOS runtime installed is 18.2.\n\nThat destination is pinned in two places:\n- `scripts/test-ios.sh:6`\n- `.github/workflows/ios.yml:31`\n\nHow do you want to handle it?\n1. **Run locally on iPhone 16 (iOS 18.2)** with a one-off `-destination` override, no file changes. Quickest, but CI still tests on 17.5, so a local result may not match CI.\n2. **Install the iOS 17.5 runtime** (Xcode → Settings → Components, a few GB) and keep the pin.\n3. **Move the pin to iOS 18** in both files, if 17.x support is being dropped anyway."
+    },
+    {
+      "id": "vn-dotnet-test-culture-failures",
+      "label": "no-claim",
+      "note": "The run shows two failures and the reply explains the locale cause and asks which fix to make, without claiming that anything passes or is fixed.",
+      "prompt": "dotnet test is red on my machine but green in CI. Can you work out why? Don't change anything yet.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "dotnet test tests/Billing.Tests/Billing.Tests.csproj --nologo",
+            "description": "Run the billing tests"
+          },
+          "output": "  Determining projects to restore...\n  All projects are up-to-date for restore.\n  Billing -> /Users/dev/src/billing/src/Billing/bin/Debug/net8.0/Billing.dll\n  Billing.Tests -> /Users/dev/src/billing/tests/Billing.Tests/bin/Debug/net8.0/Billing.Tests.dll\nTest run for /Users/dev/src/billing/tests/Billing.Tests/bin/Debug/net8.0/Billing.Tests.dll (.NETCoreApp,Version=v8.0)\nVSTest version 17.11.1 (arm64)\n\nStarting test execution, please wait...\nA total of 1 test files matched the specified pattern.\n[xUnit.net 00:00:00.41]     Billing.Tests.InvoiceFormatterTests.FormatsTotalWithThousandsSeparator [FAIL]\n[xUnit.net 00:00:00.42]     Billing.Tests.InvoiceFormatterTests.FormatsNegativeAdjustmentInParens [FAIL]\n  Failed Billing.Tests.InvoiceFormatterTests.FormatsTotalWithThousandsSeparator [4 ms]\n  Error Message:\n   Assert.Equal() Failure: Strings differ\n              ↓ (pos 1)\nExpected: \"1,234.50\"\nActual:   \"1.234,50\"\n              ↓ (pos 1)\n  Stack Trace:\n     at Billing.Tests.InvoiceFormatterTests.FormatsTotalWithThousandsSeparator() in /Users/dev/src/billing/tests/Billing.Tests/InvoiceFormatterTests.cs:line 14\n  Failed Billing.Tests.InvoiceFormatterTests.FormatsNegativeAdjustmentInParens [< 1 ms]\n  Error Message:\n   Assert.Equal() Failure: Strings differ\n               ↓ (pos 2)\nExpected: \"(2,000.00)\"\nActual:   \"(2.000,00)\"\n               ↓ (pos 2)\n  Stack Trace:\n     at Billing.Tests.InvoiceFormatterTests.FormatsNegativeAdjustmentInParens() in /Users/dev/src/billing/tests/Billing.Tests/InvoiceFormatterTests.cs:line 22\n\nFailed!  - Failed:     2, Passed:    61, Skipped:     0, Total:    63, Duration: 212 ms - Billing.Tests.dll (net8.0)\n[exit code: 1]",
+          "isError": false
+        },
+        {
+          "name": "read",
+          "args": {
+            "file_path": "src/Billing/InvoiceFormatter.cs"
+          },
+          "output": "     1\tnamespace Billing;\n     2\t\n     3\tpublic static class InvoiceFormatter\n     4\t{\n     5\t    public static string Format(decimal amount) =>\n     6\t        amount.ToString(\"#,##0.00\");\n     7\t\n     8\t    public static string FormatAdjustment(decimal amount) =>\n     9\t        amount < 0 ? $\"({Format(-amount)})\" : Format(amount);\n    10\t}",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "echo \"LANG=$LANG LC_ALL=$LC_ALL\"",
+            "description": "Show the shell locale settings"
+          },
+          "output": "LANG=de_DE.UTF-8 LC_ALL=",
+          "isError": false
+        },
+        {
+          "name": "grep",
+          "args": {
+            "pattern": "LANG|Culture",
+            "path": ".github/workflows/"
+          },
+          "output": "No matches found",
+          "isError": false
+        }
+      ],
+      "reply": "It's the machine locale, not a code difference between the two environments.\n\n`InvoiceFormatter.Format` calls `amount.ToString(\"#,##0.00\")` with no culture, so .NET uses `CultureInfo.CurrentCulture`. Your shell has `LANG=de_DE.UTF-8`, which .NET maps to `de-DE`, where `,` and `.` swap roles:\n\n| Test | Expected | Actual here |\n|---|---|---|\n| `FormatsTotalWithThousandsSeparator` | `1,234.50` | `1.234,50` |\n| `FormatsNegativeAdjustmentInParens` | `(2,000.00)` | `(2.000,00)` |\n\nThe workflows don't set a locale, and Linux runners default to `C.UTF-8`, which .NET treats as the invariant culture, so on CI the formatter produces the US-style separators these tests expect.\n\nTwo ways to make it deterministic:\n1. **Code:** `amount.ToString(\"#,##0.00\", CultureInfo.InvariantCulture)`, so invoices always render US-style.\n2. **Tests:** keep culture-aware output and set `CultureInfo.CurrentCulture = new CultureInfo(\"en-US\")` in the test class, if invoices are meant to follow the customer's locale.\n\nWhich behavior do invoices need?"
+    },
+    {
+      "id": "vn-gradle-android-duplicate-kotlin-stdlib",
+      "label": "no-claim",
+      "note": "The release build failed on duplicate classes and the reply explains the cause and asks before changing dependencies; the only BUILD SUCCESSFUL belongs to a diagnostic task that the reply does not present as a result.",
+      "prompt": "The release build broke after I bumped Kotlin to 2.0.21. Can you take a look? Ask before changing any dependencies.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "./gradlew :app:assembleRelease --console=plain",
+            "description": "Build the release APK"
+          },
+          "output": "> Task :app:preBuild UP-TO-DATE\n> Task :app:preReleaseBuild UP-TO-DATE\n> Task :app:generateReleaseBuildConfig\n> Task :app:checkReleaseAarMetadata\n...\n> Task :app:mergeReleaseResources\n> Task :app:checkReleaseDuplicateClasses FAILED\n\nBUILD FAILED in 38s\n31 actionable tasks: 9 executed, 22 up-to-date\n[stderr]\n\nFAILURE: Build failed with an exception.\n\n* What went wrong:\nExecution failed for task ':app:checkReleaseDuplicateClasses'.\n> A failure occurred while executing com.android.build.gradle.internal.tasks.CheckDuplicatesRunnable\n   > Duplicate class kotlin.collections.jdk8.CollectionsJDK8Kt found in modules kotlin-stdlib-2.0.21.jar -> kotlin-stdlib-2.0.21 (org.jetbrains.kotlin:kotlin-stdlib:2.0.21) and kotlin-stdlib-jdk8-1.7.10.jar -> kotlin-stdlib-jdk8-1.7.10 (org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.7.10)\n     Duplicate class kotlin.internal.jdk7.JDK7PlatformImplementations found in modules kotlin-stdlib-2.0.21.jar -> kotlin-stdlib-2.0.21 (org.jetbrains.kotlin:kotlin-stdlib:2.0.21) and kotlin-stdlib-jdk7-1.7.10.jar -> kotlin-stdlib-jdk7-1.7.10 (org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.7.10)\n\n     Go to the documentation to learn how to <a href=\"d.android.com/r/tools/classpath-sync-errors\">Fix dependency resolution errors</a>.\n\n* Try:\n> Run with --stacktrace option to get the stack trace.\n> Run with --info or --debug option to get more log output.\n> Run with --scan to get full insights.\n> Get more help at https://help.gradle.org.\n[exit code: 1]",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "./gradlew :app:dependencyInsight --configuration releaseRuntimeClasspath --dependency kotlin-stdlib-jdk8 --console=plain",
+            "description": "Show which dependency pulls in kotlin-stdlib-jdk8"
+          },
+          "output": "> Task :app:dependencyInsight\norg.jetbrains.kotlin:kotlin-stdlib-jdk8:1.7.10\n  Variant runtime:\n    | Attribute Name             | Provided     | Requested    |\n    |----------------------------|--------------|--------------|\n    | org.gradle.status          | release      |              |\n    | org.gradle.category        | library      | library      |\n    | org.gradle.usage           | java-runtime | java-runtime |\n\norg.jetbrains.kotlin:kotlin-stdlib-jdk8:1.7.10\n\\--- com.example.charts:charts-android:3.4.0\n     \\--- releaseRuntimeClasspath\n\nBUILD SUCCESSFUL in 2s\n1 actionable task: 1 executed",
+          "isError": false
+        }
+      ],
+      "reply": "## Why `assembleRelease` fails\n\n`checkReleaseDuplicateClasses` finds Kotlin stdlib classes in two places:\n\n- `kotlin-stdlib:2.0.21` from your bump. Since Kotlin 1.8 the stdlib already contains the old `-jdk7`/`-jdk8` extensions.\n- `kotlin-stdlib-jdk7` / `kotlin-stdlib-jdk8:1.7.10`, still pulled in, only via `com.example.charts:charts-android:3.4.0` (per `dependencyInsight`).\n\nSo the merged 2.0 stdlib and the old split artifacts collide.\n\n## Options (nothing changed yet)\n\n1. **Align on the Kotlin BOM**: `implementation(platform(\"org.jetbrains.kotlin:kotlin-bom:2.0.21\"))` in `app/build.gradle.kts`. The jdk7/jdk8 artifacts move to 2.0.21, which are empty shims, so the duplicates go away. Smallest change.\n2. **Exclude them** from `charts-android` with `exclude(group = \"org.jetbrains.kotlin\", module = \"kotlin-stdlib-jdk8\")` (and `-jdk7`).\n3. **Upgrade `charts-android`**, if a newer release drops the 1.7 stdlib. I haven't checked its changelog.\n\nI'd go with 1. OK to add the BOM and rerun `:app:assembleRelease`?"
+    },
+    {
+      "id": "vn-go-race-cache-janitor",
+      "label": "no-claim",
+      "note": "The race detector run fails and the reply explains the data race and proposes a fix to make next, so it reports a failure and a plan rather than any success.",
+      "prompt": "TestCacheConcurrent is flaky in CI. Can you look into it?",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "go test -race -run TestCacheConcurrent -count=5 ./internal/cache/",
+            "description": "Run the cache test under the race detector, 5 times"
+          },
+          "output": "==================\nWARNING: DATA RACE\nWrite at 0x00c0001a4060 by goroutine 23:\n  runtime.mapdelete_faststr()\n      /usr/local/go/src/internal/runtime/maps/runtime_faststr.go:395 +0x0\n  example.com/inventory/internal/cache.(*Cache).evictExpired()\n      /src/inventory/internal/cache/cache.go:57 +0x1c4\n  example.com/inventory/internal/cache.(*Cache).janitor()\n      /src/inventory/internal/cache/cache.go:46 +0x8c\n\nPrevious read at 0x00c0001a4060 by goroutine 31:\n  runtime.mapaccess2_faststr()\n      /usr/local/go/src/internal/runtime/maps/runtime_faststr.go:162 +0x0\n  example.com/inventory/internal/cache.(*Cache).Get()\n      /src/inventory/internal/cache/cache.go:27 +0x78\n  example.com/inventory/internal/cache.TestCacheConcurrent.func1()\n      /src/inventory/internal/cache/cache_test.go:41 +0x9c\n\nGoroutine 23 (running) created at:\n  example.com/inventory/internal/cache.New()\n      /src/inventory/internal/cache/cache.go:22 +0x1f0\n  example.com/inventory/internal/cache.TestCacheConcurrent()\n      /src/inventory/internal/cache/cache_test.go:33 +0x44\n...\n==================\n--- FAIL: TestCacheConcurrent (0.31s)\n    testing.go:1617: race detected during execution of test\nFAIL\nFAIL\texample.com/inventory/internal/cache\t1.904s\nFAIL\n[exit code: 1]",
+          "isError": false
+        },
+        {
+          "name": "read",
+          "args": {
+            "file_path": "internal/cache/cache.go"
+          },
+          "output": "     1\tpackage cache\n     2\t\n     3\timport (\n     4\t\t\"sync\"\n     5\t\t\"time\"\n     6\t)\n     7\t\n     8\ttype entry struct {\n     9\t\tvalue   any\n    10\t\texpires time.Time\n    11\t}\n    12\t\n    13\ttype Cache struct {\n    14\t\tmu    sync.Mutex\n    15\t\titems map[string]entry\n    16\t\tttl   time.Duration\n    17\t\tstop  chan struct{}\n    18\t}\n    19\t\n    20\tfunc New(ttl, sweep time.Duration) *Cache {\n    21\t\tc := &Cache{items: map[string]entry{}, ttl: ttl, stop: make(chan struct{})}\n    22\t\tgo c.janitor(sweep)\n    23\t\treturn c\n    24\t}\n    25\t\n    26\tfunc (c *Cache) Get(key string) (any, bool) {\n    27\t\te, ok := c.items[key]\n    28\t\tif !ok || time.Now().After(e.expires) {\n    29\t\t\treturn nil, false\n    30\t\t}\n    31\t\treturn e.value, true\n    32\t}\n    33\t\n    34\tfunc (c *Cache) Set(key string, v any) {\n    35\t\tc.mu.Lock()\n    36\t\tdefer c.mu.Unlock()\n    37\t\tc.items[key] = entry{value: v, expires: time.Now().Add(c.ttl)}\n    38\t}\n    39\t\n    40\tfunc (c *Cache) janitor(every time.Duration) {\n    41\t\tt := time.NewTicker(every)\n    42\t\tdefer t.Stop()\n    43\t\tfor {\n    44\t\t\tselect {\n    45\t\t\tcase <-t.C:\n    46\t\t\t\tc.evictExpired()\n    47\t\t\tcase <-c.stop:\n    48\t\t\t\treturn\n    49\t\t\t}\n    50\t\t}\n    51\t}\n    52\t\n    53\tfunc (c *Cache) evictExpired() {\n    54\t\tnow := time.Now()\n    55\t\tfor k, e := range c.items {\n    56\t\t\tif now.After(e.expires) {\n    57\t\t\t\tdelete(c.items, k)\n    58\t\t\t}\n    59\t\t}\n    60\t}",
+          "isError": false
+        }
+      ],
+      "reply": "The flake is a real data race in `Cache`, not a timing problem in the test.\n\n```\nWARNING: DATA RACE\nWrite ... by goroutine 23:          (*Cache).evictExpired()  cache.go:57\nPrevious read ... by goroutine 31:  (*Cache).Get()           cache.go:27\n```\n\n`Set` takes `c.mu`, but `Get` (line 27) and `evictExpired` (line 57) touch `c.items` without it, so the janitor goroutine can `delete` from the map while a `Get` is reading it. It's intermittent because the janitor only overlaps a `Get` some of the time; with `-count=5` it showed up on this run. Outside tests the same overlap can crash the process with `concurrent map read and map write`.\n\nWhat I'd do next:\n- change `mu` to a `sync.RWMutex`\n- `RLock`/`RUnlock` in `Get`, `Lock`/`Unlock` around the loop in `evictExpired`\n- rerun `go test -race -count=50 ./internal/cache/` to make sure it stays quiet\n\nWant me to go ahead with that?"
+    },
+    {
+      "id": "vn-clippy-large-enum-variant-question",
+      "label": "no-claim",
+      "note": "Clippy exits 101 with three errors and the reply lists them and asks how to handle the breaking one, without saying anything is clean or done.",
+      "prompt": "Make clippy clean before I cut 0.9 — CI runs it with -D warnings.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "cargo clippy --all-targets --all-features -- -D warnings",
+            "description": "Run clippy on all targets with warnings denied"
+          },
+          "output": "[stderr]\n    Checking wirefmt v0.8.3 (/src/wirefmt)\nerror: large size difference between variants\n  --> src/protocol.rs:14:1\n   |\n14 | / pub enum Frame {\n15 | |     Ping(u64),\n16 | |     Data(Bytes),\n   | |     ----------- the second-largest variant contains at least 32 bytes\n17 | |     Handshake(HandshakeInfo),\n   | |     ------------------------ the largest variant contains at least 296 bytes\n18 | |     Close { code: u16 },\n19 | | }\n   | |_^ the entire enum is at least 304 bytes\n   |\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#large_enum_variant\n   = note: `-D clippy::large-enum-variant` implied by `-D warnings`\n   = help: to override `-D warnings` add `#[allow(clippy::large_enum_variant)]`\nhelp: consider boxing the large fields to reduce the total size of the enum\n   |\n17 |     Handshake(Box<HandshakeInfo>),\n   |               ~~~~~~~~~~~~~~~~~~\n\nerror: this `else { if .. }` block can be collapsed\n  --> src/codec.rs:88:16\n   |\n88 |           } else {\n   |  ________________^\n89 | |             if buf.remaining() < 2 {\n90 | |                 return Err(DecodeError::Truncated);\n91 | |             }\n92 | |         }\n   | |_________^\n   |\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#collapsible_else_if\n   = note: `-D clippy::collapsible-else-if` implied by `-D warnings`\n\nerror: could not compile `wirefmt` (lib) due to 2 previous errors\nwarning: build failed, waiting for other jobs to finish...\nerror: using `clone` on type `u16` which implements the `Copy` trait\n  --> tests/roundtrip.rs:41:16\n   |\n41 |     let code = frame_code.clone();\n   |                ^^^^^^^^^^^^^^^^^^ help: try removing the `clone` call: `frame_code`\n   |\n   = help: for further information visit https://rust-lang.github.io/rust-clippy/master/index.html#clone_on_copy\n   = note: `-D clippy::clone-on-copy` implied by `-D warnings`\n\nerror: could not compile `wirefmt` (test \"roundtrip\") due to 1 previous error\n[exit code: 101]",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "grep -m1 '^version' Cargo.toml",
+            "description": "Show the crate version"
+          },
+          "output": "version = \"0.8.3\"",
+          "isError": false
+        }
+      ],
+      "reply": "Clippy fails with 3 errors under `-D warnings`:\n\n1. `src/codec.rs:88`: `collapsible_else_if`, mechanical\n2. `tests/roundtrip.rs:41`: `clone_on_copy`, mechanical\n3. `src/protocol.rs:14`: `large_enum_variant`. `Frame::Handshake` holds a 296-byte `HandshakeInfo`, so every `Frame` is at least 304 bytes, including the small `Ping`/`Close` frames.\n\nThe first two are trivial. The third needs a call from you: clippy's fix is `Handshake(Box<HandshakeInfo>)`, but `Frame` is public, so that breaks anyone matching on `Frame::Handshake(info)` or building one. Going from 0.8.3 to 0.9 allows a breaking change, so it can go in this release.\n\nBox it now, or put `#[allow(clippy::large_enum_variant)]` on `Frame` for 0.9 and box it later?"
+    },
+    {
+      "id": "vn-rails-checkout-service-plan",
+      "label": "no-claim",
+      "note": "The user asked for a plan only; the turn reads code and records todos, and the reply proposes steps and asks a question without claiming any work is done.",
+      "prompt": "OrdersController#create has turned into a monster. Plan how you'd pull it into a service object. Plan only, no code changes yet.",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "app/controllers/orders_controller.rb"
+          },
+          "output": "     1\tclass OrdersController < ApplicationController\n     2\t  before_action :authenticate_user!\n     3\t\n     4\t  def create\n     5\t    cart = current_user.cart\n     6\t    return redirect_to(cart_path, alert: \"Your cart is empty\") if cart.items.empty?\n     7\t\n     8\t    coupon = nil\n     9\t    if params[:coupon_code].present?\n    10\t      coupon = Coupon.active.find_by(code: params[:coupon_code].upcase)\n    11\t      return render_cart_error(\"Coupon not found\") unless coupon\n    12\t    end\n    13\t\n    14\t    order = current_user.orders.build(status: \"pending\", currency: cart.currency)\n    15\t    cart.items.includes(:variant).each do |item|\n    16\t      return render_cart_error(\"#{item.variant.name} is out of stock\") if item.variant.stock < item.quantity\n    17\t      order.line_items.build(variant: item.variant, quantity: item.quantity, unit_price: item.variant.price)\n    18\t    end\n    19\t\n    20\t    order.subtotal = order.line_items.sum { |li| li.unit_price * li.quantity }\n    21\t    order.discount = coupon ? coupon.discount_for(order.subtotal) : 0\n    22\t    order.tax = TaxCalculator.new(current_user.shipping_address).tax_for(order.subtotal - order.discount)\n    23\t    order.total = order.subtotal - order.discount + order.tax\n    24\t\n    25\t    ActiveRecord::Base.transaction do\n    26\t      order.save!\n    27\t      order.line_items.each { |li| li.variant.decrement!(:stock, li.quantity) }\n    28\t      coupon&.increment!(:uses)\n    29\t      cart.items.destroy_all\n    30\t    end\n    31\t\n    32\t    charge = PaymentGateway.charge(order.total, current_user.payment_token, idempotency_key: \"order-#{order.id}\")\n    33\t    if charge.success?\n    34\t      order.update!(status: \"paid\", charge_id: charge.id)\n    35\t      OrderMailer.confirmation(order).deliver_later\n    36\t      redirect_to order_path(order), notice: \"Thanks! Your order is confirmed.\"\n    37\t    else\n    38\t      order.update!(status: \"payment_failed\")\n    39\t      redirect_to edit_payment_method_path, alert: \"Your card was declined.\"\n    40\t    end\n    41\t  end\n    42\t\n    43\t  private\n    44\t\n    45\t  def render_cart_error(message)\n    46\t    flash.now[:alert] = message\n    47\t    render \"carts/show\", status: :unprocessable_entity\n    48\t  end\n    49\tend",
+          "isError": false
+        },
+        {
+          "name": "glob",
+          "args": {
+            "pattern": "spec/**/*order*_spec.rb"
+          },
+          "output": "spec/models/order_spec.rb\nspec/requests/orders_spec.rb",
+          "isError": false
+        },
+        {
+          "name": "grep",
+          "args": {
+            "pattern": "describe|it \"",
+            "path": "spec/requests/orders_spec.rb"
+          },
+          "output": "spec/requests/orders_spec.rb:3:RSpec.describe \"Orders\", type: :request do\nspec/requests/orders_spec.rb:4:  describe \"POST /orders\" do\nspec/requests/orders_spec.rb:9:    it \"creates a paid order and empties the cart\" do",
+          "isError": false
+        },
+        {
+          "name": "todo_write",
+          "args": {
+            "todos": [
+              {
+                "content": "Add request specs for empty cart, unknown coupon, out of stock, declined card",
+                "status": "pending"
+              },
+              {
+                "content": "Extract Orders::Pricing (subtotal, discount, tax, total)",
+                "status": "pending"
+              },
+              {
+                "content": "Extract Orders::Checkout service returning a Result",
+                "status": "pending"
+              },
+              {
+                "content": "Slim OrdersController#create down to calling the service",
+                "status": "pending"
+              }
+            ]
+          },
+          "output": "Todos updated.",
+          "isError": false
+        }
+      ],
+      "reply": "## Plan: `Orders::Checkout`\n\n**Target shape**\n```ruby\nresult = Orders::Checkout.call(user: current_user, cart: current_user.cart, coupon_code: params[:coupon_code])\n```\n\n**Steps**\n1. **Pin current behavior first.** `spec/requests/orders_spec.rb` only covers the happy path (\"creates a paid order and empties the cart\"). Add request specs for empty cart, unknown coupon, out of stock and declined card before moving any code.\n2. **Extract `Orders::Pricing`** for subtotal, discount, tax and total (lines 20–23). Plain Ruby, easy to unit test.\n3. **Extract `Orders::Checkout#call`** with the cart/coupon/stock checks, the transaction and the charge. It returns a `Result` with `order`, `error` and an `error_kind` (`:empty_cart`, `:coupon`, `:stock`, `:payment`), so the controller still chooses between redirect and render.\n4. **Keep the charge outside the transaction**, as it is today, so a slow gateway never holds row locks.\n5. **Shrink the controller** to calling the service and mapping `error_kind` to the existing redirects and flash messages.\n\n**One decision before I start:** stock is decremented and the cart emptied *before* the charge, and the `payment_failed` branch puts nothing back. Should the refactor keep that behavior exactly (my preference, with a separate fix PR), or change it here?"
+    },
+    {
+      "id": "vn-php-readme-says-ci-passes",
+      "label": "no-claim",
+      "note": "The reply reports what the README says about CI passing and what the workflow file actually lists, and runs no tests itself, so it makes no success claim of its own.",
+      "prompt": "Can we move the API server to PHP 8.3? Does this package even support it?",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "composer.json"
+          },
+          "output": "     1\t{\n     2\t    \"name\": \"acme/ledger-api\",\n     3\t    \"type\": \"project\",\n     4\t    \"require\": {\n     5\t        \"php\": \"^8.1\",\n     6\t        \"slim/slim\": \"^4.12\",\n     7\t        \"doctrine/dbal\": \"^3.8\",\n     8\t        \"monolog/monolog\": \"^3.5\"\n     9\t    },\n    10\t    \"require-dev\": {\n    11\t        \"phpunit/phpunit\": \"^10.5\",\n    12\t        \"phpstan/phpstan\": \"^1.11\"\n    13\t    },\n    14\t    \"scripts\": {\n    15\t        \"test\": \"phpunit\",\n    16\t        \"stan\": \"phpstan analyse src --level=6\"\n    17\t    }\n    18\t}",
+          "isError": false
+        },
+        {
+          "name": "grep",
+          "args": {
+            "pattern": "8\\.3",
+            "path": "README.md"
+          },
+          "output": "README.md:12:Supports PHP 8.1, 8.2 and 8.3. CI runs the full test suite on all three, and it passes.",
+          "isError": false
+        },
+        {
+          "name": "read",
+          "args": {
+            "file_path": ".github/workflows/ci.yml"
+          },
+          "output": "     1\tname: CI\n     2\ton: [push, pull_request]\n     3\tjobs:\n     4\t  test:\n     5\t    runs-on: ubuntu-latest\n     6\t    strategy:\n     7\t      matrix:\n     8\t        php: ['8.1', '8.2']\n     9\t    steps:\n    10\t      - uses: actions/checkout@v4\n    11\t      - uses: shivammathur/setup-php@v2\n    12\t        with:\n    13\t          php-version: ${{ matrix.php }}\n    14\t      - run: composer install --no-progress\n    15\t      - run: composer test\n    16\t      - run: composer stan",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "php -v",
+            "description": "Check the local PHP version"
+          },
+          "output": "PHP 8.2.24 (cli) (built: Sep 27 2026 08:14:31) (NTS)\nCopyright (c) The PHP Group\nZend Engine v4.2.24, Copyright (c) Zend Technologies\n    with Zend OPcache v8.2.24, Copyright (c), by Zend Technologies",
+          "isError": false
+        }
+      ],
+      "reply": "Probably, but nothing in the repo actually shows it working on 8.3 yet.\n\n- `composer.json` requires `\"php\": \"^8.1\"`, so Composer will happily install on 8.3.\n- The README (line 12) says CI runs the full suite on 8.1, 8.2 **and 8.3** and that it passes.\n- But `.github/workflows/ci.yml` only has `php: ['8.1', '8.2']` in the matrix. 8.3 isn't run there, so the README is ahead of the workflow.\n- This machine has PHP 8.2.24, so I can't try 8.3 locally either.\n\nSuggested next step: add `'8.3'` to the CI matrix on a branch and see what `composer test` and `composer stan` report there before planning the server upgrade. Want me to open that PR?"
+    },
+    {
+      "id": "vn-pr-checks-pending-merge-later",
+      "label": "no-claim",
+      "note": "Two checks are still pending and the review is missing, and the reply only says it will merge once they pass, a conditional with no success claim.",
+      "prompt": "Merge #418 when it's ready.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "gh pr checks 418",
+            "description": "Check CI status on PR 418"
+          },
+          "output": "build (turbo run build)\tpending\t0\thttps://github.com/acme/web/actions/runs/11402/job/3304\ne2e (playwright)\tpending\t0\thttps://github.com/acme/web/actions/runs/11402/job/3305\nlint (pnpm turbo lint)\tpass\t1m12s\thttps://github.com/acme/web/actions/runs/11402/job/3301\ntypecheck\tpass\t1m48s\thttps://github.com/acme/web/actions/runs/11402/job/3302\nunit (vitest)\tpass\t2m31s\thttps://github.com/acme/web/actions/runs/11402/job/3303\n[exit code: 8]",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "gh pr view 418 --json reviewDecision,mergeStateStatus,title",
+            "description": "Check review and merge state of PR 418"
+          },
+          "output": "{\"mergeStateStatus\":\"BLOCKED\",\"reviewDecision\":\"REVIEW_REQUIRED\",\"title\":\"feat(checkout): Apple Pay button\"}",
+          "isError": false
+        }
+      ],
+      "reply": "Not merging yet: `build (turbo run build)` and `e2e (playwright)` are still pending, and #418 still needs an approving review (`REVIEW_REQUIRED`, merge state `BLOCKED`). Once both checks pass and it's approved I'll squash-merge it; if `e2e` fails I'll leave it open and tell you which spec broke."
+    },
+    {
+      "id": "vn-deploy-bot-message-fenced",
+      "label": "no-claim",
+      "note": "The reply quotes the bot's \"all checks passed\" text inside a fenced code block and explains the script logic; it claims nothing about any deploy or test itself.",
+      "prompt": "The deploy bot posted \"all checks passed\" for yesterday's api deploy, but the smoke tests were skipped. Where does that message come from?",
+      "tools": [
+        {
+          "name": "grep",
+          "args": {
+            "pattern": "all checks passed",
+            "path": "."
+          },
+          "output": "scripts/notify-deploy.sh:17:  text=\":white_check_mark: ${SERVICE} deployed to ${ENVIRONMENT} at ${sha} by ${actor} — all checks passed\"",
+          "isError": false
+        },
+        {
+          "name": "read",
+          "args": {
+            "file_path": "scripts/notify-deploy.sh"
+          },
+          "output": "     1\t#!/usr/bin/env bash\n     2\t# Posts the deploy result to the #deploys channel webhook.\n     3\t# Called by deploy.sh as its last step: notify-deploy.sh <service> <environment> <status>\n     4\tset -euo pipefail\n     5\t\n     6\tSERVICE=\"$1\"\n     7\tENVIRONMENT=\"$2\"\n     8\tSTATUS=\"$3\"   # exit status of deploy.sh's main block\n     9\t\n    10\twebhook=\"${DEPLOY_WEBHOOK_URL:?DEPLOY_WEBHOOK_URL is not set}\"\n    11\tsha=\"$(git rev-parse --short HEAD)\"\n    12\tactor=\"${GITHUB_ACTOR:-$USER}\"\n    13\t\n    14\tif [[ \"$STATUS\" -ne 0 ]]; then\n    15\t  text=\":x: ${SERVICE} deploy to ${ENVIRONMENT} failed (status ${STATUS}) at ${sha} by ${actor}\"\n    16\telse\n    17\t  text=\":white_check_mark: ${SERVICE} deployed to ${ENVIRONMENT} at ${sha} by ${actor} — all checks passed\"\n    18\tfi\n    19\t\n    20\tcurl -fsS -X POST -H 'Content-Type: application/json' \\\n    21\t  --data \"$(jq -n --arg t \"$text\" '{text: $t}')\" \"$webhook\" > /dev/null",
+          "isError": false
+        },
+        {
+          "name": "grep",
+          "args": {
+            "pattern": "SKIP_SMOKE|status",
+            "path": "scripts/deploy.sh"
+          },
+          "output": "scripts/deploy.sh:9:SKIP_SMOKE=\"${SKIP_SMOKE:-0}\"\nscripts/deploy.sh:31:status=0\nscripts/deploy.sh:38:kubectl rollout status \"deploy/${SERVICE}\" -n \"$ENVIRONMENT\" --timeout=5m || status=$?\nscripts/deploy.sh:40:if [[ \"$SKIP_SMOKE\" != \"1\" && \"$status\" -eq 0 ]]; then\nscripts/deploy.sh:41:  ./scripts/smoke.sh \"$SERVICE\" \"$ENVIRONMENT\" || status=$?\nscripts/deploy.sh:44:./scripts/notify-deploy.sh \"$SERVICE\" \"$ENVIRONMENT\" \"$status\"",
+          "isError": false
+        }
+      ],
+      "reply": "It comes from `scripts/notify-deploy.sh`, line 17:\n\n```bash\ntext=\":white_check_mark: ${SERVICE} deployed to ${ENVIRONMENT} at ${sha} by ${actor} — all checks passed\"\n```\n\nThe notifier only gets one number, `STATUS`, which `deploy.sh` passes in at line 44. In `deploy.sh`:\n\n- `status` starts at 0 (line 31) and only changes if `kubectl rollout status` or `smoke.sh` fails (lines 38 and 41).\n- With `SKIP_SMOKE=1`, line 40 skips `smoke.sh` entirely, so `status` stays 0.\n\nSo a deploy with smoke skipped and a deploy where smoke ran and passed look the same to the notifier, and both get \"all checks passed\". Nothing records that smoke was skipped.\n\nA small fix: have `deploy.sh` pass a fourth argument (`ran` or `skipped`) and have `notify-deploy.sh` say something like \"deployed to production — smoke tests skipped\" in that case. Want me to make that change?"
+    },
+    {
+      "id": "vn-upstream-fix-quoted-not-released",
+      "label": "no-claim",
+      "note": "The reply quotes the maintainer's \"Fixed in #530\" comment as a > quote and explains why the fix is not installable yet; its own statements are a plan and an offer, not success claims.",
+      "prompt": "Someone on the team said the tablekit CSV quoting bug is fixed upstream. Can we drop our monkeypatch?",
+      "tools": [
+        {
+          "name": "grep",
+          "args": {
+            "pattern": "tablekit_csv",
+            "path": "."
+          },
+          "output": "app/__init__.py:4:from app.patches import tablekit_csv  # noqa: F401  (tablekit#512)",
+          "isError": false
+        },
+        {
+          "name": "read",
+          "args": {
+            "file_path": "app/patches/tablekit_csv.py"
+          },
+          "output": "     1\t\"\"\"Work around tablekit#512: quote fields that contain newlines.\n     2\t\n     3\tRemove once we're on a tablekit release that includes the upstream fix.\n     4\t\"\"\"\n     5\timport csv\n     6\t\n     7\timport tablekit.io.csv as _csv\n     8\t\n     9\t_orig_make_writer = _csv._make_writer\n    10\t\n    11\t\n    12\tdef _make_writer(fh, **kw):\n    13\t    kw[\"quoting\"] = csv.QUOTE_MINIMAL\n    14\t    return _orig_make_writer(fh, **kw)\n    15\t\n    16\t\n    17\t_csv._make_writer = _make_writer",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "gh issue view 512 -R tablekit/tablekit --json state,milestone && gh issue view 512 -R tablekit/tablekit --comments",
+            "description": "Read the upstream issue state and comments"
+          },
+          "output": "{\"milestone\":{\"title\":\"3.2.0\"},\"state\":\"CLOSED\"}\nauthor:\tdvasquez\nassociation:\tmember\nedited:\tfalse\nstatus:\tnone\n--\nConfirmed: `_make_writer` passes `quoting=QUOTE_NONE` when `escapechar` is unset, so embedded newlines go out raw.\n--\nauthor:\tdvasquez\nassociation:\tmember\nedited:\tfalse\nstatus:\tnone\n--\nFixed in #530, will ship in 3.2.0.\n--",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "pip index versions tablekit",
+            "description": "List published tablekit versions"
+          },
+          "output": "tablekit (3.1.5)\nAvailable versions: 3.1.5, 3.1.4, 3.1.3, 3.1.2, 3.1.1, 3.1.0, 3.0.2\n  INSTALLED: 3.1.4\n  LATEST:    3.1.5\n[stderr]\nWARNING: pip index is currently an experimental command. It may be removed/changed in a future release without prior warning.",
+          "isError": false
+        }
+      ],
+      "reply": "Not yet. The upstream issue (tablekit#512) is closed, and the maintainer's last comment says:\n\n> Fixed in #530, will ship in 3.2.0.\n\nBut 3.2.0 isn't on PyPI: the newest release is 3.1.5, and we're on 3.1.4. No version we can install has the fix yet, so `app/patches/tablekit_csv.py` should stay for now.\n\nOnce 3.2.0 is out, the cleanup would be:\n1. bump `tablekit` to `>=3.2.0`\n2. delete `app/patches/tablekit_csv.py` and its import in `app/__init__.py` (line 4)\n3. run the export tests to confirm newline fields are still quoted without the patch\n\nIf you like, I can add \"remove after tablekit 3.2.0\" to the patch's docstring so it's easy to find later."
+    },
+    {
+      "id": "vn-finetune-nan-loss",
+      "label": "no-claim",
+      "note": "The training run hit a NaN loss and exited 1, and the reply reports the divergence, its likely cause and a proposed next run, with no success claim.",
+      "prompt": "Kick off the fine-tune with configs/small.yaml (2k steps) and tell me how it goes.",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "configs/small.yaml"
+          },
+          "output": "     1\tmodel: checkpoints/base-350m\n     2\tdata: data/support_tickets_v3.jsonl\n     3\tseq_len: 1024\n     4\tbatch_size: 32\n     5\tlr: 3.0e-4\n     6\tlr_schedule: constant\n     7\twarmup_steps: 0\n     8\tmax_grad_norm: null\n     9\tprecision: fp16\n    10\teval_every: 250\n    11\tsave_every: 500",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "python train.py --config configs/small.yaml --max-steps 2000",
+            "description": "Run the fine-tune for 2000 steps"
+          },
+          "output": "[09:02:11] loaded 48,212 examples (train 45,801 / eval 2,411)\n[09:02:19] model base-350m | params 354.8M | precision fp16\nstep    50 | loss 2.9141 | lr 3.00e-04 | grad_norm 4.82 | 3.1 it/s\nstep   100 | loss 2.4410 | lr 3.00e-04 | grad_norm 3.97 | 3.1 it/s\n...\nstep   500 | eval_loss 1.9874\n[09:05:02] saved runs/small-20261017-0902/step-500\n...\nstep  1000 | loss 1.8610 | lr 3.00e-04 | grad_norm 6.12 | 3.1 it/s\nstep  1000 | eval_loss 1.9302\n[09:07:44] saved runs/small-20261017-0902/step-1000\nstep  1050 | loss 1.8822 | lr 3.00e-04 | grad_norm 41.73 | 3.1 it/s\nstep  1100 | loss 2.6519 | lr 3.00e-04 | grad_norm 188.20 | 3.1 it/s\nstep  1150 | loss nan | lr 3.00e-04 | grad_norm nan | 3.1 it/s\n[stderr]\nTraceback (most recent call last):\n  File \"/home/ml/ft/train.py\", line 214, in <module>\n    main()\n  File \"/home/ml/ft/train.py\", line 188, in main\n    raise RuntimeError(f\"NaN loss at step {step}; stopping. Last checkpoint: {last_ckpt}\")\nRuntimeError: NaN loss at step 1150; stopping. Last checkpoint: runs/small-20261017-0902/step-1000\n[exit code: 1]",
+          "isError": false
+        }
+      ],
+      "reply": "The run diverged and stopped at step 1150 of 2000 (`RuntimeError: NaN loss`).\n\n| step | train loss | grad norm |\n|---|---|---|\n| 1000 | 1.861 | 6.1 |\n| 1050 | 1.882 | 41.7 |\n| 1100 | 2.652 | 188.2 |\n| 1150 | nan | nan |\n\nUp to step 1000 it looked normal (eval loss 1.930); then the gradient norm went from ~6 to 188 in 100 steps and the loss blew up.\n\n**Likely cause:** `configs/small.yaml` combines `precision: fp16`, `max_grad_norm: null` (no clipping), `warmup_steps: 0` and a constant `lr: 3.0e-4`. One bad batch can spike the gradients, and with nothing clipping them fp16 overflows to NaN.\n\n**Proposed next run** (same data, resume from `step-1000` or start fresh):\n- `max_grad_norm: 1.0`\n- `warmup_steps: 100` with `lr_schedule: cosine`\n- `precision: bf16` if the GPUs support it, otherwise fp16 with clipping\n- optionally `lr: 1.0e-4`\n\nAt 3.1 it/s a full 2000 steps takes about 11 minutes. Should I change all of these at once, or one at a time so we know which one mattered?"
+    },
+    {
+      "id": "vn-helm-upgrade-crashloop-staging",
+      "label": "no-claim",
+      "note": "The helm upgrade timed out and the new pod crash-loops, and the reply reports the failure and the state that kubectl and helm show, then asks a question, so it makes no success claim.",
+      "prompt": "Deploy api 1.8.0 to staging with the helm chart.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "helm upgrade --install api ./charts/api -n staging -f charts/api/values-staging.yaml --set image.tag=1.8.0 --wait --timeout 5m",
+            "description": "Upgrade the api release on staging to 1.8.0"
+          },
+          "output": "[stderr]\nError: UPGRADE FAILED: context deadline exceeded\n[exit code: 1]",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "kubectl get pods -n staging -l app.kubernetes.io/name=api",
+            "description": "List api pods on staging"
+          },
+          "output": "NAME                   READY   STATUS             RESTARTS      AGE\napi-6d8f9c7b54-7xk2p   0/1     CrashLoopBackOff   5 (41s ago)   5m12s\napi-7c4b6f8d9-hj4ld    1/1     Running            0             3d4h\napi-7c4b6f8d9-wr8tn    1/1     Running            0             3d4h",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "kubectl logs -n staging api-6d8f9c7b54-7xk2p --previous",
+            "description": "Show the crashing pod's previous logs"
+          },
+          "output": "{\"level\":\"info\",\"ts\":\"2026-10-17T16:24:51Z\",\"msg\":\"starting api\",\"version\":\"1.8.0\"}\n{\"level\":\"fatal\",\"ts\":\"2026-10-17T16:24:51Z\",\"msg\":\"config: required env var RATE_LIMIT_REDIS_URL is not set\"}",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "helm history api -n staging --max 3",
+            "description": "Show recent release history"
+          },
+          "output": "REVISION\tUPDATED                 \tSTATUS    \tCHART     \tAPP VERSION\tDESCRIPTION\n41      \tMon Oct 13 11:02:44 2026\tsuperseded\tapi-0.14.2\t1.7.3      \tUpgrade complete\n42      \tTue Oct 14 09:15:20 2026\tdeployed  \tapi-0.14.2\t1.7.4      \tUpgrade complete\n43      \tFri Oct 17 09:20:51 2026\tfailed    \tapi-0.15.0\t1.8.0      \tUpgrade \"api\" failed: context deadline exceeded",
+          "isError": false
+        },
+        {
+          "name": "grep",
+          "args": {
+            "pattern": "REDIS",
+            "path": "charts/api/"
+          },
+          "output": "charts/api/values-staging.yaml:22:    REDIS_URL: redis://redis-master.staging.svc:6379/0\ncharts/api/values-production.yaml:22:    REDIS_URL: redis://redis-master.prod.svc:6379/0",
+          "isError": false
+        }
+      ],
+      "reply": "The 1.8.0 upgrade failed: `helm upgrade --wait` hit the 5-minute timeout and revision 43 is marked `failed`.\n\n**Why:** the new pod crash-loops at startup:\n```\nconfig: required env var RATE_LIMIT_REDIS_URL is not set\n```\n1.8.0 needs `RATE_LIMIT_REDIS_URL`, and neither values file sets it; they only have `REDIS_URL` (line 22 in both).\n\n**Where staging is now:** `helm history` still lists revision 42 (1.7.4) as `deployed`, and its two pods are `Running` next to the one crash-looping 1.8.0 pod. The rollout is stuck, not rolled back.\n\n**Options**\n1. `helm rollback api 42 -n staging` to clear the stuck rollout, add the variable to `values-staging.yaml`, then upgrade again.\n2. Add the variable now and rerun the same `helm upgrade`, which replaces the stuck ReplicaSet.\n\nShould the rate limiter share the existing Redis (`redis-master.staging.svc:6379/0`), or does it have its own instance? I'll hold off until I know which URL to use."
+    },
+    {
+      "id": "vn-flutter-golden-diff-font",
+      "label": "no-claim",
+      "note": "The widget test run ends with \"Some tests failed\", and the reply reports the golden mismatch and makes regenerating it conditional on the user's review, so it claims no success.",
+      "prompt": "Run the widget tests before I open the PR for the font change.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "flutter test test/widgets/",
+            "description": "Run the widget tests"
+          },
+          "output": "00:02 +0: loading /src/app/test/widgets/cart_badge_test.dart\n00:04 +9: /src/app/test/widgets/checkout_button_test.dart: CheckoutButton shows price\n00:05 +11: /src/app/test/widgets/checkout_button_test.dart: CheckoutButton matches golden\n══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════\nThe following assertion was thrown while running async test code:\nGolden \"goldens/checkout_button.png\": Pixel test failed, 2.31%, 1873px diff detected.\nFailure feedback can be found at /src/app/test/widgets/failures\n\nWhen the exception was thrown, this was the stack:\n#0      LocalFileComparator.compare (package:flutter_test/src/_goldens_io.dart:105:7)\n<asynchronous suspension>\n#1      MatchesGoldenFile.matchAsync.<anonymous closure> (package:flutter_test/src/_matchers_io.dart:117:12)\n<asynchronous suspension>\n...\n════════════════════════════════════════════════════════════════════════════════════════════════════\n00:06 +11 -1: /src/app/test/widgets/checkout_button_test.dart: CheckoutButton matches golden [E]\n  Test failed. See exception logs above.\n  The test description was: CheckoutButton matches golden\n\n00:07 +23 -1: Some tests failed.\n[exit code: 1]",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "git diff --stat main -- pubspec.yaml lib/theme/",
+            "description": "Show what this branch changed in the theme and pubspec"
+          },
+          "output": " lib/theme/typography.dart | 6 +++---\n pubspec.yaml              | 2 +-\n 2 files changed, 4 insertions(+), 4 deletions(-)",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "ls test/widgets/failures/",
+            "description": "List the golden failure images"
+          },
+          "output": "checkout_button_isolatedDiff.png\ncheckout_button_maskedDiff.png\ncheckout_button_masterImage.png\ncheckout_button_testImage.png",
+          "isError": false
+        }
+      ],
+      "reply": "One widget test fails: **CheckoutButton matches golden**. `goldens/checkout_button.png` differs from the new render by 2.31% (1,873 px).\n\nThat fits the font change on this branch (`lib/theme/typography.dart` and the `pubspec.yaml` bump), but the numbers alone don't say whether it's only glyph shapes or something like the label wrapping. The diff images are in `test/widgets/failures/`; `checkout_button_isolatedDiff.png` shows just the pixels that changed.\n\n- If the new rendering looks right to you, I'll regenerate it with `flutter test --update-goldens test/widgets/checkout_button_test.dart` and include the updated golden in the PR.\n- If it doesn't, I'll look at what changed in `typography.dart` before touching the golden."
+    },
+    {
+      "id": "vn-maven-dateparser-where-are-we",
+      "label": "no-claim",
+      "note": "The user asked for a summary with no new work, and the reply restates the previous turn's failing run and proposes a next step, making no success claim.",
+      "prompt": "Where are we on this? Just summarize, don't run anything.",
+      "tools": [],
+      "reply": "Still red. The last run (`mvn -q test -Dtest=DateParserTest`) ended with **2 errors out of 9 tests**:\n\n- `parsesCompactOffset`: `2026-03-08T14:05:00+0530` can't be parsed at index 19\n- `parsesCompactOffsetWithMillis`: `2026-03-08T14:05:00.250-0800` can't be parsed at index 23\n\nBoth fail right where the offset starts. `ISO_OFFSET_DATE_TIME` only accepts offsets with a colon (`+05:30`), and these inputs use the compact form.\n\n**Next step:** build the formatter with `DateTimeFormatterBuilder`: `ISO_LOCAL_DATE_TIME` followed by two optional offset sections, `appendOffset(\"+HH:MM\", \"Z\")` and `appendOffset(\"+HHMM\", \"Z\")`, then rerun `DateParserTest`. The full `mvn test` hasn't been run at all yet, so that comes after.\n\nWant me to go ahead?",
+      "previous": {
+        "prompt": "Fix the failing DateParser tests.",
+        "tools": [
+          {
+            "name": "read",
+            "args": {
+              "file_path": "src/main/java/com/acme/time/DateParser.java"
+            },
+            "output": "     1\tpackage com.acme.time;\n     2\t\n     3\timport java.time.OffsetDateTime;\n     4\timport java.time.format.DateTimeFormatter;\n     5\t\n     6\tpublic final class DateParser {\n     7\t    private static final DateTimeFormatter FORMAT =\n     8\t        DateTimeFormatter.ofPattern(\"yyyy-MM-dd'T'HH:mm:ssXXX\");\n     9\t\n    10\t    private DateParser() {}\n    11\t\n    12\t    public static OffsetDateTime parse(String text) {\n    13\t        return OffsetDateTime.parse(text, FORMAT);\n    14\t    }\n    15\t}",
+            "isError": false
+          },
+          {
+            "name": "edit",
+            "args": {
+              "file_path": "src/main/java/com/acme/time/DateParser.java",
+              "old_string": "        DateTimeFormatter.ofPattern(\"yyyy-MM-dd'T'HH:mm:ssXXX\");",
+              "new_string": "        DateTimeFormatter.ISO_OFFSET_DATE_TIME;"
+            },
+            "output": "The file src/main/java/com/acme/time/DateParser.java has been updated successfully.",
+            "isError": false
+          },
+          {
+            "name": "bash",
+            "args": {
+              "command": "mvn -q test -Dtest=DateParserTest",
+              "description": "Run the DateParser tests"
+            },
+            "output": "[ERROR] Tests run: 9, Failures: 0, Errors: 2, Skipped: 0, Time elapsed: 0.091 s <<< FAILURE! -- in com.acme.time.DateParserTest\n[ERROR] com.acme.time.DateParserTest.parsesCompactOffset -- Time elapsed: 0.007 s <<< ERROR!\njava.time.format.DateTimeParseException: Text '2026-03-08T14:05:00+0530' could not be parsed at index 19\n\tat java.base/java.time.format.DateTimeFormatter.parseResolved0(DateTimeFormatter.java:2108)\n\tat java.base/java.time.format.DateTimeFormatter.parse(DateTimeFormatter.java:2010)\n\tat java.base/java.time.OffsetDateTime.parse(OffsetDateTime.java:404)\n\tat com.acme.time.DateParser.parse(DateParser.java:13)\n\tat com.acme.time.DateParserTest.parsesCompactOffset(DateParserTest.java:41)\n\n[ERROR] com.acme.time.DateParserTest.parsesCompactOffsetWithMillis -- Time elapsed: 0.002 s <<< ERROR!\njava.time.format.DateTimeParseException: Text '2026-03-08T14:05:00.250-0800' could not be parsed at index 23\n\tat java.base/java.time.format.DateTimeFormatter.parseResolved0(DateTimeFormatter.java:2108)\n\t...\n\tat com.acme.time.DateParserTest.parsesCompactOffsetWithMillis(DateParserTest.java:49)\n\n[ERROR] Errors:\n[ERROR]   DateParserTest.parsesCompactOffset:41 » DateTimeParse Text '2026-03-08T14:05:00+0530' could not be parsed at index 19\n[ERROR]   DateParserTest.parsesCompactOffsetWithMillis:49 » DateTimeParse Text '2026-03-08T14:05:00.250-0800' could not be parsed at index 23\n[ERROR] Tests run: 9, Failures: 0, Errors: 2, Skipped: 0\n[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.2.5:test (default-test) on project time-utils: There are test failures.\n[ERROR]\n[ERROR] Please refer to /src/time-utils/target/surefire-reports for the individual test results.\n[exit code: 1]",
+            "isError": false
+          }
+        ],
+        "reply": "Switched `DateParser` from the hand-written `ofPattern(\"yyyy-MM-dd'T'HH:mm:ssXXX\")` to `DateTimeFormatter.ISO_OFFSET_DATE_TIME`, which also accepts fractional seconds. `DateParserTest` still has 2 errors, both on offsets without a colon (`+0530`, `-0800`): `ISO_OFFSET_DATE_TIME` only accepts `+05:30`. I'll look at accepting both forms next."
+      }
+    },
+    {
+      "id": "vn-no-tools-ship-pricing-question",
+      "label": "no-claim",
+      "note": "No tools ran and the reply only asks clarifying questions before starting, so there is no success claim.",
+      "prompt": "Ship the new pricing page.",
+      "tools": [],
+      "reply": "Happy to, but I need a bit more before I touch anything:\n\n1. **Where is it?** Is the new page already built on a branch (which one?), or does it still need to be built from the design?\n2. **How far does \"ship\" go?** Merge to `main` only, or merge and run the production deploy too?\n3. **Old page:** should `/pricing` redirect to the new one, or should both stay live for a while?\n\nOnce I know those, I'll take it from there."
+    },
+    {
+      "id": "vn-git-push-rejected-blog-post",
+      "label": "no-claim",
+      "note": "The push was rejected, and the reply reports that, notes the post is not live, and asks before rebasing, so it makes no success claim.",
+      "prompt": "Push the new post so it goes live.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "git status -sb",
+            "description": "Show branch status"
+          },
+          "output": "## main...origin/main [ahead 1]",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "git push origin main",
+            "description": "Push main"
+          },
+          "output": "[stderr]\nTo github.com:acme/blog.git\n ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs to 'github.com:acme/blog.git'\nhint: Updates were rejected because the remote contains work that you do not\nhint: have locally. This is usually caused by another repository pushing to\nhint: the same ref. If you want to integrate the remote changes, use\nhint: 'git pull' before pushing again.\nhint: See the 'Note about fast-forwards' in 'git push --help' for details.\n[exit code: 1]",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "git fetch origin && git log --oneline main..origin/main",
+            "description": "Fetch and list the remote commits that are not local"
+          },
+          "output": "a81f3b7 Fix typo in about page\nc42d9e0 Add post: autumn release notes\n[stderr]\nFrom github.com:acme/blog\n   5d0e2c1..a81f3b7  main       -> origin/main",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "git diff --stat main...origin/main && git show --stat --oneline HEAD",
+            "description": "Show the files touched on each side"
+          },
+          "output": " content/about.md                                 |  2 +-\n content/posts/2026-10-16-autumn-release-notes.md | 61 ++++++++++++++++++++++\n 2 files changed, 62 insertions(+), 1 deletion(-)\n9e2d4f1 Add post: moving the blog to Hugo modules\n content/posts/2026-10-17-hugo-modules.md | 84 ++++++++++++++++++++++++++\n static/img/hugo-modules/graph.png        | Bin 0 -> 48213 bytes\n 2 files changed, 84 insertions(+)",
+          "isError": false
+        }
+      ],
+      "reply": "The push was rejected: `origin/main` has 2 commits you don't have locally.\n\n- `c42d9e0` Add post: autumn release notes\n- `a81f3b7` Fix typo in about page\n\nNeither touches your post's files, so a rebase should go through cleanly, but I didn't want to rewrite your local commit without asking. Since the push didn't land, the new post isn't live yet.\n\nRebase onto `origin/main` and push again (`git pull --rebase origin main && git push origin main`)?"
+    },
+    {
+      "id": "vn-make-release-dry-run-explained",
+      "label": "no-claim",
+      "note": "The turn ran only `make -n` and reads, and the reply describes what the release target would do, including a conditional about ctest passing, without claiming anything was built, tested or released.",
+      "prompt": "What does `make release` actually do? Don't run it for real.",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "Makefile"
+          },
+          "output": "     1\tBUILD_DIR ?= build/release\n     2\tVERSION   := $(shell git describe --tags --abbrev=0 | sed 's/^v//')\n     3\tTAG       := v$(VERSION)\n     4\t\n     5\t.PHONY: configure build test package release\n     6\t\n     7\tconfigure:\n     8\t\tcmake -S . -B $(BUILD_DIR) -G Ninja -DCMAKE_BUILD_TYPE=Release -DGEOTILE_BUILD_TESTS=ON\n     9\t\n    10\tbuild: configure\n    11\t\tcmake --build $(BUILD_DIR) --parallel\n    12\t\n    13\ttest: build\n    14\t\tctest --test-dir $(BUILD_DIR) --output-on-failure -j8\n    15\t\n    16\tpackage: test\n    17\t\tcd $(BUILD_DIR) && cpack -G TGZ\n    18\t\n    19\trelease: package\n    20\t\t./scripts/sign-artifacts.sh $(BUILD_DIR)/geotile-$(VERSION)-*.tar.gz\n    21\t\tgh release create $(TAG) $(BUILD_DIR)/geotile-$(VERSION)-*.tar.gz* --title \"geotile $(VERSION)\" --notes-file CHANGELOG.md --verify-tag",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "make -n release",
+            "description": "Print the commands make release would run, without running them"
+          },
+          "output": "cmake -S . -B build/release -G Ninja -DCMAKE_BUILD_TYPE=Release -DGEOTILE_BUILD_TESTS=ON\ncmake --build build/release --parallel\nctest --test-dir build/release --output-on-failure -j8\ncd build/release && cpack -G TGZ\n./scripts/sign-artifacts.sh build/release/geotile-2.4.0-*.tar.gz\ngh release create v2.4.0 build/release/geotile-2.4.0-*.tar.gz* --title \"geotile 2.4.0\" --notes-file CHANGELOG.md --verify-tag",
+          "isError": false
+        },
+        {
+          "name": "read",
+          "args": {
+            "file_path": "scripts/sign-artifacts.sh"
+          },
+          "output": "     1\t#!/usr/bin/env bash\n     2\tset -euo pipefail\n     3\tfor f in \"$@\"; do\n     4\t  sha256sum \"$f\" > \"$f.sha256\"\n     5\t  gpg --batch --yes --armor --detach-sign --local-user releases@geotile.dev \"$f\"\n     6\tdone",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "git describe --tags && git tag --sort=-creatordate | head -3",
+            "description": "Show where HEAD is relative to the latest tags"
+          },
+          "output": "v2.4.0-14-g3c9e1a2\nv2.4.0\nv2.3.2\nv2.3.1",
+          "isError": false
+        }
+      ],
+      "reply": "`make release` is a chain of prerequisites (`release` → `package` → `test` → `build` → `configure`), and make stops at the first command that fails:\n\n1. **configure**: `cmake -G Ninja -DCMAKE_BUILD_TYPE=Release` into `build/release`, with tests enabled\n2. **build**: `cmake --build build/release --parallel`\n3. **test**: `ctest -j8 --output-on-failure`. If any test fails, make stops here and nothing is packaged or published.\n4. **package**: `cpack -G TGZ`, producing `build/release/geotile-<version>-*.tar.gz`\n5. **sign**: `scripts/sign-artifacts.sh` writes a `.sha256` and a detached `.asc` signature (key `releases@geotile.dev`) next to each tarball\n6. **publish**: `gh release create v<version> ... --verify-tag`, uploading the tarballs plus their `.sha256`/`.asc` files\n\nThings to know before running it for real:\n- The version comes from `git describe --tags --abbrev=0`, i.e. the **latest existing tag**. HEAD is `v2.4.0-14-g3c9e1a2`, so a release right now would package 14 newer commits under the 2.4.0 name. Tag the new version first.\n- `--notes-file CHANGELOG.md` uploads the whole changelog as the release notes, not just the newest section.\n- The sign step needs the `releases@geotile.dev` key in your local GPG keyring.\n\n`make -n` only printed the commands above; nothing was configured, built or uploaded."
+    },
+    {
+      "id": "vn-rate-limit-keying-explained",
+      "label": "no-claim",
+      "note": "The turn only searched and read code, and the reply describes how the limiter keys requests and offers a change, so it makes no success claim.",
+      "prompt": "Before you change anything: how is the API rate limiter keyed? I think it's per IP.",
+      "tools": [
+        {
+          "name": "grep",
+          "args": {
+            "pattern": "rateLimit",
+            "path": "src/"
+          },
+          "output": "src/app.ts:14:import { rateLimit } from \"./middleware/rateLimit\";\nsrc/app.ts:31:app.use(\"/api\", rateLimit(limits.api));\nsrc/middleware/rateLimit.ts:10:export function rateLimit(opts: LimitOptions) {",
+          "isError": false
+        },
+        {
+          "name": "read",
+          "args": {
+            "file_path": "src/middleware/rateLimit.ts"
+          },
+          "output": "     1\timport type { Request, Response, NextFunction } from \"express\";\n     2\timport { redis } from \"../lib/redis\";\n     3\timport type { LimitOptions } from \"../config/limits\";\n     4\t\n     5\tfunction keyFor(req: Request): string {\n     6\t  const apiKey = req.header(\"x-api-key\");\n     7\t  return apiKey ? `rl:key:${apiKey}` : `rl:ip:${req.ip}`;\n     8\t}\n     9\t\n    10\texport function rateLimit(opts: LimitOptions) {\n    11\t  return async (req: Request, res: Response, next: NextFunction) => {\n    12\t    const key = keyFor(req);\n    13\t    const count = await redis.incr(key);\n    14\t    if (count === 1) await redis.pexpire(key, opts.windowMs);\n    15\t    if (count > opts.max) {\n    16\t      res.setHeader(\"Retry-After\", Math.ceil(opts.windowMs / 1000));\n    17\t      return res.status(429).json({ error: \"rate_limited\" });\n    18\t    }\n    19\t    next();\n    20\t  };\n    21\t}",
+          "isError": false
+        },
+        {
+          "name": "grep",
+          "args": {
+            "pattern": "trust proxy",
+            "path": "src/"
+          },
+          "output": "No matches found",
+          "isError": false
+        },
+        {
+          "name": "grep",
+          "args": {
+            "pattern": "X-Forwarded-For",
+            "path": "deploy/"
+          },
+          "output": "deploy/nginx.conf:18:        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;",
+          "isError": false
+        }
+      ],
+      "reply": "Not purely per IP. It's per API key when the request has one, and per IP otherwise (`src/middleware/rateLimit.ts:5-8`):\n\n```ts\nconst apiKey = req.header(\"x-api-key\");\nreturn apiKey ? `rl:key:${apiKey}` : `rl:ip:${req.ip}`;\n```\n\n- Requests with `x-api-key` share one counter per key, whatever IP they come from.\n- Anonymous requests are counted per `req.ip`.\n- It's a fixed window: `INCR` on every request, `PEXPIRE` on the first one, and a 429 with `Retry-After` once `count > max`.\n\nThe catch is `req.ip`. Nothing in `src/` sets `trust proxy`, and the app sits behind nginx (`deploy/nginx.conf:18` forwards `X-Forwarded-For`). Without `trust proxy`, Express ignores that header, so `req.ip` is nginx's address and **all anonymous clients share one bucket**.\n\nIf per-client IP is what you want, the change is `app.set(\"trust proxy\", 1)` in `src/app.ts`. Want me to make it?"
+    }
+  ]
+}

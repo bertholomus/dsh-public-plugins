@@ -1,0 +1,5 @@
+# The plugin's own bundle row. Autopilot, Decisions and Agent Terminals need it
+# running: they read every session's state through its sessionWatch service.
+- insert:
+    - id: session-watch
+      name: dsh-plugin-session-watch

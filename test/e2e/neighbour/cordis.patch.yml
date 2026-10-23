@@ -1,0 +1,4 @@
+# The stand-in neighbour's bundle row (test/e2e/neighbour: tests only).
+- insert:
+    - id: neighbour
+      name: dsh-plugin-neighbour

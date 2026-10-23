@@ -1,0 +1,5 @@
+# The plugin's own bundle row. Your profile's cordis.patch.yml addresses the
+# same id ("canon") to set its vault and the rest. It needs nothing else running.
+- insert:
+    - id: canon
+      name: dsh-plugin-canon

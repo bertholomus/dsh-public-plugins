@@ -1,0 +1,5 @@
+# The plugin's own bundle row. Your profile's cordis.patch.yml addresses the
+# same id ("autopilot") to set its defaults. It needs session-watch running.
+- insert:
+    - id: autopilot
+      name: dsh-plugin-autopilot

@@ -1,0 +1,5 @@
+# The plugin's own bundle row. Your profile's cordis.patch.yml addresses the
+# same id ("decisions") to set its defaults. It needs session-watch running.
+- insert:
+    - id: decisions
+      name: dsh-plugin-decisions

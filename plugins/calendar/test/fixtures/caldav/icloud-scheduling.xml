@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<multistatus xmlns='DAV:'>
+<response>
+<href>/1234567890/principal/</href>
+<propstat>
+<prop>
+<schedule-outbox-URL xmlns='urn:ietf:params:xml:ns:caldav'>
+<href xmlns='DAV:'>https://p52-caldav.icloud.com:443/1234567890/calendars/outbox/</href>
+</schedule-outbox-URL>
+<calendar-user-address-set xmlns='urn:ietf:params:xml:ns:caldav'>
+<href xmlns='DAV:'>mailto:alice@icloud.com</href>
+<href xmlns='DAV:'>mailto:alice@me.com</href>
+<href xmlns='DAV:'>https://p52-caldav.icloud.com:443/1234567890/principal/</href>
+<href xmlns='DAV:'>urn:uuid:1234567890</href>
+</calendar-user-address-set>
+<schedule-inbox-URL xmlns='urn:ietf:params:xml:ns:caldav'>
+<href xmlns='DAV:'>https://p52-caldav.icloud.com:443/1234567890/calendars/inbox/</href>
+</schedule-inbox-URL>
+</prop>
+<status>HTTP/1.1 200 OK</status>
+</propstat>
+<propstat>
+<prop>
+<schedule-default-calendar-URL xmlns='urn:ietf:params:xml:ns:caldav'/>
+</prop>
+<status>HTTP/1.1 404 Not Found</status>
+</propstat>
+</response>
+</multistatus>

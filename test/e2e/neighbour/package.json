@@ -1,0 +1,23 @@
+{
+  "name": "dsh-plugin-neighbour",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A stand-in neighbour for the suite's real-DSH tests: one entry in each place the suite's plugins draw in DSH's window, to prove they share them.",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "inject": ["@deepseek-ai/dsh-client-ui-primitives"]
+    }
+  },
+  "engines": { "node": ">=22" }
+}

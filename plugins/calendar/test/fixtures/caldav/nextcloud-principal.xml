@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:" xmlns:s="http://sabredav.org/ns" xmlns:cal="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/" xmlns:oc="http://owncloud.org/ns" xmlns:nc="http://nextcloud.org/ns">
+ <d:response>
+  <d:href>/remote.php/dav/principals/users/alice/</d:href>
+  <d:propstat>
+   <d:prop>
+    <cal:schedule-outbox-URL>
+     <d:href>/remote.php/dav/calendars/alice/outbox/</d:href>
+    </cal:schedule-outbox-URL>
+    <cal:calendar-user-address-set>
+     <d:href>mailto:alice@example.com</d:href>
+     <d:href>/remote.php/dav/principals/users/alice/</d:href>
+    </cal:calendar-user-address-set>
+    <cal:schedule-inbox-URL>
+     <d:href>/remote.php/dav/calendars/alice/inbox/</d:href>
+    </cal:schedule-inbox-URL>
+    <cal:schedule-default-calendar-URL>
+     <d:href>/remote.php/dav/calendars/alice/personal/</d:href>
+    </cal:schedule-default-calendar-URL>
+   </d:prop>
+   <d:status>HTTP/1.1 200 OK</d:status>
+  </d:propstat>
+ </d:response>
+</d:multistatus>

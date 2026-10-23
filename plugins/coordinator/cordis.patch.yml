@@ -1,0 +1,5 @@
+# The plugin's own bundle row. Your profile's cordis.patch.yml addresses the
+# same id ("coordinator") to set the defaults for new threads.
+- insert:
+    - id: coordinator
+      name: dsh-plugin-coordinator

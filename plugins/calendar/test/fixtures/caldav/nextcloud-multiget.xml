@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<d:multistatus xmlns:d="DAV:" xmlns:s="http://sabredav.org/ns" xmlns:cal="urn:ietf:params:xml:ns:caldav" xmlns:cs="http://calendarserver.org/ns/" xmlns:oc="http://owncloud.org/ns" xmlns:nc="http://nextcloud.org/ns">
+ <d:response>
+  <d:href>/remote.php/dav/calendars/alice/personal/team%20sync.ics</d:href>
+  <d:propstat>
+   <d:prop>
+    <d:getetag>&quot;4a8a08f09d37b73795649038408b5f33&quot;</d:getetag>
+    <cal:calendar-data>BEGIN:VCALENDAR&#13;
+PRODID:-//IDN nextcloud.com//Calendar app 5.0.0//EN&#13;
+CALSCALE:GREGORIAN&#13;
+VERSION:2.0&#13;
+BEGIN:VEVENT&#13;
+CREATED:20261001T090000Z&#13;
+DTSTAMP:20261001T090500Z&#13;
+LAST-MODIFIED:20261001T090500Z&#13;
+SEQUENCE:2&#13;
+UID:3f6c8a2e-team-sync&#13;
+DTSTART;TZID=Europe/Berlin:20261014T100000&#13;
+DTEND;TZID=Europe/Berlin:20261014T103000&#13;
+STATUS:CONFIRMED&#13;
+SUMMARY:Team sync&#13;
+LOCATION:Room &quot;Elbe&quot; &amp; online&#13;
+END:VEVENT&#13;
+END:VCALENDAR</cal:calendar-data>
+   </d:prop>
+   <d:status>HTTP/1.1 200 OK</d:status>
+  </d:propstat>
+ </d:response>
+ <d:response>
+  <d:href>/remote.php/dav/calendars/alice/personal/missing.ics</d:href>
+  <d:propstat>
+   <d:prop>
+    <d:getetag/>
+    <cal:calendar-data/>
+   </d:prop>
+   <d:status>HTTP/1.1 404 Not Found</d:status>
+  </d:propstat>
+ </d:response>
+</d:multistatus>

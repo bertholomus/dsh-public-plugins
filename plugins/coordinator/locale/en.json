@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Coordinator",
+    "description": "Any chat can run its work in threads that report back to it."
+  }
+}

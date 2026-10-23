@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Proof",
+    "description": "Checks every claim of done, passed, fixed or deployed against what its turn ran, flags the ones nothing shows, and keeps a ledger you can export."
+  }
+}

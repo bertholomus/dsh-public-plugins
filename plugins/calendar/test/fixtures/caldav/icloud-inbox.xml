@@ -1,0 +1,14 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<multistatus xmlns='DAV:'>
+<response>
+<href>/1234567890/calendars/inbox/</href>
+<propstat>
+<prop>
+<schedule-default-calendar-URL xmlns='urn:ietf:params:xml:ns:caldav'>
+<href xmlns='DAV:'>/1234567890/calendars/home/</href>
+</schedule-default-calendar-URL>
+</prop>
+<status>HTTP/1.1 200 OK</status>
+</propstat>
+</response>
+</multistatus>

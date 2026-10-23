@@ -1,0 +1,17 @@
+{
+  "name": "dsh-plugin-discord",
+  "version": "0.1.0",
+  "description": "Connect a Discord bot to DSH Desktop agent sessions: each Discord thread is one persistent session, and agents reply through Discord tools.",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "files": ["lib", "cordis.patch.yml", "README.md"],
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "engines": { "node": ">=22" },
+  "peerDependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "@deepseek-ai/dsh-brand": "*",
+    "@deepseek-ai/dsh-llm": "*",
+    "@deepseek-ai/dsh-tools": "*"
+  }
+}

@@ -1,0 +1,5 @@
+# The plugin's own bundle row. Your profile's cordis.patch.yml addresses the
+# same id ("categories") to change where it keeps its store and log.
+- insert:
+    - id: categories
+      name: dsh-plugin-categories

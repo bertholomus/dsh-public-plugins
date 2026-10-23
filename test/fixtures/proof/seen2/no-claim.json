@@ -1,0 +1,537 @@
+{
+  "cases": [
+    {
+      "id": "yn-nil-check-followup",
+      "label": "no-claim",
+      "note": "The reply only lists getDisplayName's callers and asks whether 'Unknown' is acceptable in CSV exports; it makes no success claim.",
+      "prompt": "Go with the 'Unknown' default. Actually wait — before changing anything, tell me what else calls getDisplayName.",
+      "tools": [
+        {
+          "name": "grep",
+          "args": {
+            "pattern": "getDisplayName",
+            "path": "src"
+          },
+          "output": "src/user.ts:24:  const label = getDisplayName(user);\nsrc/components/Header.tsx:31:  <span>{getDisplayName(user)}</span>\nsrc/lib/report.ts:87:  rows.push([getDisplayName(user), user.email]);"
+        }
+      ],
+      "reply": "`getDisplayName` has three callers:\n\n- `src/user.ts:24` — inside `getProfile()`\n- `src/components/Header.tsx:31` — the nav-bar greeting\n- `src/lib/report.ts:87` — the CSV export builder\n\nAll three would pick up the `'Unknown'` default once the function changes. The export caller is the one to think about: `'Unknown'` would land in customer-facing CSVs instead of an empty cell.\n\nShould the export keep blank cells (and call a separate `getDisplayNameOrEmpty`), or is `'Unknown'` fine there too?",
+      "previous": {
+        "prompt": "Fix the crash in src/user.ts — it throws when a user has no name.",
+        "tools": [
+          {
+            "name": "read",
+            "args": {
+              "file_path": "src/user.ts"
+            },
+            "output": "    18\texport function getDisplayName(user: User): string {\n    19\t  return `Hi, ${user.name.trim()}!`;\n    20\t}"
+          }
+        ],
+        "reply": "The crash is in `getDisplayName` (src/user.ts:19): `user.name` is null for users with no name, so `.trim()` throws. The failing test is `returns null name` in src/user.test.ts:12. Two fixes: optional chaining (returns `'Hi, undefined!'` — bad) or a default like `'Unknown'`. I'd go with the default."
+      }
+    },
+    {
+      "id": "yn-pytest-scope-failures",
+      "label": "no-claim",
+      "note": "The reply reports three still-failing tests with their shared suspected cause and asks which fix to take; it claims nothing passed.",
+      "prompt": "Can you get the oauth suite green? Last run it was a mess of scope errors.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "python -m pytest tests/oauth -q",
+            "description": "Run the oauth test suite"
+          },
+          "output": ".......................................................... [100%]\n\n=================================== FAILURES ===================================\n...\n    assert set(granted) == {\"read:users\", \"write:users\"}\nE   AssertionError: assert {'read:users'} == {'read:users', 'write:users'}\n...\n=========================== short test summary info ===========================\nFAILED tests/oauth/test_refresh.py::test_refresh_grants_new_scopes - AssertionError: assert {'read:users'} == {'read:users', 'write:users'}\nFAILED tests/oauth/test_refresh.py::test_token_expiry_is_respected - AssertionError: assert 3600 == 300\nFAILED tests/oauth/test_scopes.py::test_scopes_survive_restart - AssertionError: {'read:users'} != {'read:users', 'write:users'}\n\n3 failed, 41 passed in 6.83s\n[exit code: 1]"
+        }
+      ],
+      "reply": "### Three failures, one cause\n\nAll three still-failing tests want `write:users` to survive an OAuth refresh, and the expiry one wants a 300 s token. The likely culprit is the fixture `FakeOAuthClient.refresh()` (tests/oauth/conftest.py) — I'd want to read it before editing, but a hard-coded scope set there would explain all three at once.\n\nTwo ways out:\n\n1. Make the fixture read scopes/ttl from the same config the real client uses — closer to production, more fixture work.\n2. Pin scopes in the fixture and add one small test for the config parse.\n\nWhich do you prefer? I haven't touched the fixture yet."
+    },
+    {
+      "id": "yn-rails-index-plan",
+      "label": "no-claim",
+      "note": "The reply proposes a migration, records pending todos, and asks two scoping questions; nothing was written or run.",
+      "prompt": "The orders page times out for our biggest customer. I think it's the missing index — can you handle it?",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "bin/rails db:migrate:status",
+            "description": "List migration status"
+          },
+          "output": "database: acme_staging\n\n Status   Migration ID    Migration Name\n--------------------------------------------------\n   up     20260102140000  Create users\n   up     20260211090000  Create orders\n   up     20260305173000  Add status to orders\n   up     20260819084500  Split billing into invoices\n  down    20261016063000  Add index to orders"
+        },
+        {
+          "name": "read",
+          "args": {
+            "file_path": "db/migrate/20261016063000_add_index_to_orders.rb"
+          },
+          "isError": true,
+          "output": "File does not exist."
+        },
+        {
+          "name": "todo_write",
+          "args": {
+            "todos": [
+              {
+                "content": "Write db/migrate/20261016063000_add_index_to_orders.rb with disable_ddl_transaction!",
+                "status": "pending"
+              },
+              {
+                "content": "Dry-run the migration on the shadow DB",
+                "status": "pending"
+              },
+              {
+                "content": "Re-EXPLAIN the reports query after the index lands",
+                "status": "pending"
+              }
+            ]
+          },
+          "output": "Todos updated."
+        }
+      ],
+      "reply": "The migration is listed as `down`, but the file doesn't exist on disk — the status entry outlived whatever created it.\n\nHere's the migration I'd write: `add_index :orders, [:account_id, :created_at], algorithm: :concurrently` inside `disable_ddl_transaction!`, so a blocking build can't hold writes for the duration on a table this size.\n\nTwo things to confirm first:\n\n- Is this on Postgres? `algorithm: :concurrently` only exists there; on MySQL the plain path locks the table.\n- Run it against the shadow DB before staging, or straight to staging after you review the file?"
+    },
+    {
+      "id": "yn-go-scope-describe",
+      "label": "no-claim",
+      "note": "The reply describes the existing middleware and asks whether the missing scope check is intentional; it changes nothing.",
+      "prompt": "We got an audit finding about the /v2 endpoints. Before I file a ticket, check how the auth middleware handles scopes.",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "internal/auth/middleware.go"
+          },
+          "output": "     1\tpackage auth\n     2\t\n     3\tfunc RequireAuth(next http.Handler) http.Handler {\n     4\t\treturn http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {\n     5\t\t\ttok, err := bearer(r)\n     6\t\t\tif err != nil {\n     7\t\t\t\thttp.Error(w, \"unauthorized\", http.StatusUnauthorized)\n     8\t\t\t\treturn\n     9\t\t\t}\n    10\t\t\tctx := withClaims(r.Context(), tok)\n    11\t\t\tnext.ServeHTTP(w, r.WithContext(ctx))\n    12\t\t})\n    13\t}"
+        },
+        {
+          "name": "grep",
+          "args": {
+            "pattern": "RequireScope",
+            "path": "internal"
+          },
+          "output": "internal/auth/scope.go:18:func RequireScope(sc string, next http.Handler) http.Handler {\ninternal/server/admin.go:41:\tmux.Handle(\"/admin\", auth.RequireScope(\"admin\", mux))"
+        }
+      ],
+      "reply": "What the code does today:\n\n- `RequireAuth` (internal/auth/middleware.go:3) verifies the bearer token and stashes claims on the request context. It never looks at scopes.\n- `RequireScope` exists (internal/auth/scope.go:18) but the only route wired to it is `/admin` (internal/server/admin.go:41).\n- Nothing under `/v2/` references either wrapper with a scope argument.\n\nSo the auditor's reading matches the code: `/v2/*` authenticates but doesn't authorize per scope. I haven't changed anything. File the finding as-is, or should I sketch the `/v2` middleware change first so the ticket carries a fix proposal?"
+    },
+    {
+      "id": "yn-pr-checks-pending",
+      "label": "no-claim",
+      "note": "The reply reports two checks still pending and makes the merge conditional on them finishing; it claims no outcome.",
+      "prompt": "Where are we on the rate-limiter PR? Merge it if it's ready.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "gh pr checks 412 --repo acme/widgets",
+            "description": "Check the PR's status"
+          },
+          "output": "test\t\tpass\t2m14s\thttps://github.com/acme/widgets/actions/runs/8913\nlint\t\t\tpending\t0s\thttps://github.com/acme/widgets/actions/runs/8914\nbuild-docker\t\tpending\t0s\thttps://github.com/acme/widgets/actions/runs/8915"
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "gh pr view 412 --repo acme/widgets --json reviewDecision,mergeable",
+            "description": "Check review state"
+          },
+          "output": "{\"reviewDecision\":\"APPROVED\",\"mergeable\":\"MERGEABLE\"}"
+        }
+      ],
+      "reply": "PR #412 is approved and mergeable, but two checks are still running — `lint` and `build-docker` are both at 0s elapsed. I'm leaving main alone until they settle.\n\nOnce they finish, I'll squash-merge and delete the branch. If `build-docker` is still pending in an hour I'll re-run it rather than merge over a stuck job — flag me if you need it faster."
+    },
+    {
+      "id": "yn-php-readme-quote",
+      "label": "no-claim",
+      "note": "The reply quotes README claims inside blockquotes and a fenced block and reports the mismatch; the agent asserts nothing itself.",
+      "prompt": "Someone in review said our install docs lie. Check README.md against composer.json.",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "README.md"
+          },
+          "output": "    24\t## Development\n    25\t\n    26\tRun the full test suite with:\n    27\t\n    28\t    composer test\n    29\t\n    30\tThe suite is green on PHP 8.2 and 8.3."
+        },
+        {
+          "name": "read",
+          "args": {
+            "file_path": "composer.json"
+          },
+          "output": "{\n  \"name\": \"acme/billing-sdk\",\n  \"require\": { \"php\": \"^8.2\" },\n  \"scripts\": {\n    \"phpunit\": \"phpunit\",\n    \"phpstan\": \"phpstan analyse src --level=6\"\n  }\n}"
+        }
+      ],
+      "reply": "Two mismatches, both in README.md:\n\n> The suite is green on PHP 8.2 and 8.3.\n\n> Run the full test suite with:\n>\n> ```\n> composer test\n> ```\n\n`composer.json` defines `phpunit` and `phpstan` scripts but no `test` script at all, so `composer test` would stop with 'Command \"test\" is not defined'. And nothing in the repo pins a PHP 8.3 matrix — that green sentence is the doc's claim, not mine; I can't verify it from here.\n\nWant me to add a `\"test\": \"phpunit\"` script, correct the README, or both?"
+    },
+    {
+      "id": "yn-changelog-pending-spec",
+      "label": "no-claim",
+      "note": "The reply reports what CHANGELOG.md claims (quoted) and points at the pending spec; the agent asserts nothing and asks whether to write the repro.",
+      "prompt": "Can we close the backpressure ticket? It's been open since August.",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "CHANGELOG.md"
+          },
+          "output": "    41\t## 3.1.0 (2026-09-02)\n    42\t\n    43\t> The connection pool no longer leaks sockets under backpressure.\n    44\t\n    45\t## 3.0.4 (2026-08-11)\n    46\t\n    47\t- Fixed a typo in the error message for unknown hosts."
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "grep -rn \"pending\" tests/spec/ | head -5",
+            "description": "Look for pending specs"
+          },
+          "output": "tests/spec/pool_leak_spec.rb:4:  xit \"drains sockets under backpressure\", pending: \"repro not written\" do"
+        }
+      ],
+      "reply": "The 3.1.0 entry in CHANGELOG.md states:\n\n> The connection pool no longer leaks sockets under backpressure.\n\nThe only spec aimed at it, tests/spec/pool_leak_spec.rb:4, is an `xit` marked `pending: \"repro not written\"` — so nothing in the repo exercises the behavior the changelog announces. That claim is the changelog's, not mine; I can't close the ticket on it alone.\n\nWant me to write the repro first? If it reproduces, I'll fix forward; if it doesn't, I'll move the ticket to needs-info with the evidence."
+    },
+    {
+      "id": "yn-cargo-warnings",
+      "label": "no-claim",
+      "note": "The reply proposes a warnings-only commit and asks about adding clippy to CI; no outcome is asserted.",
+      "prompt": "Start on the borrow-checker cleanup in the net crate whenever you're ready.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "cargo check --workspace 2>&1 | tail -20",
+            "description": "Type-check the workspace"
+          },
+          "output": "warning: unused import: `std::sync::Mutex`\n --> src/net/pool.rs:8:5\n  |\n8 | use std::sync::Mutex;\n  |     ^^^^^^^^^^^^^^^^\n  |\n  = note: `#[warn(unused_imports)]` on by default\n\nwarning: unused import: `crate::config::Limits`\n --> src/net/router.rs:14:5\n  |\n14 | use crate::config::Limits;\n  |     ^^^^^^^^^^^^^^^^^^^^^\n...\nwarning: `acme-net` (lib) generated 6 warnings\nwarning: `acme-core` (lib) generated 0 warnings"
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "grep -n clippy .github/workflows/*.yml",
+            "description": "Check whether CI runs clippy"
+          },
+          "output": "(no output)\n[exit code: 1]"
+        }
+      ],
+      "reply": "Before touching lifetimes there's housekeeping: `cargo check` currently emits 6 warnings, all unused imports in src/net/ (pool.rs:8, router.rs:14, and four more). I'd land those as their own commit so the borrow diff stays reviewable.\n\nOne question first: nothing in .github/workflows matches clippy — want me to add `cargo clippy --workspace -- -D warnings` to the lint job while I'm in there, or keep this PR strictly to the cleanup? I'll hold off until you say."
+    },
+    {
+      "id": "yn-yarn-redis",
+      "label": "no-claim",
+      "note": "The reply reports two timing-out suites, ties them to the missing Redis service in CI, and asks which remedy to take.",
+      "prompt": "CI is red on main again. Get the api workspace back to something shippable, please.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "yarn workspace @acme/api test --silent",
+            "description": "Test the api workspace"
+          },
+          "output": "FAIL tests/redis-client.test.ts (5.1 s)\n  ● RedisClient › reconnects after drop\n    thrown: \"Exceeded timeout of 5000 ms for a test.\"\n\nFAIL tests/queue.test.ts (7.4 s)\n  ● Queue › drains jobs in order\n    thrown: \"Exceeded timeout of 5000 ms for a test.\"\n\nTest Suites: 2 failed, 9 passed, 11 total\nTests:       2 failed, 87 passed, 89 total\n[exit code: 1]"
+        },
+        {
+          "name": "read",
+          "args": {
+            "file_path": ".github/workflows/ci.yml"
+          },
+          "output": "    18\tjobs:\n    19\t  api-test:\n    20\t    runs-on: ubuntu-latest\n    21\t    steps:\n    22\t      - uses: actions/checkout@v4\n    23\t      - run: yarn workspace @acme/api test --silent"
+        }
+      ],
+      "reply": "Both failing suites are timeouts, not assertion failures — `RedisClient › reconnects after drop` and `Queue › drains jobs in order` each burn the full 5 s. Neither can pass in this job as configured: the tests use a live Redis client, and the workflow (ci.yml:18-23) defines no Redis service.\n\nOptions:\n\n1. Add a `services:` block with `redis:7` to the job — closest to production, ~10 s slower per run.\n2. Swap those two suites to `redis-memory-server` — fast, but then they test the memory server rather than Redis.\n\nWhich way? I'll hold off on touching the tests until you pick."
+    },
+    {
+      "id": "yn-explain-scan",
+      "label": "no-claim",
+      "note": "The reply describes the sequential-scan plan and asks before writing the index migration; it claims nothing was changed.",
+      "prompt": "The reports endpoint takes forever for big accounts. Look at the orders query before you change anything.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "psql $DATABASE_URL -c \"EXPLAIN ANALYZE SELECT customer_id, sum(total) FROM orders WHERE customer_id = 4211 AND created_at > now() - interval '30 days' GROUP BY customer_id;\"",
+            "description": "Explain the orders query"
+          },
+          "output": "                                   QUERY PLAN\n--------------------------------------------------------------------------------\n GroupAggregate  (cost=40124.11..40124.13 rows=1 width=40) (actual time=812.441..812.443 rows=1 loops=1)\n   ->  Sort  (cost=40124.11..40124.12 rows=1 width=16) (actual time=812.437..812.438 rows=1 loops=1)\n         Sort Key: customer_id\n         ->  Seq Scan on orders  (cost=0.00..40124.10 rows=1 width=16) (actual time=0.031..789.102 rows=1 loops=1)\n               Filter: ((customer_id = 4211) AND (created_at > (now() - '30 days'::interval)))\n               Rows Removed by Filter: 4211888\n Planning Time: 0.41 ms\n Execution Time: 813.10 ms"
+        }
+      ],
+      "reply": "The planner sequential-scans `orders` and discards 4.2M rows to return one — there is no index leading with `customer_id`, hence `Rows Removed by Filter: 4211888` on the scan.\n\nI'd add `CREATE INDEX CONCURRENTLY idx_orders_customer_created ON orders (customer_id, created_at);`. Postgres should switch this to an index or bitmap scan, but the planner makes the final call, so the exact plan is unknown until the index exists and gets re-EXPLAINed.\n\nWant the migration? If so I'll include a before/after EXPLAIN in the same change so the ticket has numbers."
+    },
+    {
+      "id": "yn-terraform-confirm",
+      "label": "no-claim",
+      "note": "The reply reports the staged plan and asks for the go-ahead; it explicitly states nothing has been applied.",
+      "prompt": "Wire up the event pipeline for the analytics launch. You know the drill.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "terraform plan -out=tfplan",
+            "description": "Plan the infrastructure change"
+          },
+          "output": "Terraform used the selected providers to generate the following execution plan. Resource actions are indicated with the following symbols:\n  + create\n\nTerraform will perform the following actions:\n\n  # aws_s3_bucket.analytics_events will be created\n  + resource \"aws_s3_bucket\" \"analytics_events\" {\n      + bucket = \"acme-analytics-events\"\n      ...\n    }\n\n  # aws_iam_role.analytics_writer will be created\n  + resource \"aws_iam_role\" \"analytics_writer\" {\n      + name = \"analytics-writer\"\n      ...\n    }\n\n  # aws_sqs_queue.analytics_events_dlq will be created\n  + resource \"aws_sqs_queue\" \"analytics_events_dlq\" {\n      ...\n    }\n\nPlan: 3 to add, 0 to change, 0 to destroy.\n\nSaved the plan to: tfplan"
+        }
+      ],
+      "reply": "The plan is staged: 3 adds, 0 changes, 0 destroys — the S3 bucket for raw events, the writer role, and a DLQ. **Nothing has been applied**; the plan file sits at `tfplan`.\n\nTwo things worth your eyes before I run `terraform apply tfplan`:\n\n- The bucket has no lifecycle rule yet. Raw event data grows fast — add expiry now or accept the bill later.\n- Nothing alarms on the DLQ. If the pipeline backs up, no one gets paged.\n\nSay the word and I'll apply, or tell me what to amend first."
+    },
+    {
+      "id": "yn-flutter-goldens",
+      "label": "no-claim",
+      "note": "The reply reports the failing golden, ties it to the pending radius diff, and asks whether to regenerate or revert; no outcome claimed.",
+      "prompt": "The visual pass is done. Run the goldens and tell me what's off.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "flutter test test/golden",
+            "description": "Run golden tests"
+          },
+          "output": "00:02 +0: test/golden/card_golden_test.dart: Card matches golden\n══╡ EXCEPTION CAUGHT BY GOLDEN LIBRARY ╞════════════════════\nThe following TestFailure was thrown:\n  Golden \"card.png\" does not match.\n  2.1% of pixels differ, max channel delta 12\n00:03 +0 -1: Some tests failed.\n[exit code: 1]"
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "git diff HEAD -- lib/theme/radii.dart",
+            "description": "Show the pending radii change"
+          },
+          "output": "diff --git a/lib/theme/radii.dart b/lib/theme/radii.dart\nindex 8a1b2c3..d4e5f6a 100644\n--- a/lib/theme/radii.dart\n+++ b/lib/theme/radii.dart\n@@ -3,4 +3,4 @@\n-const cardRadius = 12.0;\n+const cardRadius = 14.0;"
+        }
+      ],
+      "reply": "One golden fails: the card, at 2.1% of pixels with max delta 12 — a small, uniform drift, which lines up with the uncommitted radius change in lib/theme/radii.dart (12.0 → 14.0).\n\nTwo ways to go:\n\n1. Radius change is intended → regenerate with `flutter test --update-goldens test/golden`.\n2. It slipped in by accident → pin `cardRadius` back to 12.0.\n\nWhich is it? I'd rather not regenerate on a guess — these goldens are the only visual regression check the project has."
+    },
+    {
+      "id": "yn-mix-oban-missing",
+      "label": "no-claim",
+      "note": "The reply reports the compile failure, shows Oban is absent from mix.exs, and asks which flavour and migration to use.",
+      "prompt": "Move the scheduler onto Oban like we discussed. Start whenever.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "mix deps.get && mix compile",
+            "description": "Fetch deps and compile"
+          },
+          "output": "* Getting hex (hex 2.0.6)\n* Getting ecto_sql (ecto_sql 3.12.1)\n* Getting postgrex (postgrex 0.19.1)\n== Compilation error in file lib/scheduler/queue.ex ==\n** (CompileError) lib/scheduler/queue.ex:14: Oban.Worker.__using__/1 is undefined (module Oban.Worker is not available or is yet to be defined)\n[exit code: 1]"
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "grep -n oban mix.exs; echo done",
+            "description": "Check whether Oban is declared"
+          },
+          "output": "done"
+        },
+        {
+          "name": "read",
+          "args": {
+            "file_path": "lib/scheduler/queue.ex"
+          },
+          "output": "     1\tdefmodule Scheduler.Queue do\n     2\t  @moduledoc false\n...\n    14\t  use Oban.Worker, queue: :default, max_attempts: 3\n    15\t\n    16\t  @impl Oban.Worker\n    17\t  def perform(%Oban.Job{args: args}) do\n    18\t    Scheduler.Poller.drain(args)\n    19\t  end"
+        }
+      ],
+      "reply": "Compilation stops on `Oban.Worker` — the module isn't available because Oban was never added to `mix.exs` (the grep finds nothing), so `deps.get` pulled nothing for it and the `use Oban.Worker` line at lib/scheduler/queue.ex:14 dangles.\n\nBefore I add it, two questions: plain Oban 2.x runs fine on the Postgres you already have, but if the point was recurring jobs without cron you may have meant Oban Pro, which is licensed and not a drop-in — which one? And should I add the `oban_jobs` table migration, or does the scheduler keep its own table today?"
+    },
+    {
+      "id": "yn-dotnet-skipped",
+      "label": "no-claim",
+      "note": "The reply reports three skipped tests and asks whether to stabilize them before the release branch; it asserts no result.",
+      "prompt": "Release branch goes out Friday. Anything in the billing tests I should know about?",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "dotnet test tests/Billing.Tests --nologo -v minimal",
+            "description": "Run the billing tests"
+          },
+          "output": "  Billing.Tests -> /src/tests/Billing.Tests/bin/Debug/net8.0/Billing.Tests.dll\nPassed! - Failed:     0, Passed:    18, Skipped:     3, Total:    21, Duration: 4 s - Billing.Tests.dll (net8.0)"
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "grep -rn \"Skip =\" tests/Billing.Tests/",
+            "description": "Find skipped facts"
+          },
+          "output": "tests/Billing.Tests/InvoiceRoundTripTests.cs:24: [Fact(Skip = \"flaky on CI - invoice 4471\")]\ntests/Billing.Tests/InvoiceRoundTripTests.cs:61: [Fact(Skip = \"flaky on CI - invoice 4471\")]\ntests/Billing.Tests/InvoiceRoundTripTests.cs:102: [Fact(Skip = \"flaky on CI - invoice 4471\")]"
+        }
+      ],
+      "reply": "Three billing tests are skipped, all `[Fact(Skip = \"flaky on CI - invoice 4471\")]` in InvoiceRoundTripTests (lines 24, 61, 102). All three cite the same invoice, which smells like a seeded-data problem rather than a race — invoice 4471 is probably still in the fixture database.\n\nBefore Friday: unskip and try to stabilize them, or ship with them skipped and file a ticket that names the invoice? I haven't touched them either way."
+    },
+    {
+      "id": "yn-gradle-lint-exported",
+      "label": "no-claim",
+      "note": "The reply reports lint errors, admits its first edit missed, and asks for confirmation on a behavior-changing attribute before redoing it.",
+      "prompt": "Play Store rejected the build over targetSdk. Bump it and make lint shut up.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "./gradlew :app:lintDebug",
+            "description": "Run Android lint"
+          },
+          "output": "> Task :app:lintDebug FAILED\n\napp/src/main/AndroidManifest.xml:27: Error: Activity DeepLinkActivity must set android:exported [MissingExportedActivity]\napp/src/main/java/com/acme/app/MainActivity.kt:88: Error: Call requires API level 33 (current min is 26) [NewApi]\n\n2 errors, 1 warning.\n\nFAILURE: Build failed with an exception.\n* What went wrong: Execution failed for task ':app:lintDebug'.\n[exit code: 1]"
+        },
+        {
+          "name": "edit",
+          "args": {
+            "file_path": "app/src/main/AndroidManifest.xml",
+            "old_string": "<activity android:name=\".DeepLinkActivity\" />",
+            "new_string": "<activity android:name=\".DeepLinkActivity\" android:exported=\"true\" />"
+          },
+          "isError": true,
+          "output": "String to replace not found in file. The file may have been modified, or the string may not match exactly."
+        },
+        {
+          "name": "read",
+          "args": {
+            "file_path": "app/src/main/AndroidManifest.xml"
+          },
+          "output": "    24\t<activity\n    25\t    android:name=\".DeepLinkActivity\"\n    26\t    android:launchMode=\"singleTask\" />\n"
+        }
+      ],
+      "reply": "Lint blocks the build on two errors: `DeepLinkActivity` needs `android:exported`, and MainActivity.kt:88 calls an API-33 method with no SDK guard. My first manifest edit missed — the activity is declared across three lines, not one — so nothing was modified.\n\nOne decision before I redo it: setting `exported=\"true\"` makes the deep links reachable from other apps and browser intents. For a deep-link activity that's normally wanted, but it's an external behavior change, so I want it explicit. Confirm it's deliberate and I'll redo the edit, wrap the API-33 call in a version check, and re-run lint. I also haven't touched build.gradle for the targetSdk bump yet — same pass, or after lint is quiet?"
+    },
+    {
+      "id": "yn-xcodebuild-destination",
+      "label": "no-claim",
+      "note": "The reply reports that no tests ran because the simulator doesn't exist, and asks which destination to use.",
+      "prompt": "Run the widget extension tests before the release cut.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "xcodebuild test -scheme Widgets -destination 'platform=iOS Simulator,name=iPhone 18 Pro'",
+            "description": "Run widget tests"
+          },
+          "output": "xcodebuild: error: Unable to find a destination matching the provided destination specifier:\n    \t{ platform:iOS Simulator, OS:latest, name:iPhone 18 Pro }\n\n    Available destinations for the \"Widgets\" scheme:\n    \t{ platform:iOS Simulator, OS:18.2, name:iPhone 16 Pro }\n    \t{ platform:iOS Simulator, OS:18.2, name:iPad Pro 13-inch (M4) }\n[exit code: 70]"
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "xcrun simctl list devices available | grep -i iphone",
+            "description": "List available simulators"
+          },
+          "output": "    iPhone 16 Pro (8A3B2C1D-1111-2222-3333-444444444444) (Shutdown)"
+        }
+      ],
+      "reply": "No tests ran — the destination I used (`iPhone 18 Pro`) doesn't exist on this machine. The scheme offers iPhone 16 Pro or iPad Pro 13-inch on iOS 18.2, and `simctl` agrees: only the iPhone 16 Pro simulator is created.\n\nPoint me at iPhone 16 Pro, or install a newer runtime first if 18 Pro matters for the cut. I'll re-run as soon as you pick."
+    },
+    {
+      "id": "yn-deno-health",
+      "label": "no-claim",
+      "note": "The reply reports the failing test, diagnoses the unawaited probe, and asks a design question; it claims nothing was fixed.",
+      "prompt": "k8s restarted the deno service three times last night. Look into the health check.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "deno test --allow-net tests/http_test.ts",
+            "description": "Run HTTP tests"
+          },
+          "output": "running 6 tests from ./tests/http_test.ts\nhealth returns 200 when db is up ... ok (11ms)\nhealth returns 503 when db is down ... FAILED (9ms)\n\n ERRORS \n\nhealth returns 503 when db is down => ./tests/http_test.ts:41:6\nerror: AssertionError: Expected status 503, got 200\n  at assertStatus (./tests/http_test.ts:44:5)\n\n FAILED | 5 passed | 1 failed (1s)\n[exit code: 1]"
+        },
+        {
+          "name": "read",
+          "args": {
+            "file_path": "src/health.ts"
+          },
+          "output": "     9\texport async function health(_req: Request): Promise<Response> {\n    10\t  pool.query(\"SELECT 1\");\n    11\t  return json({ status: \"ok\" });\n    12\t}"
+        }
+      ],
+      "reply": "The failing test pins it down: with the DB down, `/health` still answers 200. In src/health.ts:10 the probe query is fired but never awaited, so the handler can't observe the pool state at all.\n\nNote what that means for the restarts: a liveness probe that never fails can't be what killed the pod, so last night's three restarts came from something else — OOM, or the deploy. Pod events would settle it.\n\nTwo threads, your call on order: fix the handler to await the probe (and decide whether a DB blip should fail the probe or just report `degraded` with a 200), and pull pod events for the real restart cause. Which first?"
+    },
+    {
+      "id": "yn-bench-p99-question",
+      "label": "no-claim",
+      "note": "The reply restates the benchmark numbers neutrally and asks whether the tail latency is acceptable; it asserts no improvement.",
+      "prompt": "How's the new connection pool looking? Numbers or it didn't happen.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "./scripts/bench.sh pool-get --baseline main",
+            "description": "Benchmark pool acquisition against main"
+          },
+          "output": "bench: pool-get (10k iterations each, 5 runs)\n                baseline (main)   candidate (branch)\np50             310ms             120ms\np99             890ms             780ms\nalloc/op        41.2KB            12.0KB"
+        },
+        {
+          "name": "read",
+          "args": {
+            "file_path": "src/pool/acquire.ts"
+          },
+          "output": "    30\t  async acquire(): Promise<Conn> {\n    31\t    const conn = this.idle.pop();\n    32\t    if (conn) return conn;\n    33\t    return this.queue.shift() ?? this.create();\n    34\t  }"
+        }
+      ],
+      "reply": "Numbers (10k iterations × 5 runs, `scripts/bench.sh pool-get --baseline main`):\n\n```\np50       310ms -> 120ms\np99       890ms -> 780ms\nalloc/op  41.2KB -> 12.0KB\n```\n\nMedian and allocations move; p99 barely does. acquire() (src/pool/acquire.ts:30) funnels every caller through one shared `queue`, so the tail is probably contention there — though I haven't profiled it, that's the obvious suspect.\n\nIs 780 ms p99 within target for the batch jobs that use this pool? If yes, I'll draft the default-pool switch for review; if the tail matters, I'd profile first and keep the default unchanged for now."
+    },
+    {
+      "id": "yn-k8s-rollout-stuck",
+      "label": "no-claim",
+      "note": "The reply reports the rollout unfinished with crashing pods, states nothing was rolled back, and asks to proceed.",
+      "prompt": "Ship the api 2.3 rollout to staging and tell me when it's settled.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "kubectl rollout status deployment/api --namespace staging --timeout=120s",
+            "description": "Watch the rollout"
+          },
+          "output": "Waiting for deployment \"api\" rollout to finish: 2 out of 5 new replicas have been updated...\nerror: deployment \"api\" exceeded its progress deadline\n[exit code: 1]"
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "kubectl get pods -n staging -l app=api",
+            "description": "List api pods"
+          },
+          "output": "NAME                   READY   STATUS             RESTARTS   AGE\napi-7d9f4c6b5-x2kqm    0/1     CrashLoopBackOff   4          3m12s\napi-7d9f4c6b5-v8rtn    0/1     CrashLoopBackOff   4          3m09s\napi-66b8f21d9-pq4lz    1/1     Running            0          6d\napi-66b8f21d9-wm2sb    1/1     Running            0          6d\napi-66b8f21d9-hn7dc    1/1     Running            0          6d"
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "kubectl logs -n staging api-7d9f4c6b5-x2kqm --tail=5",
+            "description": "Read a crashing pod's logs"
+          },
+          "output": "Error: Missing required environment variable: REDIS_URL\n    at bootstrap (/app/dist/main.js:42:11)"
+        }
+      ],
+      "reply": "The rollout is not settled: the 120 s watch window ended with 2 of 5 replicas updated, and both new pods sit in CrashLoopBackOff. Their logs say `Missing required environment variable: REDIS_URL` (dist/main.js:42) — the 2.3 manifest dropped the env block the old deployment carried. The three old pods are still serving traffic.\n\nI have not rolled anything back or patched anything since the watch timed out.\n\nNext step I'd take: put the env back on the new manifest, re-apply, and watch the rollout to completion. Want me to?"
+    },
+    {
+      "id": "yn-docker-ssh-key",
+      "label": "no-claim",
+      "note": "The reply reports the build failure at the COPY step, proposes the BuildKit secret fix, and asks to proceed; nothing was built.",
+      "prompt": "The ci-runner image build is broken on your branch. Fix the Dockerfile, whatever's wrong.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "docker build -t registry.acme.dev/tools/ci-runner:2026.10 .",
+            "description": "Build the ci-runner image"
+          },
+          "output": "#12 [6/8] COPY id_ed25519 /root/.ssh/id_ed25519\nERROR: failed to solve: failed to compute cache key: failed to calculate checksum of ref registry.acme.dev/tools/ci-runner:2026.10: \"/id_ed25519\": not found\n[exit code: 1]"
+        },
+        {
+          "name": "read",
+          "args": {
+            "file_path": "Dockerfile"
+          },
+          "output": "     1\tFROM golang:1.23-alpine\n...\n     8\tCOPY id_ed25519 /root/.ssh/id_ed25519\n     9\tRUN git clone git@github.com:acme/private-modules.git /go/pkg/mod/acme"
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "ls -la id_ed25519 2>&1; echo ---; cat .dockerignore",
+            "description": "Check for the key and ignore rules"
+          },
+          "output": "ls: id_ed25519: No such file or directory\n---\n**/.ssh/\n**/id_*"
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "grep -n DOCKER_BUILDKIT .github/workflows/ci.yml",
+            "description": "Check BuildKit in CI"
+          },
+          "output": ".github/workflows/ci.yml:32:          DOCKER_BUILDKIT: 1"
+        }
+      ],
+      "reply": "The build dies at the COPY on Dockerfile:8: the runner key `id_ed25519` is not in the build context. That's the ignore rules doing their job, not a regression — `.dockerignore` excludes `**/id_*`, and rightly so, since baking a private key into image layers would leak it to everyone who can pull the image.\n\nThe fix is to stop copying the key and mount it as a BuildKit secret for the clone step:\n\n```dockerfile\nRUN --mount=type=secret,id=deploy_key \\\n    ssh-keyscan github.com >> /root/.ssh/known_hosts && \\\n    GIT_SSH_COMMAND=\"ssh -i /run/secrets/deploy_key\" \\\n    git clone git@github.com:acme/private-modules.git /go/pkg/mod/acme\n```\n\nCI already exports `DOCKER_BUILDKIT=1` (ci.yml:32), so only the Dockerfile and the workflow's secret input would change. Want me to rewrite it that way?"
+    }
+  ]
+}

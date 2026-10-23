@@ -1,0 +1,20 @@
+{
+  "name": "dsh-public-plugins",
+  "private": true,
+  "type": "module",
+  "description": "Community plugins for DeepSeek Harness (DSH) Desktop.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "test:e2e": "node plugins/coordinator/test/e2e/run.mjs",
+    "test:e2e:categories": "node plugins/categories/test/e2e/run.mjs",
+    "test:e2e:calendar": "node plugins/calendar/test/e2e/run.mjs",
+    "test:e2e:calendar-ui": "node plugins/calendar/test/e2e/ui.mjs",
+    "test:sandbox": "node plugins/coordinator/test/e2e/sandbox.mjs",
+    "test:e2e:autopilot": "node scripts/e2e.mjs autopilot",
+    "test:e2e:decisions": "node scripts/e2e.mjs decisions",
+    "test:e2e:agent-terminals": "node scripts/e2e.mjs agent-terminals",
+    "sync:shared": "node scripts/sync-shared.mjs"
+  },
+  "engines": { "node": ">=20" }
+}

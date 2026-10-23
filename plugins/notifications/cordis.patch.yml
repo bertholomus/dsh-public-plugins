@@ -1,0 +1,5 @@
+# The plugin's own bundle row. Your profile's cordis.patch.yml addresses the
+# same id ("notifications") to set its defaults for the whole profile.
+- insert:
+    - id: notifications
+      name: dsh-plugin-notifications

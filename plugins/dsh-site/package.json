@@ -1,0 +1,11 @@
+{
+  "name": "dsh-plugin-dsh-site",
+  "version": "0.1.0",
+  "description": "Private-network edge for the running DSH Desktop shell: serve the same GUI to other devices on a tailnet.",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "files": ["lib", "cordis.patch.yml", "README.md", "verify.sh"],
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "peerDependencies": { "@deepseek-ai/schemastery": "^3.18.1" }
+}

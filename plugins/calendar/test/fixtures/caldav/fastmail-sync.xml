@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav" xmlns:CS="http://calendarserver.org/ns/">
+  <D:response>
+    <D:href>/dav/calendars/user/alice%40fastmail.com/Default/5f9a0c1e-1111-4a2b-9c3d-7e6f5a4b3c2d.ics</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:getetag>"9c58a3f1d0e2b4c6a8e0f2d4b6c8a0e2"</D:getetag>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+  <D:response>
+    <D:href>/dav/calendars/user/alice%40fastmail.com/Default/0b1c2d3e-2222-4f5a-8b9c-0d1e2f3a4b5c.ics</D:href>
+    <D:status>HTTP/1.1 404 Not Found</D:status>
+  </D:response>
+  <D:response>
+    <D:href>/dav/calendars/user/alice%40fastmail.com/Default/c0ffee00-3333-4abc-8def-0123456789ab.ics</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:getetag>"1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b"</D:getetag>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+  <D:sync-token>data:,30188-1700000000</D:sync-token>
+</D:multistatus>

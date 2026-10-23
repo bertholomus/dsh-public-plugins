@@ -1,0 +1,5 @@
+# The plugin's own bundle row. Your profile's cordis.patch.yml addresses the
+# same id ("proof") to set its defaults. It needs nothing else running.
+- insert:
+    - id: proof
+      name: dsh-plugin-proof

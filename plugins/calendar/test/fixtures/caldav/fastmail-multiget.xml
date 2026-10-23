@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
+  <D:response>
+    <D:href>/dav/calendars/user/alice@fastmail.com/Default/5f9a0c1e-1111-4a2b-9c3d-7e6f5a4b3c2d.ics</D:href>
+    <D:propstat>
+      <D:prop>
+        <D:getetag>"9c58a3f1d0e2b4c6a8e0f2d4b6c8a0e2"</D:getetag>
+        <C:calendar-data>BEGIN:VCALENDAR&#13;
+VERSION:2.0&#13;
+PRODID:-//Fastmail/2020.5/EN&#13;
+BEGIN:VEVENT&#13;
+UID:5f9a0c1e-1111-4a2b-9c3d-7e6f5a4b3c2d&#13;
+SEQUENCE:1&#13;
+DTSTART;TZID=Europe/London:20261013T140000&#13;
+DURATION:PT1H&#13;
+SUMMARY:Lunch with Sam &amp; Kim &lt;3&#13;
+DESCRIPTION:Bring the &quot;plans&quot;\, and a café map&#13;
+DTSTAMP:20261010T080000Z&#13;
+END:VEVENT&#13;
+END:VCALENDAR&#13;
+</C:calendar-data>
+      </D:prop>
+      <D:status>HTTP/1.1 200 OK</D:status>
+    </D:propstat>
+  </D:response>
+</D:multistatus>

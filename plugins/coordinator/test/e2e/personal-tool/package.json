@@ -1,0 +1,9 @@
+{
+  "name": "dsh-e2e-personal-tool",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Test only: a plugin whose tool is marked as the user's own, for the projects plugin's end-to-end test.",
+  "type": "module",
+  "main": "index.js",
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+}

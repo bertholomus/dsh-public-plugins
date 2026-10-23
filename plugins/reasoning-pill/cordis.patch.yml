@@ -1,0 +1,4 @@
+# The plugin's own bundle row. It has no config.
+- insert:
+    - id: reasoning-pill
+      name: dsh-plugin-reasoning-pill

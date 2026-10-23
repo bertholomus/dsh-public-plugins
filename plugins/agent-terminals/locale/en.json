@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Agent Terminals",
+    "description": "A command-line coding agent in a visible terminal tab of its session: started again after a restart, messages typed in and proven read, its status in the session list and in Decisions."
+  }
+}

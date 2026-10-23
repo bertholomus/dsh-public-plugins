@@ -1,0 +1,342 @@
+[
+  {
+    "id": "ha-01",
+    "folder": "/Users/dana/code/lantern-api",
+    "prompt": "adding a job for the invoice reminder emails. worker/queue.go still has `rdb.BRPopLPush(ctx, \"lantern:jobs\", \"lantern:jobs:processing\", 0)` in it - is that still how jobs get queued or is it dead code? put the new job wherever's current",
+    "answers": [
+      "Decisions/2026-03 Lantern job queue on NATS JetStream.md"
+    ]
+  },
+  {
+    "id": "ha-02",
+    "folder": "/home/ravi/projects/quartz-cache",
+    "prompt": "keep going",
+    "answers": []
+  },
+  {
+    "id": "ha-03",
+    "folder": "/Users/ines/work/harbor-gateway",
+    "prompt": "smoke test is failing:\n```\n$ curl -sS https://gw-a1.internal:9443/\ncurl: (7) Failed to connect to gw-a1.internal port 9443 after 3 ms: Connection refused\n```\nwhat port is the gateway on now? fix the smoke test so it hits the right one",
+    "answers": [
+      "Projects/harbor-gateway/Gateway ports.md"
+    ]
+  },
+  {
+    "id": "ha-04",
+    "folder": "",
+    "prompt": "whats the ttl on quartz-cache keys now? the old decision says an hour but cached prices seem to refresh way faster than that",
+    "answers": [
+      "Decisions/2026-06 Quartz eviction policy.md"
+    ]
+  },
+  {
+    "id": "ha-05",
+    "folder": "",
+    "prompt": "cd ~/work/harbor-gateway",
+    "answers": []
+  },
+  {
+    "id": "ha-06",
+    "folder": "/Users/kofi/src/lantern-web",
+    "prompt": "last merge to main broke the signup form in prod, people cant submit at all. whats the fastest way to roll lantern-web back",
+    "answers": [
+      "Projects/lantern-web/Deploying lantern-web.md"
+    ]
+  },
+  {
+    "id": "ha-07",
+    "folder": "/Users/dana/code/lantern-api",
+    "prompt": "is the canon actually current? half of it felt stale last time i looked",
+    "answers": []
+  },
+  {
+    "id": "ha-08",
+    "folder": "/home/ravi/projects/quartz-cache",
+    "prompt": "CI is red on my PR and it's not my change:\n```\n#12 [build 4/7] RUN go build ./...\n#12 ERROR: failed to copy files: write /var/lib/docker/tmp/buildkit-mount2291/go.sum: no space left on device\n------\nrunner: ci-agent-07\n```\ncan you sort out the agent so the build goes through",
+    "answers": [
+      "Runbooks/Disk full on a build agent.md"
+    ]
+  },
+  {
+    "id": "ha-09",
+    "folder": "/Users/ines/work/harbor-gateway",
+    "prompt": "ty, that fixed it",
+    "answers": []
+  },
+  {
+    "id": "ha-10",
+    "folder": "/Users/kofi/src/lantern-web",
+    "prompt": "for the new status page we need /status/ on the gateway to go to lantern-api. where do I add the route, and who has to sign off on it?",
+    "answers": [
+      "Projects/harbor-gateway/Routing rules.md",
+      "People/Owners.md"
+    ]
+  },
+  {
+    "id": "ha-11",
+    "folder": "/Users/marco/dev/tide-ledger",
+    "prompt": "morning. back on tide-ledger today",
+    "answers": []
+  },
+  {
+    "id": "ha-12",
+    "folder": "",
+    "prompt": "which of the shared notes did you pull in for that last answer?",
+    "answers": []
+  },
+  {
+    "id": "ha-13",
+    "folder": "/Users/marco/dev/tide-ledger",
+    "prompt": "migration adding a nullable `memo` column to entries is ready (migrations/0042_entries_memo.sql). can it go out today? pretty sure the close kicked off this morning",
+    "answers": [
+      "Projects/tide-ledger/Schema migrations.md",
+      "Projects/tide-ledger/Month-end close.md"
+    ]
+  },
+  {
+    "id": "ha-14",
+    "folder": "/Users/kofi/src/lantern-web",
+    "prompt": "nah that's worse, put it back the way it was",
+    "answers": []
+  },
+  {
+    "id": "ha-15",
+    "folder": "/Users/lena/scratch",
+    "prompt": "finance is asking again why tide-ledger isn't moving to the hosted ledger db the vendor keeps pitching. what was our reasoning for staying on postgres? I need to send them something today",
+    "answers": [
+      "Decisions/2026-02 Ledger stays on Postgres.md"
+    ]
+  },
+  {
+    "id": "ha-16",
+    "folder": "",
+    "prompt": "adding quartz-cache to the prometheus scrape config, wich port and path are its metrics on?",
+    "answers": [
+      "Projects/quartz-cache/Quartz ports.md"
+    ]
+  },
+  {
+    "id": "ha-17",
+    "folder": "/Users/dana/code/lantern-api",
+    "prompt": "switching to quartz-cache for a bit, park this for now",
+    "answers": []
+  },
+  {
+    "id": "ha-18",
+    "folder": "/Users/dana/code/lantern-api",
+    "prompt": "v2.14.0 went to prod an hour ago and /v2/invoices is 500ing on about a third of requests. roll it back to the last good release",
+    "answers": [
+      "Runbooks/Rolling back a lantern-api release.md"
+    ]
+  },
+  {
+    "id": "ha-19",
+    "folder": "/Users/ines/work/harbor-gateway",
+    "prompt": "i just edited a couple of notes in the vault, re-read them before you carry on",
+    "answers": []
+  },
+  {
+    "id": "ha-20",
+    "folder": "/Users/marco/dev/tide-ledger",
+    "prompt": "tide-ledger api is down and nobody's answering in #ledger. whos on call for it and how do i page them",
+    "answers": [
+      "People/On-call.md"
+    ]
+  },
+  {
+    "id": "ha-21",
+    "folder": "/home/yuki/go/src/github.com/northbeam/lantern-api",
+    "prompt": "yep, do that",
+    "answers": []
+  },
+  {
+    "id": "ha-22",
+    "folder": "/home/yuki/go/src/github.com/northbeam/lantern-api",
+    "prompt": "reads from quartz are hanging 2s+ under load and dragging whole requests down with them. what timeout and retries should the cache client use? set it in internal/cache/client.go",
+    "answers": [
+      "Projects/quartz-cache/Client settings.md"
+    ]
+  },
+  {
+    "id": "ha-23",
+    "folder": "/Users/lena/scratch",
+    "prompt": "lantern-web next pls",
+    "answers": []
+  },
+  {
+    "id": "ha-24",
+    "folder": "/home/ravi/projects/quartz-cache",
+    "prompt": "can you even see the team notes vault from this machine?",
+    "answers": []
+  },
+  {
+    "id": "hb-01",
+    "folder": "",
+    "prompt": "what port is harbor gateway actually on now? the old runbook says 7777 and curl to 9443 just hangs:\n\n$ curl -v https://gw.internal:9443/\n*   Trying 10.20.1.15:9443...\n* connect to 10.20.1.15 port 9443 failed: Operation timed out\ncurl: (28) Failed to connect to gw.internal port 9443 after 75003 ms: Couldn't connect to server",
+    "answers": [
+      "Projects/harbor-gateway/Gateway ports.md"
+    ]
+  },
+  {
+    "id": "hb-02",
+    "folder": "/Users/hana/src/lantern-api",
+    "prompt": "perfect, that fixed it. thanks!",
+    "answers": []
+  },
+  {
+    "id": "hb-03",
+    "folder": "/Users/hana/src/lantern-api",
+    "prompt": "jobs are piling up and nothing is draining them. should i just run `redis-cli LRANGE lantern:jobs 0 -1` and requeue them by hand?",
+    "answers": [
+      "Decisions/2026-03 Lantern job queue on NATS JetStream.md"
+    ]
+  },
+  {
+    "id": "hb-04",
+    "folder": "/home/kwame/work/lantern-api",
+    "prompt": "switching over to quartz-cache for a bit",
+    "answers": []
+  },
+  {
+    "id": "hb-05",
+    "folder": "",
+    "prompt": "Started this week. Every runbook says to log in through the bastion — what is it, and how do I get access?",
+    "answers": [
+      "People/Glossary.md",
+      "People/Onboarding.md"
+    ]
+  },
+  {
+    "id": "hb-06",
+    "folder": "/Users/hana/src/lantern-api",
+    "prompt": "did the canon notes load this session? i don't see any above my prompt",
+    "answers": []
+  },
+  {
+    "id": "hb-07",
+    "folder": "/home/kwame/work/quartz-cache",
+    "prompt": "which ports does this need open in the firewall?",
+    "answers": [
+      "Projects/quartz-cache/Quartz ports.md"
+    ]
+  },
+  {
+    "id": "hb-08",
+    "folder": "/Users/ines/code/lantern-web",
+    "prompt": "CI is red on my PR and its not my code. every job on ci-agent-14 dies with:\n\nERROR: failed to solve: failed to copy files: write /var/cache/ci/buildkit/snapshots/412/fs/app/node_modules/.package-lock.json: no space left on device\n\ncan you sort it out or do i need to ping someone?",
+    "answers": [
+      "Runbooks/Disk full on a build agent.md"
+    ]
+  },
+  {
+    "id": "hb-09",
+    "folder": "/home/kwame/work/quartz-cache",
+    "prompt": "ok go ahead with option 2",
+    "answers": []
+  },
+  {
+    "id": "hb-10",
+    "folder": "/Users/ravi/notes/q1-planning",
+    "prompt": "Writing the Q1 plan. If lantern-api v3 ships in January, how long does v2 have to keep working, and how far ahead do we have to tell customers before we switch it off?",
+    "answers": [
+      "Decisions/2026-04 Lantern API versioning.md"
+    ]
+  },
+  {
+    "id": "hb-11",
+    "folder": "",
+    "prompt": "pull up tide-ledger",
+    "answers": []
+  },
+  {
+    "id": "hb-12",
+    "folder": "/home/odile",
+    "prompt": "how many notes are in the shared vault these days?",
+    "answers": []
+  },
+  {
+    "id": "hb-13",
+    "folder": "/home/kwame/work/lantern-api",
+    "prompt": "ran `deployctl promote lantern-api --to prod` about 20 min ago and /v2/orders has been 500ing ever since. get prod back to v2.13.2 asap",
+    "answers": [
+      "Runbooks/Rolling back a lantern-api release.md"
+    ]
+  },
+  {
+    "id": "hb-14",
+    "folder": "/Users/ravi/notes/q1-planning",
+    "prompt": "is my copy of the vault synced with the team's, or am i reading a stale one?",
+    "answers": []
+  },
+  {
+    "id": "hb-15",
+    "folder": "/Users/lucas/dev/lantern-api",
+    "prompt": "whats the default ttl on quartz keys? i thought everything expired after an hour",
+    "answers": [
+      "Decisions/2026-06 Quartz eviction policy.md"
+    ]
+  },
+  {
+    "id": "hb-16",
+    "folder": "",
+    "prompt": "hmm no, that made it worse. put it back and try it the other way",
+    "answers": []
+  },
+  {
+    "id": "hb-17",
+    "folder": "/Users/lucas/dev/harbor-gateway",
+    "prompt": "add a route so /reports/ goes to the new reporting service. who has to review it before it can merge?",
+    "answers": [
+      "Projects/harbor-gateway/Routing rules.md",
+      "People/Owners.md"
+    ]
+  },
+  {
+    "id": "hb-18",
+    "folder": "/home/odile/src",
+    "prompt": "next up: lantern-web",
+    "answers": []
+  },
+  {
+    "id": "hb-19",
+    "folder": "/Users/ines/code/lantern-web",
+    "prompt": "merged the header fix to main like 3 min ago and the deploy job is green, but prod still serves the old css. did somethign break?",
+    "answers": [
+      "Projects/lantern-web/Deploying lantern-web.md"
+    ]
+  },
+  {
+    "id": "hb-20",
+    "folder": "/home/odile",
+    "prompt": "how do i page the lantern oncall? the app is down and nobodys answering in #lantern",
+    "answers": [
+      "People/On-call.md"
+    ]
+  },
+  {
+    "id": "hb-21",
+    "folder": "/Users/ines/code/lantern-web",
+    "prompt": "yep, same change for the other two components",
+    "answers": []
+  },
+  {
+    "id": "hb-22",
+    "folder": "/Users/lucas/dev/harbor-gateway",
+    "prompt": "harbor-gateway again, picking up where i left off",
+    "answers": []
+  },
+  {
+    "id": "hb-23",
+    "folder": "/home/bea/repos/infra-scripts",
+    "prompt": "someone ran an UPDATE with no WHERE on tide-ledger prod around 01:30 UTC. restore it from the last good backup before finance notices",
+    "answers": [
+      "Projects/tide-ledger/Ledger backups.md"
+    ]
+  },
+  {
+    "id": "hb-24",
+    "folder": "/home/bea/repos/tide-ledger",
+    "prompt": "skip the canon notes on this one, just read the code",
+    "answers": []
+  }
+]
