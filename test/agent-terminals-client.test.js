@@ -94,6 +94,8 @@ test('browser half: loads as DSH loads it; its entry (order 4), page, row mark, 
     assert.equal(heads[0].attributes['data-plugin'], 'dsh-plugin-agent-terminals');
     const css = heads[0].textContent;
     assert.match(css, /\.dshat-card\{/);
+    // Small disclosures (Its screen now) in the secondary text colour, which keeps 4.5:1 on the reading glass; the link colour did not.
+    assert.match(css, /\.dshat-details>summary\{[^}]*color:var\(--dshat-text-2\)/);
     assert.match(css, /body\.wp-still/);
     assert.match(css, /prefers-reduced-motion/);
     // The session list: one mark in DSH's seat, giving way to a mark drawn before it there; every rule there ends in the plugin's own mark.
@@ -143,7 +145,7 @@ test('browser half: its words name no other assistant or maker, and say what to 
     assert.doesNotMatch(source.slice(source.indexOf('// </suite-kit>')), OTHER_NAMES);
     // Each empty state and error line ends in what to do.
     assert.match(TEXT.noneText, /Start one below/);
-    assert.match(TEXT.disabled, /set enabled to true there and restart DSH/);
+    assert.match(TEXT.disabled, /set enabled to true there; DSH applies it when you save the file\./);
     assert.match(TEXT.noTerminals, /Restart DSH/);
     assert.match(TEXT.noHistoryText, /show here/);
 });
@@ -288,6 +290,26 @@ test('an agent\'s card while Agent Terminals does not follow its agents: no butt
     assert.deepEqual(['Start again', 'Forget', 'Open its terminal'].map((label) => button(stopped, label)), [undefined, undefined, undefined]);
 });
 
+test('the page while Agent Terminals is switched off in the profile: the agents that still run show, not followed, with only Open its terminal; nothing to start', async (t) => {
+    const { react, mount } = statefulReact();
+    const { client } = loadClient(CLIENT, { react });
+    const { kit, AgentsPage } = client.internals;
+    const kept = { ...WORKING, status: 'running', followed: false, detail: 'Running in its terminal, not followed: Agent Terminals is switched off in DSH\'s profile (enabled: false). Set enabled to true there and it picks it up where it is.' };
+    kit.setConnection({ rpc: { call: async (_path, method) => (method.endsWith('/state') ? { ok: true, value: { ...STATE, enabled: false, agents: [kept, { ...STOPPED, followed: false }], history: [] } } : new Promise(() => {})) } });
+    const views = { opened: [], openSession: (id) => views.opened.push(id), openTerminal: (agent) => views.opened.push(`terminal:${agent.key}`) };
+    const page = mount(AgentsPage, { agents: views });
+    t.after(() => page.unmount());
+    await settle(5);
+    assert.match(textIn(withAttr(page.tree, 'data-agent-terminals-header')[0]), /switched off in DSH's profile/);
+    const cards = withAttr(page.tree, 'data-agent-terminals-agent');
+    assert.deepEqual(cards.map((c) => c.props['data-agent-terminals-agent']), [kept.key, STOPPED.key], 'its agents show while it is off');
+    assert.match(textIn(cards[0]), /Running in its terminal, not followed: Agent Terminals is switched off in DSH's profile \(enabled: false\)/);
+    for (const label of ['Stop', 'Start again', 'Start anew', 'Forget', 'Send']) assert.equal(button(cards[0], label), undefined, label);
+    button(cards[0], 'Open its terminal').props.onClick();
+    assert.deepEqual(views.opened, [`terminal:${kept.key}`]);
+    assert.equal(withAttr(page.tree, 'data-agent-terminals-start').length, 0, 'nothing to start while it is off');
+});
+
 test('the list\'s line follows a message you sent: typed in, delivered, or not proven', () => {
     const { client } = loadClient(CLIENT);
     const { saidLine } = client.internals;
@@ -344,6 +366,27 @@ test('an agent\'s messages: each one\'s state in words, why it waits, and Take b
     assert.deepEqual(acts.at(-1), ['cancel', { key: 'k1', id: 'm5' }]);
 });
 
+test('an agent\'s messages: one that failed or was not proven offers Send again, once; Start again says what the host says it does', async () => {
+    const { client } = loadClient(CLIENT);
+    const { AgentCard, saidText } = client.internals;
+    const acts = [];
+    const act = async (method, args) => { acts.push(plain([method, args])); return undefined; };
+    const item = (id, state, more = {}) => ({ id, text: `message ${id}`, by: 'you', at: now - 30000, state, ...more });
+    const agent = view({ deliveries: [item('m4', 'failed', { why: 'DSH restarted twice before the agent read it. Send it again.' }), item('m3', 'not proven'), item('m2', 'failed', { resent: 'm4' }), item('m1', 'delivered')] });
+    const draw = (a) => AgentCard({ agent: a, act, busyKey: undefined, onOpen: () => {}, openTerminal: () => {}, spot: undefined });
+    const rows = withAttr(draw(agent), 'data-agent-terminals-message');
+    assert.deepEqual(rows.map((r) => Boolean(button(r, 'Send again'))), [true, true, false, false], 'not for one sent again already, nor one delivered');
+    assert.match(button(rows[1], 'Send again').props.title, /may still be in its input box/);
+    await button(rows[0], 'Send again').props.onClick();
+    assert.deepEqual(acts.at(-1), ['resend', { key: 'k1', id: 'm4' }], 'the host sends its whole text, not the shortened one shown');
+    assert.equal(withAttr(draw({ ...agent, followed: false }), 'data-agent-terminals-resend').length, 0, 'nothing that acts while it does not follow its agents');
+    assert.equal(saidText('resend', agent, { delivery: { state: 'queued' } }), 'Queued for “helper · app” again. It is typed in when the agent is ready, and marked delivered once its transcript shows it.');
+    // Start again and Start anew say what they did, and a stop says what Start again will do, in the host's words.
+    assert.equal(saidText('startAgain', agent, {}, { fresh: true }), 'Started “helper · app” anew, with a new conversation.');
+    assert.equal(saidText('startAgain', agent, {}, { fresh: false }), 'Started “helper · app” again.');
+    assert.equal(saidText('stop', agent, { agent: { ...agent, again: 'Start again starts it again (it has no conversation to resume yet).' } }), 'Stopped “helper · app”. Start again starts it again (it has no conversation to resume yet).');
+});
+
 test('the page: reads the agents, shows each, and says what an action did, in words and where the keyboard is', async (t) => {
     const { react, mount } = statefulReact();
     const { client } = loadClient(CLIENT, { react });
@@ -371,6 +414,11 @@ test('the page: reads the agents, shows each, and says what an action did, in wo
     assert.match(text, /Closing an agent's terminal tab ends the agent; Start again brings it back\./);
     assert.ok(withAttr(page.tree, 'data-agent-terminals-start').length === 1, 'the start form');
     assert.match(text, /Nothing yet/, 'an empty history says what will show');
+    // Every card on the page carries text people read, small secondary text among it: each sits on the stronger glass
+    // (tint + .2), never on the plain tint, where small text falls under 4.5:1 at a low tint (DESIGN.md, text on glass).
+    const cards = elementsOf(page.tree).filter((e) => e.type === 'section' && /(^|\s)dshat-card(\s|$)/.test(e.props?.className ?? ''));
+    assert.equal(cards.length, 4, 'the header, the agents, the start form and what happened');
+    assert.deepEqual(cards.filter((e) => !/(^|\s)dshat-main(\s|$)/.test(e.props.className)).map((e) => e.props['aria-label']), [], 'no card on the plain tint');
 
     // Send from a card: queued in words on the list's status line, and the page reads the agents again.
     const box = elementsOf(withAttr(page.tree, 'data-agent-terminals-agent')[1]).find((e) => e.type === 'textarea');
@@ -407,6 +455,14 @@ test('the page: reads the agents, shows each, and says what an action did, in wo
     assert.match(textIn(problemPage.tree), /\(it is 1\)\.Change it in Agent Terminals' settings in Plugins\./);
     assert.equal(withAttr(problemPage.tree, 'data-agent-terminals-start').length, 0, 'nothing new starts until it is fixed');
     assert.equal(withAttr(problemPage.tree, 'data-agent-terminals-agent').length, 3);
+
+    // A profile-only setting: changed in DSH's profile, which DSH applies when the file is saved (no restart of DSH).
+    state = { ...state, problem: { key: 'typing', text: 'How messages are typed in (typing) must be one of auto, direct, attached (it is "paste")', live: false } };
+    const profilePage = mount(AgentsPage, { agents: views });
+    t.after(() => profilePage.unmount());
+    await settle(5);
+    assert.match(textIn(profilePage.tree), /\(it is "paste"\)\.Change it in Agent Terminals' entry in DSH's profile \(cordis\.patch\.yml\)\. DSH applies the file when you save it\./);
+    assert.doesNotMatch(textIn(profilePage.tree), /restart DSH/);
 });
 
 test('the page: when Agent Terminals is not running it says so and what to do, never old data', async (t) => {
@@ -443,7 +499,7 @@ test('the start form: programs found and used before, how it resumes, where it w
             { program: 'helper', style: 'flags', conversations: 12, latest: now - 3600000, path: '/usr/local/bin/helper' },
             { program: 'worker', style: 'subcommand', data: '~/.worker', conversations: 1, latest: 0 },
         ],
-        recent: [{ program: 'tool', args: ['--model', 'small one'], style: 'plain' }],
+        recent: [{ program: 'tool', args: ['--model', 'small one'], style: 'plain' }, { program: '/Users/me/bin/helper', args: [], style: 'flags', data: '~/elsewhere', folder: '/Users/me/elsewhere', shown: { program: '~/bin/helper', folder: '~/elsewhere' } }],
     };
     const started = [];
     const form = mount(StartCard, { data, onStarted: (agent, problem) => started.push([agent?.key, problem]), formRef: { current: undefined } });
@@ -456,6 +512,12 @@ test('the start form: programs found and used before, how it resumes, where it w
     assert.match(text, /1 conversation · not found where DSH looks for programs/);
     assert.match(text, /Used here before/);
     assert.match(text, /tool --model small one/);
+    assert.match(text, /Starts with --session-id, resumes with --resume · conversations in ~\/elsewhere/, 'a program used with another conversations folder says which, as people read it');
+    // Paths as people read them on the chip, the whole of each on hover.
+    const chip = find((e) => e.props?.['data-agent-terminals-recent'] === '1');
+    assert.equal(textIn(chip), '~/bin/helperStarts with --session-id, resumes with --resume · conversations in ~/elsewhere');
+    assert.equal(chip.props.title, '/Users/me/bin/helper\nconversations in /Users/me/elsewhere');
+    assert.equal(find((e) => e.props?.['data-agent-terminals-recent'] === '0').props.title, 'tool --model small one', 'a program by its name: the command on hover');
     // Nothing to start yet: the button waits and says what is missing.
     assert.equal(startButton().props.disabled, true);
     assert.match(textIn(form.tree), /Name the program first\./);
@@ -546,7 +608,7 @@ test('session rows: the mark says what the agent does (in DSH\'s dots, and in wo
     const { client } = loadClient(CLIENT);
     const { AgentMark, AgentHover, AgentMenuItem, AgentsIcon, marks } = client.internals;
     const mark = (over) => ({ key: 'k1', sessionId: 's1', name: 'helper · app', terminalId: 'agent-k1-1', running: true, status: 'working', controlTakenAt: 0, ...over });
-    marks.set({ off: false, openTabs: true, agents: [mark(), mark({ key: 'k2', sessionId: 's2', status: 'waiting on you', detail: 'It asks you: Ship it?' }), mark({ key: 'k3', sessionId: 's3', status: 'idle' }), mark({ key: 'k4', sessionId: 's4', status: 'stopped', running: false })] });
+    marks.set({ off: false, openTabs: true, agents: [mark(), mark({ key: 'k2', sessionId: 's2', status: 'waiting on you', detail: 'It asks you: Ship it?' }), mark({ key: 'k3', sessionId: 's3', status: 'idle' }), mark({ key: 'k4', sessionId: 's4', status: 'stopped', running: false }), mark({ key: 'k5', sessionId: 's5', status: 'running', detail: 'Running in its terminal. It keeps no transcript.' })] });
     const dotIn = (tree) => elementsOf(tree).find((e) => e.type === 'StateDot')?.props.state;
     assert.equal(AgentMark({ sessionId: 'nope' }), null, 'a session with no agent: no mark');
     assert.equal(dotIn(AgentMark({ sessionId: 's1' })), 'ongoing');
@@ -564,6 +626,16 @@ test('session rows: the mark says what the agent does (in DSH\'s dots, and in wo
     const hover = AgentHover({ sessionId: 's2' });
     assert.equal(textIn(hover), 'Coding agent in its terminal: waiting on youIt asks you: Ship it?');
     assert.equal(AgentHover({ sessionId: 'nope' }), null);
+    assert.equal(dotIn(AgentHover({ sessionId: 's3' })), 'idle');
+    // A program with no transcript is only "running": nobody knows whether it works, so no working spinner anywhere.
+    const running = AgentMark({ sessionId: 's5' });
+    assert.equal(dotIn(running), undefined, 'running: never the working spinner');
+    assert.ok(elementsOf(running).some((e) => e.type === 'svg'), 'running: the steady terminal glyph');
+    assert.equal(textIn(running), 'Coding agent: running.');
+    const runningHover = AgentHover({ sessionId: 's5' });
+    assert.equal(dotIn(runningHover), undefined, 'its hover card has no spinner either');
+    assert.ok(elementsOf(runningHover).some((e) => e.type === 'svg'), 'but the same glyph as its mark');
+    assert.equal(textIn(runningHover), 'Coding agent in its terminal: runningRunning in its terminal. It keeps no transcript.');
     // The panel entry: how many wait on you, in a badge and in words.
     const icon = AgentsIcon({});
     assert.equal(icon.props['data-agent-terminals-icon'], '1');
@@ -773,6 +845,24 @@ test('terminal tabs: each agent\'s terminal opens once beside its session, swaps
     reveal.set({ sessionId: 's3', terminalId: 'agent-k3-1', at: Date.now() });
     await look();
     assert.equal(sidebar.tabs.s3.length, 1);
+
+    // Nobody follows the agents (switched off, a wrong setting): the marks say off and list none, so no tab opens by
+    // itself; Open its terminal on a card still brings the agent's tab, from what the card asked for.
+    sidebar.current = 's5';
+    sidebar.tabs.s5 = [];
+    marks.set({ off: true, openTabs: true, agents: [] });
+    await look();
+    assert.equal(sidebar.tabs.s5.length, 0, 'off: nothing opens by itself');
+    reveal.set({ key: 'k5', sessionId: 's5', terminalId: 'agent-k5-1', at: Date.now() });
+    await look();
+    assert.deepEqual(sidebar.tabs.s5.map((t) => t.params.terminalId), ['agent-k5-1'], 'asked for while off: its terminal opens');
+    assert.equal(reveal.get(), undefined, 'the ask is used up');
+    reveal.set({ key: 'k5', sessionId: 's5', terminalId: 'agent-k5-1', at: Date.now() });
+    await look();
+    assert.deepEqual(sidebar.calls.at(-1), ['focus', sidebar.tabs.s5[0].id], 'asked again: its open tab comes to the front');
+    reveal.set({ key: 'k6', sessionId: 's6', terminalId: 'agent-k6-1', at: Date.now() });
+    await look();
+    assert.equal(sidebar.tabs.s5.length, 1, 'an ask for another session waits for that session');
 
     // Stopped following: nothing moves any more.
     stop();

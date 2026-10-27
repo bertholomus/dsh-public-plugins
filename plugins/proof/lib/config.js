@@ -35,12 +35,19 @@ export const DEFAULTS = Object.freeze({
     verifier: 'ask',
     verifierProvider: 'local-gateway',
     verifierModel: 'glm-5.3-flash',
-    verifierMinutes: 15,
+    verifierMinutes: 45,
     verifierPerHour: 12,
 });
 
-/** The longest a check may be given, in minutes: a busy shared gateway can take half an hour to answer a short check. */
+/**
+ * The longest a check may be given, in minutes. A busy shared gateway can take half an hour to answer a short check
+ * (one given 60 minutes answered at 30 min 11 s, while two given 30 ran out), so the default is 45 and the form's
+ * advice is to allow 60 when the gateway is busy.
+ */
 export const MAX_MINUTES = 60;
+
+/** What the settings form says under "Minutes a check may take". */
+export const MINUTES_ADVICE = 'A busy shared gateway can take half an hour to answer one check: allow 60 then.';
 
 /** A provider or model name as DSH routes it: one line of letters, digits and . _ - : / @ +. */
 const ROUTE = /^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,119}$/;
@@ -63,6 +70,60 @@ export function checkConfig(settings) {
     wholeNumber(settings, 'verifierPerHour', 1, 120, '', t.verifierPerHour);
 }
 
+/** The live settings that are true or false, and the whole numbers with their ranges. */
+const SWITCHES = Object.freeze(['flags']);
+const RANGES = Object.freeze({ verifierMinutes: [1, MAX_MINUTES], verifierPerHour: [1, 120] });
+const QUOTED_NUMBER = /^[+-]?\d+$/;
+const QUOTED_SWITCH = /^(?:true|false)$/i;
+
+/**
+ * What a setting written in quotes would be without them, when that is right
+ * for it: "45" for Minutes a check may take is 45; "false" for the flags is
+ * false. Undefined for anything else (another type, a number out of range,
+ * a setting that is not a number or a switch): the page offers to save the
+ * value without quotes only then.
+ * @param {object} settings
+ * @param {string} key
+ * @returns {number | boolean | undefined}
+ */
+export function unquoted(settings, key) {
+    const value = settings?.[key];
+    if (typeof value !== 'string' || !LIVE_SETTINGS.includes(key)) return undefined;
+    const text = value.trim();
+    if (SWITCHES.includes(key)) return QUOTED_SWITCH.test(text) ? text.toLowerCase() === 'true' : undefined;
+    if (!Object.hasOwn(RANGES, key) || !QUOTED_NUMBER.test(text)) return undefined;
+    const n = Number(text);
+    const [min, max] = RANGES[key];
+    return Number.isInteger(n) && n >= min && n <= max ? n : undefined;
+}
+
+/** A setting's value as the log says it: the form's words for a choice, text in quotes, the rest as it is. */
+function valueWords(key, value) {
+    if (value === undefined) return 'unset';
+    if (key === 'verifier' && typeof value === 'string' && Object.hasOwn(VERIFIER_CHOICES, value)) return VERIFIER_CHOICES[value];
+    if (typeof value === 'string') return JSON.stringify(value.length > 60 ? `${value.slice(0, 59)}…` : value);
+    if (typeof value === 'boolean') return value ? 'on' : 'off';
+    const text = JSON.stringify(value) ?? String(value);
+    return text.length > 60 ? `${text.slice(0, 59)}…` : text;
+}
+
+/** The live settings now, to say what the next change was. */
+export function liveValues(settings) {
+    return Object.fromEntries(LIVE_SETTINGS.map((key) => [key, settings?.[key]]));
+}
+
+/** What each live setting that moved was and is now: "“Minutes a check may take” 15 → 45". */
+export function changesOf(before, after) {
+    const out = [];
+    for (const key of LIVE_SETTINGS) {
+        const a = before?.[key];
+        const b = after?.[key];
+        if (JSON.stringify(a) === JSON.stringify(b)) continue;
+        out.push(`“${SETTING_TITLES[key]}” ${valueWords(key, a)} → ${valueWords(key, b)}`);
+    }
+    return out;
+}
+
 /** The settings a change touched, by their titles in quotes, from DSH's changed paths. */
 export function changedWords(paths) {
     return changedTitles(paths, SETTING_TITLES);
@@ -70,9 +131,14 @@ export function changedWords(paths) {
 
 /**
  * After the settings changed (a save in Plugins, or an edit of DSH's
- * profile): check again, and the log entry that says what changed, or
+ * profile): check again, and the log entry that says what changed (each
+ * live setting's value before and after, when `values` gives them), or
  * undefined when nothing did.
  */
-export function savedEntry(check, paths) {
-    return changedEntry(check, paths, { name: 'Proof', titles: SETTING_TITLES });
+export function savedEntry(check, paths, values = {}) {
+    const entry = changedEntry(check, paths, { name: 'Proof', titles: SETTING_TITLES });
+    // What each change was, where the values before and after are known: "“Minutes a check may take” 15 → 45."
+    const changes = values.before && values.after ? changesOf(values.before, values.after) : [];
+    if (!entry || changes.length === 0) return entry;
+    return { ...entry, why: `${changes.join('; ')}. ${entry.why}` };
 }

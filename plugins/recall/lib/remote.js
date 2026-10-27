@@ -23,8 +23,9 @@ export class RecallRemote {
      * @param {() => { left: object[] }} options.sources - the folders searched now.
      * @param {() => object | undefined} options.lastStatus - the last status the index sent.
      * @param {{ rebuild: () => void, restart: () => void }} options.actions - logged in index.js.
+     * @param {() => boolean} [options.watch] - whether Session Watch's hub is there.
      */
-    constructor({ config, check, thread, journal, sources, lastStatus, actions }) {
+    constructor({ config, check, thread, journal, sources, lastStatus, actions, watch = () => false }) {
         this.config = config;
         this.settingsCheck = check;
         this.thread = thread;
@@ -32,6 +33,7 @@ export class RecallRemote {
         this.sources = sources;
         this.lastStatus = lastStatus;
         this.actions = actions;
+        this.watch = watch;
         this.typertRemote = bindTypertRemote(this, SERVICE, { namespace: NAMESPACE });
     }
 
@@ -60,6 +62,7 @@ export class RecallRemote {
             lastStatus: this.lastStatus(),
             sources: this.sources(),
             journal: this.journal,
+            watch: this.watch() === true,
         }));
     }
 
@@ -77,6 +80,18 @@ export class RecallRemote {
             this.refuse();
             if (typeof id !== 'string' || !/^\d{1,12}\.\d{1,9}$/.test(id)) throw new Error('Name a result by its id, such as 12.4.');
             return this.thread.call('turn', { id });
+        });
+    }
+
+    /**
+     * The states of the results the page shows (ids such as "12.4", at most 100): how each turn ended, or that it
+     * still runs, as the index knows it now. Rows already on the page follow their turns' ends with no search again.
+     */
+    async states(ids) {
+        return this.run(async () => {
+            this.refuse();
+            const list = Array.isArray(ids) ? ids.filter((id) => typeof id === 'string' && /^\d{1,12}\.\d{1,9}$/.test(id)).slice(0, 100) : [];
+            return this.thread.call('states', { ids: list });
         });
     }
 
@@ -126,4 +141,4 @@ function markRemote(Class, names) {
         });
     }
 }
-markRemote(RecallRemote, ['state', 'search', 'turn', 'facets', 'rescan', 'rebuild', 'restart']);
+markRemote(RecallRemote, ['state', 'search', 'turn', 'states', 'facets', 'rescan', 'rebuild', 'restart']);

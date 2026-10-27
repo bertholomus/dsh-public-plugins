@@ -51,13 +51,50 @@ export function changedWords(paths) {
     return changedTitles(paths, SETTING_TITLES);
 }
 
+/** The unit each number setting is in, for the log's words. */
+const UNITS = Object.freeze({ resumeWindowHours: 'hours', idleSeconds: 'seconds', idleWindowHours: 'hours', errorRetrySeconds: 'seconds', startDelaySeconds: 'seconds' });
+
+/**
+ * A setting's value in words for the log: "90 seconds", "on", "120, 600,
+ * 1800 seconds". A value of the wrong type keeps its quotes ("90" is text,
+ * not a number), so the log shows what the profile held.
+ */
+export function valueWords(key, value) {
+    const unit = UNITS[key] ?? '';
+    const withUnit = (text, one) => (unit ? `${text} ${one ? unit.replace(/s$/, '') : unit}` : text);
+    if (typeof value === 'boolean') return value ? 'on' : 'off';
+    if (typeof value === 'number' && Number.isFinite(value)) return withUnit(String(value), value === 1);
+    if (Array.isArray(value) && value.length > 0 && value.every((n) => typeof n === 'number' && Number.isFinite(n))) return withUnit(value.join(', '), value.length === 1 && value[0] === 1);
+    if (value === undefined) return 'not set';
+    return JSON.stringify(value) ?? String(value);
+}
+
+/** The settings DSH changed, by key, each once. */
+const changedKeys = (paths) => [...new Set((Array.isArray(paths) ? paths : []).map((path) => (Array.isArray(path) ? path[0] : path)).filter((key) => typeof key === 'string'))];
+
 /**
  * After the settings changed (a save in Plugins, or an edit of DSH's
  * profile): check again, and the log entry that says what changed, or
- * undefined when nothing did.
+ * undefined when nothing did. With the values from before and after, it
+ * says each one: "“Quiet time before a note” now 90 seconds (was 600 seconds)".
  * @param {import('./shared/settings.js').SettingsCheck} check
  * @param {readonly (readonly string[])[]} paths - the settings DSH changed.
+ * @param {{ before?: Record<string, unknown>, after?: Record<string, unknown> }} [values]
  */
-export function savedEntry(check, paths) {
-    return changedEntry(check, paths, { name: 'Autopilot', titles: SETTING_TITLES });
+export function savedEntry(check, paths, values) {
+    const entry = changedEntry(check, paths, { name: 'Autopilot', titles: SETTING_TITLES });
+    const after = values?.after;
+    if (!entry || !after) return entry;
+    const before = values.before ?? {};
+    const parts = changedKeys(paths).map((key) => {
+        const title = `“${SETTING_TITLES[key] ?? key}”`;
+        if (!Object.hasOwn(after, key)) return title;
+        const now = valueWords(key, after[key]);
+        const was = Object.hasOwn(before, key) ? valueWords(key, before[key]) : undefined;
+        return `${title} now ${now}${was !== undefined && was !== now ? ` (was ${was})` : ''}`;
+    });
+    const words = changedWords(paths);
+    if (!words) return entry;
+    const said = parts.join(', ');
+    return { ...entry, text: entry.text.replace(words, said), why: entry.why.replace(words, said) };
 }

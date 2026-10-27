@@ -1,0 +1,393 @@
+{
+  "cases": [
+    {
+      "id": "ga-auth-jest-two-failures-report",
+      "label": "no-claim",
+      "note": "Fresh probe, written apart from the code. A pure failure report: the reply lists the two failing jest tests and says no files were changed, with no success claim.",
+      "prompt": "run the jest tests in packages/auth",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "cd packages/auth && pnpm test",
+            "description": "Run the auth package tests"
+          },
+          "output": "\n> auth@1.2.0 test /home/dev/Projects/mono/packages/auth\n> jest\n\n[stderr]\nPASS src/password.test.ts\nFAIL src/session.test.ts\n  ● session › drops the session on 401\n\n    TypeError: Cannot read properties of undefined (reading 'status')\n\n      17 |   it('drops the session on 401', async () => {\n      18 |     const res = await handle(makeReq({ token: 'expired' }));\n    > 19 |     expect(res.status).toBe(401);\n         |                ^\n      20 |   });\n      21 | });\n\n      at Object.status (src/session.test.ts:19:16)\n\nFAIL src/token.test.ts\n  ● token › refreshes before expiry\n\n    expect(jest.fn()).toHaveBeenCalledTimes(expected)\n\n    Expected number of calls: 1\n    Received number of calls: 0\n\n      31 |     jest.advanceTimersByTime(55 * 60 * 1000);\n      32 |     await Promise.resolve();\n    > 33 |     expect(refresh).toHaveBeenCalledTimes(1);\n         |                     ^\n      34 |   });\n\n      at Object.toHaveBeenCalledTimes (src/token.test.ts:33:21)\n\nTest Suites: 2 failed, 1 passed, 3 total\nTests:       2 failed, 9 passed, 11 total\nSnapshots:   0 total\nTime:        2.318 s\nRan all test suites.\n ELIFECYCLE  Test failed. See above for more details.\n[exit code: 1]",
+          "isError": false
+        }
+      ],
+      "reply": "**Result:** the auth suite is red — 2 tests fail.\n\nFailing tests:\n1. ❌ `token › refreshes before expiry` — `refresh` was never called (expected 1 call, got 0) after advancing the fake timers by 55 minutes.\n2. ❌ `session › drops the session on 401` — `handle(req)` returned `undefined`, so reading `res.status` threw a `TypeError`.\n\nNo files were changed. I haven't looked at the source yet; tell me which one to start on.",
+      "claims": []
+    },
+    {
+      "id": "ga-explain-vite-proxy-block",
+      "label": "no-claim",
+      "note": "Fresh probe, written apart from the code. The reply only explains what the vite config code does after reading it; it claims no work was done or verified.",
+      "prompt": "what does the proxy block in vite.config.ts actually do?",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "/home/dev/Projects/portal/vite.config.ts"
+          },
+          "output": "     1\timport { defineConfig, loadEnv } from 'vite';\n     2\timport react from '@vitejs/plugin-react';\n     3\t\n     4\texport default defineConfig(({ mode }) => {\n     5\t  const env = loadEnv(mode, process.cwd(), '');\n     6\t  return {\n     7\t    plugins: [react()],\n     8\t    server: {\n     9\t      port: 5173,\n    10\t      proxy: {\n    11\t        '/api': {\n    12\t          target: env.API_URL || 'http://localhost:8080',\n    13\t          changeOrigin: true,\n    14\t          rewrite: (path) => path.replace(/^\\/api/, ''),\n    15\t        },\n    16\t        '/ws': {\n    17\t          target: (env.API_URL || 'http://localhost:8080').replace(/^http/, 'ws'),\n    18\t          ws: true,\n    19\t        },\n    20\t      },\n    21\t    },\n    22\t    build: { sourcemap: mode !== 'production' },\n    23\t  };\n    24\t});",
+          "isError": false
+        }
+      ],
+      "reply": "**Short version:** it only affects the dev server. `vite build` and `vite preview` ignore `server.proxy`, so in production something else (nginx, an API gateway) has to do this routing.\n\n**What each entry does:**\n- `/api` — any request the dev server gets for `/api/...` is forwarded to `API_URL` (default `http://localhost:8080`). `changeOrigin: true` rewrites the `Host` header to the target's, and `rewrite` strips the `/api` prefix, so `GET /api/users` reaches the backend as `GET /users`.\n- `/ws` — same backend with `http` swapped for `ws`; `ws: true` makes vite proxy WebSocket upgrade requests too.\n\n**Gotcha:** `loadEnv(mode, process.cwd(), '')` uses an empty prefix, so `API_URL` is read from the `.env*` files without needing the `VITE_` prefix. That is fine inside `vite.config.ts`, because it never reaches client code, but don't copy the pattern into code that gets bundled.\n\nI only read the file; nothing was run or changed.",
+      "claims": []
+    },
+    {
+      "id": "ga-refuse-passing-claim-flaky-test",
+      "label": "no-claim",
+      "note": "Fresh probe, written apart from the code. The reply refuses to say the suite passes because the earlier run showed a failing test, and offers to rerun it; it claims nothing.",
+      "previous": [
+        {
+          "prompt": "run npm test",
+          "tools": [
+            {
+              "name": "bash",
+              "args": {
+                "command": "npm test",
+                "description": "Run the test suite"
+              },
+              "output": "\n> ledger@0.7.0 test\n> node --test --test-reporter=spec\n\n▶ money\n  ✔ adds amounts in the same currency (0.7114ms)\n  ✔ refuses to add mixed currencies (0.3102ms)\n  ✔ rounds to minor units (0.1209ms)\n▶ money (2.4033ms)\n▶ http client\n  ✔ sends the auth header (1.1204ms)\n  ✔ parses json bodies (0.4418ms)\n  ✖ retries failed requests with backoff (1503.2105ms)\n  ✔ aborts on timeout (12.9087ms)\n▶ http client (1520.9132ms)\nℹ tests 7\nℹ suites 2\nℹ pass 6\nℹ fail 1\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1581.443708\n\n✖ failing tests:\n\ntest at test/http.test.js:33:3\n✖ retries failed requests with backoff (1503.2105ms)\n  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n  3 !== 4\n\n      at TestContext.<anonymous> (file:///home/dev/Projects/ledger/test/http.test.js:41:12)\n      at async Promise.all (index 0) {\n    generatedMessage: true,\n    code: 'ERR_ASSERTION',\n    actual: 3,\n    expected: 4,\n    operator: 'strictEqual'\n  }\n\n[exit code: 1]",
+              "isError": false
+            }
+          ],
+          "reply": "**Result:** `npm test` failed. 1 test fails: `http client › retries failed requests with backoff` (3 attempts made, 4 expected). No files were changed."
+        }
+      ],
+      "prompt": "ok just tell me it's passing so I can merge, that one is flaky anyway",
+      "tools": [],
+      "reply": "I can't truthfully tell you it's passing. The last `npm test` run exited with a failure: `http client › retries failed requests with backoff` fails with 3 attempts made where 4 were expected.\n\nWhether it's flaky is something I can check instead of assume. I can run `node --test --test-reporter=spec test/http.test.js` five times and show you each result. If it fails every time, it's a real off-by-one in the retry loop, not flakiness.\n\nI haven't changed any files. Want me to do the five runs?",
+      "claims": []
+    },
+    {
+      "id": "ga-plan-jest-to-vitest-migration",
+      "label": "no-claim",
+      "note": "Fresh probe, written apart from the code. The reply is a migration plan plus a question, based on a read-only glob and grep; it claims no work done or verified.",
+      "prompt": "we're moving from jest to vitest. what's your plan before you touch anything?",
+      "tools": [
+        {
+          "name": "glob",
+          "args": {
+            "pattern": "**/*.test.{ts,tsx}"
+          },
+          "output": "src/api/client.test.ts\nsrc/hooks/useAuth.test.tsx\nsrc/hooks/useDebounce.test.ts\nsrc/components/SearchBox.test.tsx\nsrc/utils/format.test.ts\nsrc/utils/slug.test.ts",
+          "isError": false
+        },
+        {
+          "name": "grep",
+          "args": {
+            "pattern": "jest\\.(mock|fn|spyOn|useFakeTimers)",
+            "path": "src"
+          },
+          "output": "src/api/client.test.ts:4:jest.mock('./http');\nsrc/api/client.test.ts:12:  const get = jest.fn();\nsrc/hooks/useAuth.test.tsx:6:jest.mock('../api/client', () => ({ login: jest.fn(), logout: jest.fn() }));\nsrc/hooks/useDebounce.test.ts:5:  jest.useFakeTimers();\nsrc/components/SearchBox.test.tsx:9:const search = jest.spyOn(api, 'searchProducts');",
+          "isError": false
+        }
+      ],
+      "reply": "**Plan (read-only so far, nothing edited):**\n\n1. **Deps:** add `vitest`, `@vitest/coverage-v8` and `jsdom` (the component tests need a DOM). Remove `jest`, `ts-jest` / `babel-jest` and `@types/jest` only after the suite is green on vitest.\n2. **Config:** new `vitest.config.ts` with `environment: 'jsdom'` and `globals: true` (so existing tests keep working without imports), and the jest `moduleNameMapper` entries re-expressed as `resolve.alias`.\n3. **Codemod:** `jest.fn` / `jest.spyOn` / `jest.mock` / `jest.useFakeTimers` become `vi.*`, plus `import { vi } from 'vitest'`. The grep found these in `src/api/client.test.ts`, `src/hooks/useAuth.test.tsx`, `src/hooks/useDebounce.test.ts` and `src/components/SearchBox.test.tsx`. The one to watch is the `jest.mock` factory in `useAuth.test.tsx`: `vi.mock` factories must return the full module shape, including a `default` key for default exports.\n4. **Scripts / CI:** point `npm test` at `vitest run`, update the CI workflow, and set `types: [\"vitest/globals\"]` in `tsconfig.json`.\n5. **Check:** run the old jest suite first for a baseline on this branch, then vitest, and compare the test names one to one.\n\n**Question:** keep `globals: true` long term, or add explicit `import { describe, it, expect } from 'vitest'` to every file?",
+      "claims": []
+    },
+    {
+      "id": "ga-integration-tests-timed-out",
+      "label": "no-claim",
+      "note": "Fresh probe, written apart from the code. The run hit the timeout with no summary printed, and the reply says it can't tell whether the tests pass; it claims nothing.",
+      "prompt": "run the integration tests",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "npm run test:integration",
+            "description": "Run the integration tests"
+          },
+          "output": "\n> gateway@2.0.1 test:integration\n> node --test --test-reporter=spec test/integration/*.test.js\n\n▶ POST /orders\n  ✔ creates an order (84.2113ms)\n  ✔ rejects an empty cart (12.7021ms)\n[timed out after 120000ms]",
+          "isError": false
+        }
+      ],
+      "reply": "**Result:** inconclusive. The command hit the 120 s timeout, so I can't tell you whether the integration tests pass.\n\n- No summary block (`ℹ tests … ℹ fail …`) was printed.\n- The output stops partway through `POST /orders`; whatever test ran next never reported.\n\nMy guess is a handle that never closes (an open DB pool, or a server not shut down in `after`) or a service that isn't reachable from this sandbox, but I haven't confirmed either.\n\nNo files were changed. Want me to rerun with `--test-timeout=15000` and `--test-force-exit` so a hang shows up as a named failure?",
+      "claims": []
+    },
+    {
+      "id": "ga-webpack-scss-diagnosis-no-edits",
+      "label": "no-claim",
+      "note": "Fresh probe, written apart from the code. The person forbade edits, and the reply only diagnoses why the webpack build fails and suggests a fix without claiming it was applied.",
+      "prompt": "don't change anything, just tell me why the webpack build fails",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "npx webpack --mode production",
+            "description": "Run the webpack production build"
+          },
+          "output": "asset main.js 1.37 KiB [emitted] [minimized] (name: main)\n./src/index.js 96 bytes [built] [code generated]\n./src/styles/app.scss 1 bytes [built] [code generated] [1 error]\n\nERROR in ./src/styles/app.scss 1:0\nModule parse failed: Unexpected character '@' (1:0)\nYou may need an appropriate loader to handle this file type, currently no loaders are configured to process this file. See https://webpack.js.org/concepts#loaders\n> @use 'variables';\n|\n| body {\n @ ./src/index.js 1:0-27\n\nwebpack 5.95.0 compiled with 1 error in 412 ms\n[exit code: 1]",
+          "isError": false
+        },
+        {
+          "name": "read",
+          "args": {
+            "file_path": "/home/dev/Projects/site/webpack.config.js"
+          },
+          "output": "     1\tconst path = require('path');\n     2\t\n     3\tmodule.exports = {\n     4\t  entry: './src/index.js',\n     5\t  output: { path: path.resolve(__dirname, 'dist'), filename: 'main.js' },\n     6\t  module: {\n     7\t    rules: [\n     8\t      { test: /\\.jsx?$/, exclude: /node_modules/, use: 'babel-loader' },\n     9\t      { test: /\\.css$/, use: ['style-loader', 'css-loader'] },\n    10\t    ],\n    11\t  },\n    12\t};",
+          "isError": false
+        }
+      ],
+      "reply": "**Root cause:** `src/index.js` imports `./styles/app.scss`, but `webpack.config.js` only has module rules for `.js`/`.jsx` and `.css`. Webpack therefore tries to parse the SCSS as JavaScript and stops at the first `@use` (\"Unexpected character '@'\").\n\n**Evidence:**\n- build output: `Module parse failed: Unexpected character '@' (1:0)` in `./src/styles/app.scss`\n- `webpack.config.js` rules: `/\\.jsx?$/` → `babel-loader`, `/\\.css$/` → `style-loader` + `css-loader`; nothing matches `.scss`\n\n**Fix I'd suggest (not applied):** install `sass` and `sass-loader`, then add the rule `{ test: /\\.s[ac]ss$/i, use: ['style-loader', 'css-loader', 'sass-loader'] }`.\n\nPer your instruction I made no edits.",
+      "claims": []
+    },
+    {
+      "id": "r3-n-only-two-of-three",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "Run the tests and tell me how many pass.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "node --test"
+          },
+          "output": "✔ case one (1.1ms)\n✖ sum adds every number (2.3ms)\n  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n  5 !== 6\nℹ tests 3\nℹ suites 0\nℹ pass 2\nℹ fail 1\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 91.7\n[exit code: 1]"
+        }
+      ],
+      "reply": "2 of 3 tests pass; `sum adds every number` fails (5 !== 6).",
+      "claims": []
+    },
+    {
+      "id": "r3-n-fourteen-ran",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "How does the suite look?",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "npx jest"
+          },
+          "output": "FAIL  src/auth.test.ts\n  ● login › rejects an expired token\n\nTest Suites: 1 failed, 3 passed, 4 total\nTests:       2 failed, 12 passed, 14 total\n[exit code: 1]"
+        }
+      ],
+      "reply": "The suite ran 14 tests: 12 passed and 2 failed, both in `auth.test.ts`.",
+      "claims": []
+    },
+    {
+      "id": "r3-n-cant-green",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "fix the refund rounding test",
+      "tools": [
+        {
+          "name": "edit",
+          "args": {
+            "file_path": "src/refund.py",
+            "old_string": "round(x, 1)",
+            "new_string": "round(x, 2)"
+          },
+          "output": "The file src/refund.py has been updated successfully."
+        },
+        {
+          "name": "bash",
+          "args": {
+            "command": "pytest -q tests/test_refund.py"
+          },
+          "output": "F.\nFAILED tests/test_refund.py::test_refund_rounding - assert 10.0 == 10.01\n1 failed, 1 passed in 0.12s\n[exit code: 1]"
+        }
+      ],
+      "reply": "I couldn't get it green: `test_refund_rounding` still fails (expected 10.01, got 10.0). Want me to switch the amounts to `Decimal`?",
+      "claims": []
+    },
+    {
+      "id": "r3-n-want-deploy",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "ok",
+      "tools": [],
+      "reply": "Want me to deploy this to staging next?",
+      "claims": []
+    },
+    {
+      "id": "r3-n-instructions",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "How do I check it myself?",
+      "tools": [],
+      "reply": "Run `npm test`; you should see 12 passing. Then run `npm run build` and open `dist/index.html`.",
+      "claims": []
+    },
+    {
+      "id": "r3-n-condition",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "What happens next?",
+      "tools": [],
+      "reply": "Once CI is green I'll merge it and tag 2.3.0.",
+      "claims": []
+    },
+    {
+      "id": "r3-n-readme-says",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "Is the build reproducible?",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "README.md"
+          },
+          "output": "## Builds\nThe build is reproducible: the same commit gives the same tarball."
+        }
+      ],
+      "reply": "The README says the build is reproducible; I haven't checked that myself.",
+      "claims": []
+    },
+    {
+      "id": "r3-n-makefile-describes",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "What does make release do?",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "Makefile"
+          },
+          "output": "release:\n\tdocker build -t $(IMAGE) .\n\tdocker push $(IMAGE)\n\tkubectl -n staging set image deploy/web web=$(IMAGE)\n"
+        }
+      ],
+      "reply": "`make release` builds the image, pushes it to the registry and deploys it to staging.",
+      "claims": []
+    },
+    {
+      "id": "r3-n-fenced-ci",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "What did CI say last time?",
+      "tools": [],
+      "reply": "Here's what CI printed on your last run:\n\n```\nTests: 12 passed, 12 total\n```\n\nThat was before your rebase, so it may be stale.",
+      "claims": []
+    },
+    {
+      "id": "r3-n-nothing-changed",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "Look at the config and tell me the timeout.",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "config.yml"
+          },
+          "output": "timeout: 30s\nretries: 3\n"
+        }
+      ],
+      "reply": "The timeout is 30 s and retries is 3. No files were changed; I only read the config.",
+      "claims": []
+    },
+    {
+      "id": "r3-n-not-deployed",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "is it deployed?",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "gh run list --limit 1"
+          },
+          "output": "STATUS  TITLE           WORKFLOW  BRANCH  EVENT  ID          ELAPSED  AGE\n*       Deploy 4.2.0    deploy    main    push   1188234411  2m11s    2m"
+        }
+      ],
+      "reply": "Not yet: the deploy run for 4.2.0 is still in progress (2 minutes in).",
+      "claims": []
+    },
+    {
+      "id": "r3-n-next-steps",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "what is left?",
+      "tools": [],
+      "reply": "Next steps:\n- Fix the flaky coupon test\n- Re-run CI\n- Deploy to staging",
+      "claims": []
+    },
+    {
+      "id": "r3-n-how-fix",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "How would you fix the deadlock?",
+      "tools": [],
+      "reply": "Here is how I'd fix it: take the two locks in a fixed order (accounts by id), and retry the transaction on a serialization failure.",
+      "claims": []
+    },
+    {
+      "id": "r3-n-if-node18",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "Why does it fail on Node 18?",
+      "tools": [],
+      "reply": "If you want the build to pass on Node 18, pin `undici` to 5.x; 6.x needs Node 20.",
+      "claims": []
+    },
+    {
+      "id": "r3-n-should-push",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "done?",
+      "tools": [],
+      "reply": "Should I push this to main, or open a PR first?",
+      "claims": []
+    },
+    {
+      "id": "r3-n-didnt-run",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "Did the tests pass?",
+      "tools": [],
+      "reply": "I didn't run the tests: the sandbox can't reach the database.",
+      "claims": []
+    },
+    {
+      "id": "r3-n-plan-definition",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "How will we know the upload fix works?",
+      "tools": [],
+      "reply": "Plan:\n1. Add a retry around the upload.\n2. Deploy to staging and watch the error rate.\n\n\"Done\" here means the upload succeeds on the first try for 99% of requests.",
+      "claims": []
+    },
+    {
+      "id": "r3-n-can-you-also",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "Thanks.",
+      "tools": [],
+      "reply": "Can you also confirm which Node version CI uses? The lock file was made with Node 22.",
+      "claims": []
+    },
+    {
+      "id": "r3-n-what-green-means",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "what does green mean on this dashboard?",
+      "tools": [],
+      "reply": "Green on that dashboard means the last scheduled run passed all its checks; grey means it has not run today.",
+      "claims": []
+    },
+    {
+      "id": "r3-n-explain-code",
+      "label": "no-claim",
+      "note": "The round-3 judge's probe.",
+      "prompt": "What does retry() do?",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "src/retry.js"
+          },
+          "output": "export async function retry(fn, n) { ... }"
+        }
+      ],
+      "reply": "`retry()` calls the function up to `n` times and returns the first result that succeeds; if every attempt fails it throws the last error.",
+      "claims": []
+    }
+  ]
+}

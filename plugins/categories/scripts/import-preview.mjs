@@ -37,9 +37,11 @@ if (registry instanceof Error) {
     process.exit(1);
 }
 const workspaces = registry?.tables?.workspaces ?? {};
+/** A workspace as people know it: DSH's title and folder; one DSH no longer has is said as that, never by its id. */
+const GONE = 'a workspace DSH no longer has';
 const label = (id) => {
     const ws = workspaces[id];
-    return ws ? `${ws.title || id} (${short(ws.path)})` : id;
+    return ws ? `${ws.title === 'default-workspace' ? 'Default workspace' : ws.title || id} (${short(ws.path)})` : GONE;
 };
 const store = new CategoryStore(process.argv[2] ?? '~/.dsh/categories/categories.json');
 let { categories, categoryOf } = store;
@@ -69,7 +71,7 @@ if (store.exists) {
             const held = Object.keys(categoryOf).filter((ws) => categoryOf[ws] === id);
             const name = categories[id].name;
             console.log(`${i + 1}. ${name}${plan.from === 'groups' && name === id && stored.projects?.[id]?.name === undefined ? ' (a project from the projects plugin\'s settings: its store keeps no name, so the category takes its id)' : ''}`);
-            for (const ws of held) console.log(`     ${label(ws)}`);
+            for (const ws of held) console.log(`     ${workspaces[ws] ? label(ws) : `${GONE} (kept in the store, not shown)`}`);
             if (held.length === 0) console.log('     (no workspaces)');
         });
         if (plan.order.length === 0) console.log('No categories.');
@@ -100,13 +102,13 @@ const plan = planFleetShellImport(state, { names, known: (id) => Boolean(workspa
 
 console.log(`\nFrom ${short(oldFile)}, once, at the first DSH start with this plugin (names and workspaces only; its instructions, files and defaults stay behind):\n`);
 plan.groups.forEach((group, i) => {
-    console.log(`${i + 1}. ${group.name}${group.join ? ` joins the category "${group.join}" (same name)` : ', a new category'}`);
+    console.log(`${i + 1}. ${group.name}${group.join ? ` joins the category "${categories[group.join]?.name ?? group.join}" (same name)` : ', a new category'}`);
     for (const id of group.workspaces) console.log(`     ${label(id)}`);
     if (group.workspaces.length === 0) console.log('     (no workspaces)');
 });
-const list = (ids, what) => console.log(`\n${what}: ${ids.length === 0 ? 'none' : ids.map((id) => (holder(id) ? `${label(id)} in "${holder(id)}"` : label(id))).join(', ')}`);
+const list = (ids, what) => console.log(`\n${what}: ${ids.length === 0 ? 'none' : ids.map((id) => (holder(id) ? `${label(id)} in "${categories[holder(id)].name}"` : label(id))).join(', ')}`);
 list(plan.kept, 'Already in a category here, stays there');
 list(plan.loose, 'Ungrouped in the old sidebar, goes to Other workspaces');
-list(plan.skipped, 'Gone from DSH, skipped');
+console.log(`\nGone from DSH, skipped: ${plan.skipped.length === 0 ? 'none' : plan.skipped.length === 1 ? GONE : `${plan.skipped.length} workspaces DSH no longer has`}`);
 const made = plan.groups.filter((g) => !g.join).length;
 console.log(`\nResult: ${made} new categories, ${plan.groups.length - made} joined, ${plan.groups.reduce((n, g) => n + g.workspaces.length, 0)} workspaces placed, ${plan.skipped.length} skipped.`);

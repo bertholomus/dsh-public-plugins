@@ -12,6 +12,7 @@
  */
 import { Remote, RemoteError, bindTypertRemote } from '@deepseek-ai/dsh-typert-protocol';
 import { WindowChanges } from './asked.js';
+import { plainFailure } from './config.js';
 import { CalendarError } from './manager.js';
 import { PRESETS } from './sources/caldav.js';
 
@@ -52,8 +53,9 @@ function failure(error) {
         };
         return new RemoteError(WINDOW_CODES.has(error.code) ? `calendar/${error.code}` : 'calendar/refused', error.message, details);
     }
-    return new RemoteError('calendar/failed', String(error?.message ?? error).slice(0, 300), {});
+    return new RemoteError('calendar/failed', plainFailure(error), {});
 }
+
 
 const text = (value) => (typeof value === 'string' ? value : '');
 const list = (value) => (Array.isArray(value) ? value.filter((v) => typeof v === 'string') : undefined);
@@ -87,7 +89,8 @@ export class CalendarRemote {
      * dialog offers: {version, zone, accounts, calendars, defaultCalendar,
      * prefs, syncing, storeIssue?, presets (CalDAV), signIn: {google: {ready,
      * clientId?}, microsoft: {ready, clientId?}}, askBeforeEmails}.
-     * defaultCalendar is null when no calendar is the default: a new event
+     * settingsProblems [{key, text}]: the plugin's settings that are wrong, in words (config.js), each with what
+     * the plugin does until it's fixed. defaultCalendar is null when no calendar is the default: a new event
      * then names its calendar ('calendar/choose-calendar'). askBeforeEmails:
      * false when the user's settings let chats' emailing changes go without
      * asking them. `version` changes whenever
@@ -102,6 +105,7 @@ export class CalendarRemote {
         return this.run(async () => ({
             ...this.manager.state(), presets: PRESETS, signIn: await this.setup.signInReady(),
             askBeforeEmails: this.setup.askBeforeEmails?.() !== false,
+            settingsProblems: this.setup.settingsProblems?.() ?? [],
         }));
     }
 
@@ -111,6 +115,17 @@ export class CalendarRemote {
      */
     async version() {
         return this.run(async () => ({ version: this.manager.version, syncing: this.manager.syncing.size > 0 }));
+    }
+
+    /**
+     * {reminders, zone}: the reminders due now that no window has shown, each
+     * an event's view with `reminder` {key, minutes, at}, and the user's zone
+     * to say their times in; asking claims them, so one window shows each,
+     * once (manager.dueReminders). The window asks every half minute while it
+     * is in front.
+     */
+    async reminders() {
+        return this.run(async () => ({ reminders: this.manager.dueReminders({ claim: true }), zone: this.manager.zone() }));
     }
 
     /** {occurrences, more}: the events in [from, to) (epoch ms), of the given calendars or the shown ones. */
@@ -305,9 +320,35 @@ function markRemote(Class, names) {
         });
     }
 }
-markRemote(CalendarRemote, [
+/** The window's endpoints. */
+const METHODS = Object.freeze([
     'state', 'version', 'events', 'search', 'event', 'createEvent', 'updateEvent', 'deleteEvent', 'respond',
     'addAccount', 'updateAccount', 'removeAccount', 'syncNow', 'startSignIn', 'signInStatus', 'finishSignIn', 'cancelSignIn',
     'setGoogleClient', 'setMicrosoftClient', 'createCalendar', 'deleteCalendar', 'updateCalendar', 'setDefaultCalendar', 'setPrefs',
-    'exportCalendar', 'importIcs',
+    'exportCalendar', 'importIcs', 'reminders',
 ]);
+markRemote(CalendarRemote, METHODS);
+
+/** What the window says while the plugin is switched off. */
+export const OFF_WORDS = 'The calendar is switched off: enabled is false in its entry (id: calendar) in this profile\'s cordis.patch.yml. Set it to true to use it again.';
+
+/**
+ * The window's endpoints while the plugin is switched off (enabled: false): nothing syncs, no file is read or
+ * written and chats get no tools, and every call the window makes says so in words ('calendar/off') rather than
+ * going unanswered.
+ */
+export class CalendarOff extends CalendarRemote {
+    /** @param {string} [why] - a wrong `enabled` in words (config.js), which switches it off too; else OFF_WORDS. */
+    constructor(ctx, why) {
+        super(ctx, null, {});
+        this.words = why
+            ? `The calendar is switched off, since a setting is wrong: ${why.replace(/; the calendar is switched off until it's fixed\.$/, '.')} Set it to true in its entry (id: calendar) in this profile's cordis.patch.yml to use the calendar.`
+            : OFF_WORDS;
+    }
+
+    /** Every endpoint runs its work through here (CalendarRemote), so each says the calendar is off, and does nothing. */
+    async run() {
+        throw new RemoteError('calendar/off', this.words, {});
+    }
+}
+markRemote(CalendarOff, METHODS);

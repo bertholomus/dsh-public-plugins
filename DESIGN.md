@@ -365,10 +365,7 @@ Checked 2026-10-12. Each of these is for the plugin's own next change.
 
 **Coordinator**
 
-- No motion rule for `wp-still`, and reduced motion covers only its spinner and notice (its chevrons and meter still move).
-- One `:has()` on DSH's header (the title crumb), where the categories plugin uses a mark for the same job.
-- Its style injection has no `try`/`catch`.
-- Its slot entry ids use `/` where the others use `:`.
+- Nothing open. The four items checked on 2026-10-12 were fixed on 2026-10-26: its motion stops under `wp-still` and reduced motion in every view it draws, its `:has()` on DSH's header is gone, its style sheet is added in a `try`/`catch` and removed when it is switched off, and its slot entry ids use `:`.
 
 **Calendar**
 

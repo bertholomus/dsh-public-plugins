@@ -1,0 +1,4 @@
+# The neighbour's own bundle row (test only). It has no config.
+- insert:
+    - id: wallpaper-neighbour
+      name: dsh-plugin-wallpaper-neighbour

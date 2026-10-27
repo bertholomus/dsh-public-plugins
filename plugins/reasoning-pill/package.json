@@ -1,7 +1,7 @@
 {
   "name": "dsh-plugin-reasoning-pill",
   "version": "0.1.0",
-  "description": "One reasoning control for DeepSeek Harness Desktop: a Reasoning pill beside the model name in the composer, in place of DSH's Effort row in the model menu.",
+  "description": "One reasoning control for DeepSeek Harness Desktop: a Reasoning control beside the model name in the composer, in place of DSH's Effort row in the model menu.",
   "icon": "./icon.svg",
   "license": "MIT",
   "private": true,
@@ -12,6 +12,10 @@
     "./client": "./lib/client.js",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
+  },
+  "scripts": {
+    "test": "node test/unit.test.mjs",
+    "test:e2e": "node ../../scripts/e2e.mjs reasoning-pill"
   },
   "files": [
     "lib",
@@ -28,7 +32,9 @@
       "platform": "web",
       "inject": [
         "@deepseek-ai/dsh-client-connection",
-        "@deepseek-ai/dsh-client-ui-conversation"
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-model-selection",
+        "@deepseek-ai/dsh-client-ui-primitives"
       ]
     }
   }

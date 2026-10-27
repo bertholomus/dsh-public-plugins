@@ -1,7 +1,9 @@
 // The calendar plugin's tests need no DSH, so they run here with the others: the store, repeats and
 // zones, the write rules, and CalDAV, Google and Microsoft against stand-in servers. The CalDAV tests
 // against a real Radicale server run when RADICALE_VENV or RADICALE_PYTHON points at one.
-// Its tests on a real DSH are `npm run test:e2e:calendar` and, for the window, `npm run test:e2e:calendar-ui`.
+// Its tests on a real DSH are `node scripts/e2e.mjs calendar`: every DSH under .e2e/ and the installed app's, each with the
+// window test in Chromium after it (plugins/calendar/README.md, Tests).
+import '../plugins/calendar/test/config.test.mjs';
 import '../plugins/calendar/test/manager.test.mjs';
 import '../plugins/calendar/test/store.test.mjs';
 import '../plugins/calendar/test/policy.test.mjs';

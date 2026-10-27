@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-autopilot",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Keeps sessions moving when nobody is watching: it carries on cut-off work, nudges idle todos and restarts stopped goals.",
   "icon": "./icon.svg",
   "license": "MIT",

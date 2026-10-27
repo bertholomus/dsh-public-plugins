@@ -11,10 +11,11 @@ import { fileURLToPath } from 'node:url';
 import {
     STYLES, argvOf, dataFolder, eventsMeta, findNewTranscript, findTranscriptById, folderKey, launchLine, pickShell, programName, shellWord, transcriptPath,
 } from '../plugins/agent-terminals/lib/launch.js';
-import { Tail, callSummary, closeOver, emptyFold, entriesOf, foldEntry, parseLines, provenIn, statusOf } from '../plugins/agent-terminals/lib/transcripts.js';
+import { Tail, callSummary, closeOver, emptyFold, entriesOf, foldEntry, parseLines, proofs, provenIn, statusOf } from '../plugins/agent-terminals/lib/transcripts.js';
+import { askIn } from '../plugins/session-watch/lib/shared/words.js';
 import { PASTE_END, PASTE_START, Typist, messageKeys, pasteSwitch } from '../plugins/agent-terminals/lib/typist.js';
-import { AgentTerminals, checkLaunch, exitWords, parseData, splitArgs } from '../plugins/agent-terminals/lib/agents.js';
-import { DEFAULTS, LIVE_SETTINGS, SETTING_TITLES, changedWords, checkConfig, savedEntry } from '../plugins/agent-terminals/lib/config.js';
+import { AgentTerminals, checkLaunch, exitWords, homeForm, listingNote, parseData, programForm, splitArgs } from '../plugins/agent-terminals/lib/agents.js';
+import { DEFAULTS, LIVE_SETTINGS, SETTING_TITLES, START_WHYS, STOP_WHYS, changedSince, changedWords, checkConfig, profileEntry, savedEntry, settingsSnapshot, startCause, stopCause } from '../plugins/agent-terminals/lib/config.js';
 import { detectAgents, keepsProjects, keepsSessions } from '../plugins/agent-terminals/lib/detect.js';
 import { STYLE_CHOICES, pageState } from '../plugins/agent-terminals/lib/page.js';
 import { JsonStore } from '../plugins/agent-terminals/lib/shared/files.js';
@@ -104,7 +105,8 @@ const at = (s) => new Date(Date.UTC(2026, 9, 17, 3, 0, s)).toISOString();
 const msgLine = (type, message, s, extra = {}) => ({ type, message, timestamp: at(s), uuid: `u${s}`, sessionId: 'c1', ...extra });
 
 test('transcripts: a messages-style file reads as user words, calls, results and replies', () => {
-    assert.deepEqual(entriesOf('messages', msgLine('user', { role: 'user', content: 'Fix the tests' }, 1)), [{ kind: 'user', at: Date.parse(at(1)), text: 'Fix the tests' }]);
+    assert.deepEqual(entriesOf('messages', msgLine('user', { role: 'user', content: 'Fix the tests' }, 1)), [{ kind: 'user', at: Date.parse(at(1)), text: 'Fix the tests', key: 'u1' }], 'with the line\'s own id');
+    assert.equal(entriesOf('messages', { ...msgLine('user', { role: 'user', content: 'x' }, 1), uuid: undefined })[0].key, undefined, 'a line without an id has none');
     assert.deepEqual(entriesOf('messages', msgLine('user', { role: 'user', content: '<command-name>/clear</command-name>' }, 1)), [], 'a command echo is not the person\'s words');
     assert.deepEqual(entriesOf('messages', msgLine('user', { role: 'user', content: '<system-reminder>x</system-reminder>' }, 1)), [], 'wrapped context is not the person\'s words');
     assert.deepEqual(entriesOf('messages', msgLine('user', { role: 'user', content: 'hi' }, 1, { isMeta: true })), []);
@@ -173,8 +175,14 @@ test('transcripts: the fold says what the agent does now', () => {
     assert.equal(fold.turns, 3);
     const same = foldEntry(fold, { kind: 'user', at: now + 5000, text: 'Yes' });
     assert.equal(same.turns, 4, 'the same words later are a new message');
-    const echo = foldEntry(same, { kind: 'user', at: now + 5500, text: 'Yes' });
-    assert.equal(echo.turns, 4, 'the same words logged twice in a moment are one message');
+    const echo = foldEntry(same, { kind: 'user', at: now + 5000, text: 'Yes' });
+    assert.equal(echo.turns, 4, 'one line read twice (the same words at the same moment) is one message');
+    const quick = foldEntry(same, { kind: 'user', at: now + 5400, text: 'Yes' });
+    assert.deepEqual([quick.turns, quick.users.length - same.users.length], [5, 1], 'the same words sent again a moment later are a message of their own');
+    const keyed = foldEntry(foldEntry(fold, { kind: 'user', at: now + 6000, text: 'Go', key: 'line-a' }), { kind: 'user', at: now + 6001, text: 'Go', key: 'line-a' });
+    assert.equal(keyed.turns, 4, 'the same line id twice is one message');
+    const twoLines = foldEntry(foldEntry(fold, { kind: 'user', at: now + 6000, text: 'Go', key: 'line-a' }), { kind: 'user', at: now + 6000, text: 'Go', key: 'line-b' });
+    assert.equal(twoLines.turns, 5, 'two line ids are two messages, even at the same moment');
     assert.equal(foldEntry(fold, { kind: 'unknown' }), fold);
 });
 
@@ -225,6 +233,49 @@ test('transcripts: proof is the agent\'s own transcript showing the words, after
     assert.ok(provenIn(fold, long, 2000), 'the first 160 characters are enough');
 });
 
+test('transcripts: one line proves one message, the oldest first, so the same words sent twice need two lines', () => {
+    const user = (at, text, key) => ({ kind: 'user', at, text, ...(key ? { key } : {}) });
+    // Round 4: "dup two" sent twice back to back; the agent has read only the first.
+    let fold = foldEntry(emptyFold(), user(1000, 'dup two #work=6000', 'L1'));
+    const both = [{ id: 'm1', text: 'dup two #work=6000', since: 900 }, { id: 'm2', text: 'dup two #work=6000', since: 1300 }];
+    let found = proofs(fold, both);
+    assert.deepEqual([found.get('m1')?.key, found.has('m2')], ['L1', false], 'the first line proves the first message only, though it is within 2 s of the second');
+    found = proofs(fold, [both[1]], [{ key: 'L1', from: 0, to: 18 }]);
+    assert.equal(found.has('m2'), false, 'a line a delivered message was proven by proves nothing more');
+    fold = foldEntry(fold, user(7000, 'dup two #work=6000', 'L2'));
+    found = proofs(fold, [both[1]], [{ key: 'L1', from: 0, to: 18 }]);
+    assert.deepEqual([found.get('m2')?.key, found.get('m2')?.at], ['L2', 7000], 'the second is proven by its own line');
+    found = proofs(fold, both);
+    assert.deepEqual([found.get('m1')?.key, found.get('m2')?.key], ['L1', 'L2'], 'each message its own line, the oldest first');
+    // Order: the oldest message gets the first line, whatever order they are asked in.
+    found = proofs(fold, [both[1], both[0]]);
+    assert.deepEqual([found.get('m1')?.key, found.get('m2')?.key], ['L1', 'L2']);
+    // A message inside an earlier one's words: not proven by that line.
+    let inner = foldEntry(emptyFold(), user(1000, 'fix the build, then run the tests', 'B1'));
+    const contained = [{ id: 'a', text: 'fix the build, then run the tests', since: 900 }, { id: 'b', text: 'run the tests', since: 1500 }];
+    found = proofs(inner, contained);
+    assert.deepEqual([found.has('a'), found.has('b')], [true, false], 'the line holds the first message whole');
+    inner = foldEntry(inner, user(2500, 'run the tests', 'B2'));
+    assert.equal(proofs(inner, contained).get('b')?.key, 'B2', 'proven by its own line');
+    // Two messages that went in as one line (the first sat in the input box when the second was typed): both.
+    const merged = foldEntry(emptyFold(), user(5000, 'dup dup', 'M1'));
+    found = proofs(merged, [{ id: 'x', text: 'dup', since: 4000 }, { id: 'y', text: 'dup', since: 4500 }]);
+    assert.deepEqual([found.get('x')?.from, found.get('y')?.from], [0, 4], 'each one place in the line');
+    assert.equal(proofs(merged, [{ id: 'z', text: 'dup', since: 4000 }], [{ key: 'M1', from: 0, to: 3 }, { key: 'M1', from: 4, to: 7 }]).has('z'), false, 'no third place');
+    // The 2 s allowance is for a line no earlier message claims; later than that, never.
+    const early = foldEntry(emptyFold(), user(1000, 'Please run the tests'));
+    assert.ok(proofs(early, [{ id: 'p', text: 'Please run the tests', since: 2900 }]).has('p'), 'a line 1.9 s before the typing, unclaimed: proof (clocks)');
+    assert.equal(proofs(early, [{ id: 'p', text: 'Please run the tests', since: 3100 }]).has('p'), false, 'more than 2 s before: an older message');
+    // A state file from before kept only the proof's time: that line stays its message's.
+    assert.equal(proofs(fold, [both[1]], [{ at: 1000, text: 'dup two #work=6000' }]).get('m2')?.key, 'L2', 'an older delivery\'s line, found by its time');
+    // Lines without an id are told apart by their time.
+    const plainLines = foldEntry(foldEntry(emptyFold(), user(1000, 'go')), user(1400, 'go'));
+    found = proofs(plainLines, [{ id: 'g1', text: 'go', since: 900 }, { id: 'g2', text: 'go', since: 1200 }]);
+    assert.deepEqual([found.get('g1')?.at, found.get('g2')?.at], [1000, 1400]);
+    assert.deepEqual(proofs(undefined, both), new Map(), 'no transcript, no proof');
+    assert.deepEqual(proofs(fold, [{ id: 'e', text: '  ', since: 0 }]), new Map(), 'no words, no proof');
+});
+
 test('transcripts: a call waiting for its result is said in steps, so its line does not change every few seconds', () => {
     let fold = emptyFold();
     fold = foldEntry(fold, { kind: 'user', at: 1000, text: 'go' });
@@ -272,6 +323,8 @@ test('typist: a message is pasted when the program asked for it, else typed with
     assert.deepEqual(messageKeys('one line', undefined).paste, false, 'unknown: one line is safe as keys');
     assert.deepEqual(messageKeys('a\nb', undefined).paste, true, 'unknown: more lines need a paste');
     assert.equal(messageKeys('esc\x1b[201~ape', true).data, `${PASTE_START}esc[201~ape${PASTE_END}`, 'a message cannot end the paste early');
+    assert.deepEqual(messageKeys('stop\x03 now\x04 and\x7f\x9b go\tthere', false), { data: 'stop now and go\tthere', paste: false, flattened: false }, 'no control key goes in typed as keys: only tabs and line breaks stay');
+    assert.equal(messageKeys('a\x1a\nb', true).data, `${PASTE_START}a\rb${PASTE_END}`);
     assert.equal(pasteSwitch('x\x1b[?2004hy\x1b[?2004l'), false);
     assert.equal(pasteSwitch('\x1b[?2004h'), true);
     assert.equal(pasteSwitch('nothing'), undefined);
@@ -345,6 +398,69 @@ test('config: every setting is checked in words, and a save says what changed', 
     assert.equal(savedEntry(check, []), undefined);
 });
 
+test('config: every key of its schema takes any value, so a wrong type in the profile is said in words and never stops it at start', () => {
+    const text = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'plugins', 'agent-terminals', 'lib', 'index.js'), 'utf8');
+    const start = text.indexOf('export const Config = z.object({');
+    assert.ok(start >= 0, 'lib/index.js has a Config schema');
+    const block = text.slice(start, text.indexOf('\n});', start)).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+    const keys = [...block.matchAll(/^\s+(\w+):\s*(.+?),?\s*$/gm)].map(([, key, schema]) => ({ key, schema }));
+    assert.deepEqual(keys.map((k) => k.key).sort(), Object.keys(DEFAULTS).sort(), 'DEFAULTS lists every key of its schema');
+    for (const { key, schema } of keys) {
+        assert.match(schema, /^(?:live\()?z\.any\(\)\.default\(.+\)\)?$/, `${key} is ${schema}`);
+        assert.equal(schema.startsWith('live('), LIVE_SETTINGS.includes(key), `${key}: live in the schema exactly when its page can change it`);
+        assert.deepEqual(JSON.parse(schema.match(/\.default\((.+?)\)\)?$/)[1].replace(/'/g, '"')), DEFAULTS[key], `${key}: the schema's default is the one in DEFAULTS`);
+    }
+    // A number in quotes, "yes" for a switch, a number for a choice: each is named, with the value as the profile has it.
+    const wrong = (value) => (typeof value === 'boolean' ? (value ? 'yes' : 'no') : typeof value === 'number' ? String(value) : 5);
+    for (const key of Object.keys(DEFAULTS)) {
+        const value = wrong(DEFAULTS[key]);
+        assert.throws(() => checkConfig({ ...DEFAULTS, [key]: value }), (error) => {
+            assert.equal(error.name, 'SettingError', key);
+            assert.equal(error.key, key, key);
+            assert.ok(error.message.startsWith(`${SETTING_TITLES[key]} (${key}) must be `), error.message);
+            assert.ok(error.message.endsWith(`(it is ${JSON.stringify(value)})`), error.message);
+            return true;
+        }, `${key} = ${JSON.stringify(value)}`);
+    }
+    assert.throws(() => checkConfig({ ...DEFAULTS, proofSeconds: '8' }), /^SettingError: Seconds without proof before Enter is pressed again \(proofSeconds\) must be a whole number of seconds from 2 to 120 \(it is "8"\)$/);
+});
+
+test('config: an edit of DSH\'s profile is said once, at the start that has it, with what changed', () => {
+    const run = (settings) => {
+        const check = new SettingsCheck({ settings, check: checkConfig, liveKeys: LIVE_SETTINGS, label: 'agent-terminals' });
+        check.run();
+        return check;
+    };
+    const first = settingsSnapshot({ ...DEFAULTS });
+    assert.deepEqual(Object.keys(first).sort(), Object.keys(SETTING_TITLES).sort(), 'every setting is kept');
+    // Never ran here (or an older state.json): nothing to compare, nothing said.
+    assert.deepEqual(changedSince(undefined, first), []);
+    assert.equal(profileEntry(run({ ...DEFAULTS }), changedSince(undefined, first), DEFAULTS), undefined);
+    // The same settings again: nothing said.
+    assert.deepEqual(changedSince(first, settingsSnapshot({ ...DEFAULTS })), []);
+    // typing changed in the profile: said by its title; Agent Terminals started again with it.
+    const typed = { ...DEFAULTS, typing: 'direct' };
+    const keys = changedSince(first, settingsSnapshot(typed));
+    assert.deepEqual(keys, ['typing']);
+    assert.deepEqual(profileEntry(run(typed), keys, typed), { kind: 'settings', text: 'Settings changed in DSH\'s profile: “How messages are typed in”', why: 'Agent Terminals started again with them.', state: 'done' });
+    // Switched off there: said, and what that means.
+    const off = { ...DEFAULTS, enabled: false };
+    assert.equal(profileEntry(run(off), changedSince(first, settingsSnapshot(off)), off).why, 'Agent Terminals is switched off there (enabled: false): it starts, reads and types nothing.');
+    // A wrong type there: named, with the value as the profile has it.
+    const quoted = { ...DEFAULTS, proofSeconds: '8' };
+    const wrong = profileEntry(run(quoted), changedSince(first, settingsSnapshot(quoted)), quoted);
+    assert.equal(wrong.text, 'Settings changed in DSH\'s profile: “Seconds without proof before Enter is pressed again”; Agent Terminals waits until a wrong one is fixed');
+    assert.equal(wrong.why, 'Seconds without proof before Enter is pressed again (proofSeconds) must be a whole number of seconds from 2 to 120 (it is "8").');
+    assert.equal(wrong.state, 'waiting on a setting');
+    // A setting a newer version added is not "changed" against an older snapshot.
+    const { notify: _, ...older } = first;
+    assert.deepEqual(changedSince(older, settingsSnapshot({ ...DEFAULTS, notify: false })), []);
+    // state.json keeps the snapshot (and only setting-like keys).
+    const kept = parseData({ agents: {}, recent: [], settings: { ...first, 'bad key': 1 } }).settings;
+    assert.deepEqual(kept, first);
+    assert.equal(parseData({ agents: {}, recent: [] }).settings, undefined);
+});
+
 test('start form: what is sent is checked in words', () => {
     const home = tmp('form');
     mkdirSync(join(home, 'app'));
@@ -354,7 +470,7 @@ test('start form: what is sent is checked in words', () => {
     assert.throws(() => checkLaunch({ program: 'agent', style: 'odd', folder: home }, { home }), /flags, subcommand, continue, plain/);
     assert.throws(() => checkLaunch({ program: 'agent', style: 'flags' }, { home }), /Choose the folder/);
     assert.throws(() => checkLaunch({ program: 'agent', style: 'flags', folder: 'rel/path' }, { home }), /full path/);
-    assert.throws(() => checkLaunch({ program: 'agent', style: 'flags', folder: join(home, 'none') }, { home }), /There is no folder at/);
+    assert.throws(() => checkLaunch({ program: 'agent', style: 'flags', folder: join(home, 'none') }, { home }), /^Error: There is no folder at ~\/none: create it first, or choose another\.$/, 'a folder under the home folder as people read it');
     assert.throws(() => checkLaunch({ program: 'agent', style: 'flags', folder: home, data: 'rel' }, { home }), /full path, such as ~\/.agent/);
     assert.throws(() => checkLaunch({ program: 'agent', style: 'flags', folder: home, args: '--x "open' }, { home }), /not closed/);
     const spec = checkLaunch({ program: 'agent', style: 'flags', folder: '~/app', args: '--model "big one" -v', task: '  Fix it  ' }, { home });
@@ -422,6 +538,36 @@ test('saved state: a broken or older file never stops it', () => {
     assert.match(exitWords({ program: '/opt/bin/nope' }, 127), /“which nope” in a terminal shows it/);
     assert.doesNotMatch(exitWords({ program: 'nope' }, 127), /`/, 'no code marks in words people read');
     assert.match(exitWords({ program: 'x' }, 0, 'Start again runs it anew.'), /runs it anew/);
+    // What the program printed last says why it ended; nothing points at a terminal that may be gone.
+    assert.equal(exitWords({ program: 'x' }, 1, 'Start again resumes its conversation.', 'No conversation found with session ID: c1'), 'It exited with code 1: “No conversation found with session ID: c1”. Start again resumes its conversation.');
+    assert.equal(exitWords({ program: 'x' }, 1, 'Start again resumes its conversation.'), 'It exited with code 1. Start again resumes its conversation.');
+    assert.equal(parseData({ agents: { k2: { sessionId: 's2', program: 'agent', cutAt: 42 } } }).agents.k2.cutAt, 42, 'the job cut last is kept, so it is logged once');
+});
+
+test('words: paths read as people read them (~/… under the home folder), a program given by name stays its name', () => {
+    assert.equal(homeForm('/Users/a/Projects/app', '/Users/a'), '~/Projects/app');
+    assert.equal(homeForm('/Users/a', '/Users/a/'), '~');
+    assert.equal(homeForm('/Users/ab/x', '/Users/a'), '/Users/ab/x', 'a folder that only starts with the same letters is not under it');
+    assert.equal(homeForm('/opt/tool', '/Users/a'), '/opt/tool');
+    assert.equal(homeForm('/Users/a/x', undefined), '/Users/a/x', 'no home folder known: as it is');
+    assert.equal(homeForm('', '/Users/a'), '');
+    assert.equal(programForm('/Users/a/.local/bin/agent', '/Users/a'), '~/.local/bin/agent');
+    assert.equal(programForm('agent', '/Users/a'), 'agent');
+    // Exit words name the program as people read it, and keep the name for "which".
+    assert.equal(exitWords({ program: '/Users/a/bin/nope' }, 127, undefined, undefined, '/Users/a'), 'It exited with code 127: the shell could not find ~/bin/nope. Use its full path (“which nope” in a terminal shows it), or check the name.');
+    assert.match(exitWords({ program: '/Users/a/bin/nope' }, 126, undefined, undefined, '/Users/a'), /^It exited with code 126: ~\/bin\/nope is not a program/);
+});
+
+test('listing note: its model gets the one line to answer and is told no answer is needed, so its reply asks nothing', () => {
+    const note = listingNote({ program: '/Users/a/.local/bin/agent', folder: '/Users/a/Projects/app' }, '/Users/a');
+    assert.equal(note, 'A coding agent runs in this session\'s terminal tab: agent in ~/Projects/app, started by Agent Terminals. This message only lets DSH list the session in its sidebar: there is no task here, and no answer is needed. Reply with exactly this one line and nothing else: The coding agent runs in its terminal tab.');
+    // Session Watch counts a DECISION NEEDED line, or a question, in a reply's last lines as asking: the note names neither, so a model that echoes it asks nobody.
+    assert.doesNotMatch(note, /DECISION NEEDED|BLOCKED|\?/);
+    assert.match(listingNote({ program: 'agent', folder: '' }, '/Users/a'), /: agent in this session's folder, started by/);
+    // Session Watch reads what a reply asks with askIn: the line it is told to answer, the note said back, and the note's own words in other words ask nothing.
+    for (const reply of ['The coding agent runs in its terminal tab.', note, 'Noted: there is no task here, and no answer is needed.\nThe coding agent runs in its terminal tab.', 'Understood. No answer is needed from anyone.']) {
+        assert.equal(askIn(reply), undefined, reply);
+    }
 });
 
 // ── The stand-in agent on its own ──────────────────────────────────────
@@ -681,7 +827,7 @@ function fakeWatch() {
     };
 }
 
-function engine({ dir = tmp('engine'), watch = fakeWatch(), controller = new FakeController(), config = {}, store, working } = {}) {
+function engine({ dir = tmp('engine'), watch = fakeWatch(), controller = new FakeController(), config = {}, store, working, pid } = {}) {
     let n = 0;
     const notices = [];
     const settings = { ...DEFAULTS, proofSeconds: 1, askAfterSeconds: 1, ...config };
@@ -700,7 +846,7 @@ function engine({ dir = tmp('engine'), watch = fakeWatch(), controller = new Fak
     const typist = new Typist({ controller: () => controller, method: () => settings.typing, wait });
     const agents = new AgentTerminals({
         watch, controller: () => controller, sessions, typist, config: settings, store: theStore, journal, home: dir,
-        notify: (item) => notices.push(item), tickMs: 100, wait, startCheckMs: 500, ...(working ? { working } : {}),
+        notify: (item) => notices.push(item), tickMs: 100, wait, startCheckMs: 500, ...(working ? { working } : {}), ...(pid ? { pid } : {}),
     });
     return { agents, watch, controller, settings, store: theStore, journal, notices, dir };
 }
@@ -741,6 +887,43 @@ test('engine: start an agent, type its first message in, and prove it from its t
         assert.ok(journal.list().some((e) => e.kind === 'proof' && /has the message/.test(e.text)));
         assert.match(terminal.output, /exec .*fake-agent\.mjs --style flags/, 'it was started with exec');
         assert.match(terminal.output, new RegExp(`--session-id ${record.conversationId}`), 'with the id it gave it');
+    } finally {
+        agents.stop();
+        controller.restart();
+    }
+});
+
+test('engine: the listing turn asks nothing; one whose model asked all the same says so; paths read as ~/…; Stop says who stopped it', async () => {
+    const { agents, watch, controller, journal, dir } = engine();
+    const folder = join(dir, 'app');
+    mkdirSync(folder);
+    // What Session Watch read in each session's reply: the model of the first asked all the same, the second only softly.
+    const replies = new Map();
+    watch.fullState = async (sessionId) => replies.get(sessionId);
+    agents.start();
+    try {
+        const one = await agents.launch({ program: FAKE, args: fakeArgs(join(dir, 'data')), style: 'flags', data: join(dir, 'data'), folder, name: 'One' });
+        const record = agents.records[one.agent.key];
+        assert.equal(watch.delivered[0].text, listingNote(record, dir));
+        assert.match(watch.delivered[0].text, /: fake-agent\.mjs in ~\/app, started by Agent Terminals\./, 'its folder as people read it');
+        assert.doesNotMatch(watch.delivered[0].text, /DECISION NEEDED|\?/);
+        const start = journal.list().find((e) => e.kind === 'start' && e.agent === record.key);
+        assert.equal(start.why, `You started ${FAKE} in ~/app, in a new session.`, 'a program outside the home folder in full, the folder as ~/…');
+        replies.set(record.sessionId, { ask: { question: 'Should I look at anything else?', turn: 1 }, end: { turn: 1, kind: 'completed' } });
+        watch.emit({ type: 'turn-end', sessionId: record.sessionId, end: { kind: 'completed' } });
+        const turn = (key) => journal.list().find((e) => e.kind === 'session' && e.agent === key);
+        await until(() => turn(record.key).state === 'done', 'the first turn done');
+        assert.equal(turn(record.key).reason, 'Its model\'s reply asked something all the same (“Should I look at anything else?”): Decisions may list it, though nothing waits on you there. Dismiss it in Decisions.');
+        const two = await agents.launch({ program: FAKE, args: fakeArgs(join(dir, 'data')), style: 'flags', data: join(dir, 'data'), folder, name: 'Two' });
+        const second = agents.records[two.agent.key];
+        replies.set(second.sessionId, { ask: { question: 'Let me know if you need more.', turn: 1, soft: true }, end: { turn: 1, kind: 'completed' } });
+        watch.emit({ type: 'turn-end', sessionId: second.sessionId, end: { kind: 'completed' } });
+        await until(() => turn(second.key).state === 'done', 'the second first turn done');
+        assert.equal(turn(second.key).reason, undefined, 'a soft line asks nobody: nothing to say');
+        await until(() => agents.view(record).status === 'idle' || agents.view(record).status === 'running', 'the agent running');
+        await agents.stopAgent(record.key);
+        const stop = journal.list().find((e) => e.kind === 'stop' && e.agent === record.key);
+        assert.deepEqual([stop.text, stop.why, stop.state], ['Stopped One', 'You stopped it; its terminal closed, which ends the program in it.', 'done']);
     } finally {
         agents.stop();
         controller.restart();
@@ -952,12 +1135,12 @@ test('engine: a DSH restart in the middle of a job or an approval leaves the age
 });
 
 /** A DSH restart: its terminals end, and the saved state is read by a new Agent Terminals. */
-function restartDsh(before, { dir, watch, controller, key, config = {} }) {
+function restartDsh(before, { dir, watch, controller, key, config = {}, pid }) {
     before.agents.stop();
     controller.restart();
     before.store.data.agents[key].hostPid = 1;
     before.store.flush();
-    const after = engine({ dir, watch, controller, config, store: new JsonStore(join(dir, 'state.json'), { parse: parseData, delayMs: 5 }) });
+    const after = engine({ dir, watch, controller, config, pid, store: new JsonStore(join(dir, 'state.json'), { parse: parseData, delayMs: 5 }) });
     after.agents.start();
     return after;
 }
@@ -1062,6 +1245,87 @@ test('engine: a message typed in but not yet read when DSH restarts is typed in 
     }
 });
 
+/** The messages with these words, oldest first. */
+const allByText = (record, words) => record.deliveries.filter((d) => d.text.includes(words));
+
+test('engine: the same words sent twice are two messages, each proven by its own line of the transcript', async () => {
+    // Round 4, finding 1: the second was "delivered" on the first one's line, before the agent read it.
+    for (const typeWhileWorking of [true, false]) {
+        const { agents, controller, dir } = engine({ config: { typeWhileWorking } });
+        agents.start();
+        try {
+            const { agent } = await agents.launch({ program: FAKE, args: fakeArgs(join(dir, 'data')), style: 'flags', data: join(dir, 'data'), folder: dir, name: 'Twice' });
+            const record = agents.records[agent.key];
+            await until(() => agents.view(record).status === 'idle', 'ready', 20000);
+            // While it works on the first (2.5 s), the second waits in its input (typeWhileWorking) or in the queue.
+            const words = typeWhileWorking ? '#work=2500 dup two' : '#work=30 dup quick';
+            agents.send(agent.key, words);
+            agents.send(agent.key, words);
+            const [one, two] = allByText(record, words.split(' ').at(-1));
+            await until(() => one.state === 'delivered', 'the first proven', 20000);
+            if (typeWhileWorking) {
+                await until(() => two.state === 'typed', 'the second typed in while it works', 20000);
+                await sleep(1000);
+                assert.equal(two.state, 'typed', 'not proven by the first one\'s line');
+            }
+            await until(() => two.state === 'delivered', 'the second proven by its own line', 20000);
+            assert.equal(toldTimes(record, dir, words), 2, 'the agent read it twice');
+            assert.notEqual(two.proof.key, one.proof.key, 'two lines, one each');
+            assert.ok(two.provenAt > one.provenAt, `its own line is the later one (${one.provenAt} then ${two.provenAt})`);
+            if (typeWhileWorking) assert.ok(two.provenAt - one.provenAt >= 2000, 'read after the first job ended');
+            // Words inside the message before: not proven by its line either.
+            agents.send(agent.key, '#work=30 fix the build, then run the tests');
+            agents.send(agent.key, 'run the tests');
+            const [whole] = allByText(record, 'fix the build');
+            const inner = record.deliveries.find((d) => d.text === 'run the tests');
+            await until(() => whole.state === 'delivered' && inner.state === 'delivered', 'both proven', 20000);
+            assert.notEqual(inner.proof.key, whole.proof.key);
+            assert.equal(toldTimes(record, dir, 'run the tests'), 2);
+        } finally {
+            agents.stop();
+            controller.restart();
+        }
+    }
+});
+
+test('engine: the second of two same messages, unread when DSH restarts, is typed in again once and proven by its own line', async () => {
+    const dir = tmp('lost-twice');
+    const controller = new FakeController();
+    const watch = fakeWatch();
+    const first = engine({ dir, watch, controller, config: { typeWhileWorking: true } });
+    first.agents.start();
+    let key;
+    try {
+        const { agent } = await first.agents.launch({ program: FAKE, args: fakeArgs(join(dir, 'data')), style: 'flags', data: join(dir, 'data'), folder: dir, name: 'Twice' });
+        key = agent.key;
+        const record = first.agents.records[key];
+        await until(() => first.agents.view(record).status === 'idle', 'ready', 20000);
+        first.agents.send(key, '#work=60000 dup three');
+        first.agents.send(key, '#work=60000 dup three');
+        const [one, two] = allByText(record, 'dup three');
+        await until(() => one.state === 'delivered' && two.state === 'typed', 'the first read, the second typed in while it works', 20000);
+        await sleep(800);
+        assert.equal(two.state, 'typed', 'the second is not proven by the first one\'s line');
+    } catch (error) {
+        first.agents.stop();
+        throw error;
+    }
+    const second = restartDsh(first, { dir, watch, controller, key, config: { typeWhileWorking: true } });
+    try {
+        const again = second.agents.records[key];
+        const [one, two] = allByText(again, 'dup three');
+        assert.equal(one.state, 'delivered');
+        await until(() => two.state === 'delivered', 'typed in again after the restart and proven', 30000);
+        assert.deepEqual([two.again, two.enters], [true, 1], 'typed in again once');
+        assert.equal(toldTimes(again, dir, 'dup three'), 2, 'its transcript has it twice: the first, and the second once, after the restart');
+        assert.notEqual(two.proof.key, one.proof.key);
+        assert.equal(second.journal.get(two.entry).state, 'delivered');
+    } finally {
+        second.agents.stop();
+        controller.restart();
+    }
+});
+
 test('engine: an answer whose Enter was swallowed when DSH restarted is typed in again, and Decisions hears it delivered', async () => {
     const dir = tmp('lost-answer');
     const controller = new FakeController();
@@ -1140,11 +1404,18 @@ test('engine: a message lost to a second restart failed; an answer that did not 
         assert.match(item.why, /^DSH restarted twice before the agent read it/);
         assert.deepEqual(watch.outcomes.at(-1).slice(0, 1).concat(watch.outcomes.at(-1)[1].state), ['q-lost', 'not delivered']);
         assert.equal(journal.list().filter((e) => e.kind === 'restart' && /was lost/.test(e.text)).length, 1);
-        // One its transcript shows was delivered after all: nothing is typed again.
-        const seen = { id: 'm-seen', text: 'Take the fast path', by: 'you', at: Date.now() - 60000, state: 'typed', typedAt: Date.now() - 60000, enters: 1 };
-        record.deliveries.push(seen);
+        // One its transcript shows was delivered after all (DSH quit before Agent Terminals saw the proof): nothing is typed again.
+        const seen = byText(record, 'Take the fast path');
+        seen.state = 'typed';
+        delete seen.proof;
+        delete seen.provenAt;
         agents.lostWithRestart(record);
         assert.equal(seen.state, 'delivered');
+        // The same words sent again, which the agent never read, are not proven by that line: typed in again.
+        const repeat = { id: 'm-repeat', text: 'Take the fast path', by: 'you', at: seen.typedAt + 500, state: 'typed', typedAt: seen.typedAt + 500, enters: 1 };
+        record.deliveries.push(repeat);
+        agents.lostWithRestart(record);
+        assert.deepEqual([repeat.state, repeat.again], ['queued', true], 'its line proves the first one only');
     } finally {
         agents.stop();
         controller.restart();
@@ -1236,6 +1507,85 @@ test('engine: while a setting is wrong, a running agent reads running (not follo
         agents.stop();
         controller.restart();
     }
+});
+
+test('engine: switched off in DSH\'s profile (enabled: false) while it runs, its agent still shows on the page: running, not followed, and where to switch it on', async () => {
+    let on = true;
+    const { agents, controller, journal, settings, watch, dir } = engine({ working: () => on });
+    agents.start();
+    try {
+        const { agent } = await agents.launch({ program: FAKE, args: fakeArgs(join(dir, 'data')), style: 'flags', data: join(dir, 'data'), folder: dir, name: 'Kept' });
+        const record = agents.records[agent.key];
+        await until(() => agents.view(record).ready, 'it to be ready');
+        on = false;
+        settings.enabled = false;
+        agents.stop();
+        const view = agents.view(record);
+        assert.deepEqual([view.status, view.followed], ['running', false]);
+        assert.equal(view.detail, 'Running in its terminal, not followed: Agent Terminals is switched off in DSH\'s profile (enabled: false). Set enabled to true there and it picks it up where it is.');
+        const page = await pageState({ agents, journal, config: settings, check: { ok: true }, watch, terminals: () => controller, detected: async () => [], workspaces: () => [] });
+        assert.equal(page.enabled, false);
+        assert.deepEqual(page.agents.map((a) => [a.key, a.status, a.followed]), [[agent.key, 'running', false]], 'the page lists the agent that still runs');
+        // Switched on again: the same terminal, not started again.
+        on = true;
+        settings.enabled = true;
+        agents.start();
+        await until(() => agents.view(record).status === 'idle', 'picked up idle');
+        assert.deepEqual([record.terminalId, record.launches, agents.view(record).followed], [agent.terminalId, 1, true]);
+    } finally {
+        agents.stop();
+        controller.restart();
+    }
+});
+
+test('switching: each stop of following its agents names its own cause, read from DSH\'s parts as they stop', () => {
+    const config = {};
+    const fiber = (over) => ({ uid: 7, state: 2, config, entry: { disabled: false, parent: { tree: { ctx: { fiber: { uid: 1, state: 2 } } } } }, ...over });
+    const active = { state: 2 };
+    // Its own part going: switched off (what the Plugins switch writes), new settings in the profile, the same ones, DSH quitting, its entry removed.
+    assert.equal(stopCause({ own: fiber({ state: 5, entry: { disabled: true } }), watchScope: active, config }), 'off');
+    assert.equal(stopCause({ own: fiber({ state: 5, config: { enabled: false } }), watchScope: active, config }), 'profile');
+    assert.equal(stopCause({ own: fiber({ state: 5 }), watchScope: active, config }), 'again');
+    const root = { uid: 0, state: 2 };
+    root.parent = { fiber: root };
+    const app = (over) => ({ uid: 3, state: 2, parent: { fiber: root }, ...over });
+    assert.equal(stopCause({ own: fiber({ state: 5, uid: null, parent: { fiber: app({ uid: null, state: 5 }) } }), watchScope: active, config }), 'quit', 'the parts above it go too: DSH quits');
+    assert.equal(stopCause({ own: fiber({ state: 5, uid: null, parent: { fiber: { uid: 9, state: 2, parent: { fiber: app({ state: 5 }) } } } }), watchScope: active, config }), 'quit', 'however far up');
+    assert.equal(stopCause({ own: fiber({ state: 5, uid: null, parent: { fiber: app() } }), watchScope: active, config }), 'removed', 'it alone goes: its entry left the profile');
+    // Its own part running: Session Watch went, else DSH's terminals.
+    assert.equal(stopCause({ own: fiber(), watchScope: { state: 5 }, config }), 'watch');
+    assert.equal(stopCause({ own: fiber(), watchScope: active, config }), 'terminals');
+    // DSH says nothing readable: plain words, never a wrong cause.
+    assert.equal(stopCause({}), 'unknown');
+    assert.equal(stopCause({ own: { get state() { throw new Error('gone'); } } }), 'unknown');
+    for (const [cause, why] of Object.entries(STOP_WHYS)) {
+        assert.doesNotMatch(why, /Switched off in Plugins, or DSH is quitting/, cause);
+        assert.ok(why.endsWith('.'), cause);
+    }
+    assert.match(STOP_WHYS.watch, /^Session Watch stopped/);
+    assert.match(STOP_WHYS.profile, /^Its settings changed in DSH's profile/);
+    assert.match(STOP_WHYS.off, /^It was switched off\./);
+    assert.match(STOP_WHYS.quit, /^DSH is quitting/);
+    // And why it follows them again: from what came before it in this DSH.
+    const stopped = (cause, pid = 42) => ({ kind: 'switch', state: 'stopped', cause, pid });
+    assert.equal(startCause({ terminalRuns: 2, pid: 42 }), 'terminals');
+    assert.equal(startCause({ watchRuns: 2, pid: 42 }), 'watch');
+    assert.equal(startCause({ lateSeconds: 60, pid: 42, uptimeSeconds: 600 }), 'watch', 'Session Watch came long after it');
+    assert.equal(startCause({ last: stopped('off'), pid: 42, uptimeSeconds: 600 }), 'on');
+    assert.equal(startCause({ last: stopped('profile'), pid: 42, uptimeSeconds: 600 }), 'profile');
+    assert.equal(startCause({ last: stopped('watch'), pid: 42, uptimeSeconds: 600 }), 'watch');
+    assert.equal(startCause({ last: stopped('again'), pid: 42, ranHere: true, uptimeSeconds: 600 }), 'again');
+    assert.equal(startCause({ last: stopped('setting'), pid: 42, ranHere: true, edited: true, uptimeSeconds: 600 }), 'profile', 'a wrong setting fixed in the profile');
+    assert.equal(startCause({ last: stopped('quit', 41), pid: 42, uptimeSeconds: 20 }), 'dsh', 'an earlier DSH stopped it: this one started it');
+    assert.equal(startCause({ last: stopped('off', 41), pid: 42, uptimeSeconds: 900 }), 'on', 'long after DSH started: switched on');
+    assert.equal(startCause({ last: { kind: 'switch', state: 'done', pid: 42 }, pid: 42, uptimeSeconds: 900 }), 'on');
+    // Started earlier in this same DSH with nothing logged in between (it followed no agent then): the profile's edit, or a switch.
+    assert.equal(startCause({ last: stopped('quit', 41), pid: 42, ranHere: true, edited: true, uptimeSeconds: 30 }), 'profile', 'enabled set back to true in the profile, soon after DSH started with it off');
+    assert.equal(startCause({ last: stopped('quit', 41), pid: 42, ranHere: true, uptimeSeconds: 30 }), 'again');
+    assert.equal(parseData({ ranPid: 42 }).ranPid, 42, 'the DSH process that last started it is kept');
+    assert.equal(parseData({ ranPid: 'x' }).ranPid, undefined);
+    assert.equal(START_WHYS.dsh, 'It started with DSH: it picks up every agent where it is.');
+    assert.equal(START_WHYS.profile, 'DSH started it again with the settings in its profile: it picks up every agent where it is.');
 });
 
 test('engine: an agent that exits, a program that is not there, and a program with no transcript', async () => {
@@ -1408,4 +1758,232 @@ test('engine: typing through a terminal input this DSH lacks is refused before a
         fourth.agents.stop();
         controller.restart();
     }
+});
+
+test('engine: an agent that never got a message comes back under its id after a Stop, a closed terminal and a restart, never told to resume what it does not have', async () => {
+    const dir = tmp('no-message');
+    const controller = new FakeController();
+    const watch = fakeWatch();
+    const data = join(dir, 'data');
+    const first = engine({ dir, watch, controller });
+    first.agents.start();
+    let key;
+    let id;
+    try {
+        const { agent } = await first.agents.launch({ program: FAKE, args: fakeArgs(data), style: 'flags', data, folder: dir, name: 'Quiet' });
+        key = agent.key;
+        id = agent.conversationId;
+        const record = first.agents.records[key];
+        await until(() => first.agents.view(record).ready, 'it to be ready');
+        assert.equal(first.agents.view(record).canResume, false, 'no transcript yet: no conversation to resume');
+        assert.equal(first.agents.view(record).again, 'Start again starts it again (it has no conversation to resume yet).');
+        await first.agents.stopAgent(key);
+        assert.equal(record.ended.text, 'You stopped it. Start again starts it again (it has no conversation to resume yet).');
+        assert.equal((await first.agents.startAgain(key)).problem, undefined, 'Start again works');
+        assert.equal(record.conversationId, id, 'under the same id');
+        await until(() => controller.terminal(record.sessionId, record.terminalId)?.output.includes(`exec ${FAKE} --style flags --data ${data} --session-id ${id}`), 'started under its id, not resumed');
+        await until(() => first.agents.view(record).ready, 'ready again');
+        assert.equal(first.agents.view(record).status, 'idle');
+        // Its terminal closed (its tab): Start again does the same.
+        await controller.close(await watch.resolveAgent(record.sessionId), record.terminalId);
+        await until(() => first.agents.view(record).status === 'stopped', 'stopped with its terminal');
+        assert.equal(record.ended.text, 'Its terminal was closed (closing an agent\'s terminal tab ends the agent). Start again starts it again (it has no conversation to resume yet).');
+        assert.equal((await first.agents.startAgain(key)).problem, undefined);
+        await until(() => first.agents.view(record).ready, 'ready after its terminal closed');
+        const starts = first.journal.list().filter((e) => e.agent === key && e.kind === 'start');
+        assert.deepEqual(starts.map((e) => [e.text, e.state]), [['Started Quiet again', 'done'], ['Started Quiet again', 'done'], ['Started Quiet', 'done']]);
+        assert.equal(starts[0].why, 'You started it again under the same id: it had no conversation to resume yet (its program writes one with its first message).');
+    } catch (error) {
+        first.agents.stop();
+        throw error;
+    }
+    const restartedAt = Date.now();
+    const second = restartDsh(first, { dir, watch, controller, key });
+    try {
+        const again = second.agents.records[key];
+        const entry = await until(() => second.journal.list().find((e) => e.kind === 'restart' && e.agent === key), 'the restart logged once it holds', 30000);
+        assert.deepEqual([entry.text, entry.state], ['Started Quiet again after DSH restarted', 'done']);
+        assert.match(entry.why, /^DSH ended its terminal when it quit\. It had no conversation to resume yet .* so it starts again under the same id/);
+        const output = controller.terminal(again.sessionId, again.terminalId).output;
+        assert.ok(output.includes(`--session-id ${id}`) && !output.includes('--resume'), output.slice(-400));
+        assert.equal(second.agents.view(again).status, 'idle');
+        assert.ok(!second.journal.list().some((e) => e.agent === key && e.kind === 'ended' && e.at >= restartedAt), 'it did not end');
+        // Its first message makes its conversation: from then on it resumes.
+        second.agents.send(key, '#work=20 hello there');
+        await until(() => second.agents.view(again).deliveries[0]?.state === 'delivered', 'its first message');
+        assert.equal(second.agents.view(again).canResume, true);
+        assert.equal(second.agents.view(again).again, 'Start again resumes its conversation.');
+    } finally {
+        second.agents.stop();
+        controller.restart();
+    }
+});
+
+test('engine: a program that fails as it starts again after a restart is logged as not started, with what it printed, and Start anew is offered', async () => {
+    const dir = tmp('fails-again');
+    const controller = new FakeController();
+    const watch = fakeWatch();
+    const data = join(dir, 'data');
+    const program = join(dir, 'agent-wrapper');
+    writeFileSync(program, `#!/bin/sh\nif [ -f "${join(dir, 'broken')}" ]; then echo "Its settings file cannot be read" >&2; exit 3; fi\nexec "${process.execPath}" "${FAKE}" "$@"\n`, { mode: 0o755 });
+    const first = engine({ dir, watch, controller });
+    first.agents.start();
+    let key;
+    try {
+        const { agent } = await first.agents.launch({ program, args: fakeArgs(data), style: 'flags', data, folder: dir, name: 'Brittle', task: '#work=20 hello' });
+        key = agent.key;
+        await until(() => first.agents.view(first.agents.records[key]).deliveries[0]?.state === 'delivered', 'its first message');
+    } catch (error) {
+        first.agents.stop();
+        throw error;
+    }
+    writeFileSync(join(dir, 'broken'), '');
+    const second = restartDsh(first, { dir, watch, controller, key });
+    try {
+        const again = second.agents.records[key];
+        const entry = await until(() => second.journal.list().find((e) => e.kind === 'restart' && e.agent === key), 'the restart logged', 30000);
+        const words = 'It exited with code 3: “Its settings file cannot be read”. Start again tries to resume it once more; Start anew starts a new conversation.';
+        assert.deepEqual([entry.text, entry.state, entry.why], ['Could not start Brittle again after DSH restarted', 'failed', words]);
+        assert.ok(!second.journal.list().some((e) => e.agent === key && /^Started Brittle again/.test(e.text)), 'never said to have started');
+        const view = second.agents.view(again);
+        assert.deepEqual([view.status, view.detail, view.canResume], ['stopped', words, true]);
+    } finally {
+        second.agents.stop();
+        controller.restart();
+    }
+});
+
+test('engine: a job cut by a restart is logged once, however many restarts follow before the next message', async () => {
+    const dir = tmp('cut-once');
+    const controller = new FakeController();
+    const watch = fakeWatch();
+    const data = join(dir, 'data');
+    const first = engine({ dir, watch, controller });
+    first.agents.start();
+    let key;
+    try {
+        const { agent } = await first.agents.launch({ program: FAKE, args: fakeArgs(data), style: 'flags', data, folder: dir, name: 'Long', task: '#work=60000 a long job' });
+        key = agent.key;
+        const record = first.agents.records[key];
+        await until(() => first.agents.view(record).status === 'working', 'it to work');
+    } catch (error) {
+        first.agents.stop();
+        throw error;
+    }
+    let before = first;
+    for (const n of [1, 2, 3]) {
+        const after = restartDsh(before, { dir, watch, controller, key });
+        before = after;
+        await until(() => after.agents.view(after.agents.records[key]).ready && after.agents.view(after.agents.records[key]).status === 'idle', `idle after restart ${n}`, 20000);
+        await until(() => after.journal.list().some((e) => e.kind === 'restart' && e.agent === key && e.state === 'done' && e.at >= Date.now() - 30000), `restart ${n} logged`, 30000);
+        assert.equal(after.journal.list().filter((e) => e.kind === 'cut').length, 1, `restart ${n}: the cut is logged once`);
+    }
+    // A new job, cut by the next restart: that one is logged.
+    try {
+        before.agents.send(key, '#work=60000 another long job');
+        await until(() => before.agents.view(before.agents.records[key]).status === 'working', 'it to work again', 20000);
+    } catch (error) {
+        before.agents.stop();
+        throw error;
+    }
+    const last = restartDsh(before, { dir, watch, controller, key });
+    try {
+        await until(() => last.journal.list().filter((e) => e.kind === 'cut').length === 2, 'the new cut logged', 20000);
+        assert.match(last.journal.list().find((e) => e.kind === 'cut').why, /another long job/);
+    } finally {
+        last.agents.stop();
+        controller.restart();
+    }
+});
+
+test('engine: at its first start it settles what an earlier run of DSH left open in its log: first turns, starts, and a forgotten agent\'s messages', async () => {
+    const dir = tmp('stale');
+    const watch = fakeWatch();
+    const old = new Journal(join(dir, 'events.jsonl'));
+    const sent = Date.now() - 60000;
+    const cut = old.add({ kind: 'session', agent: 'a1', sessionId: 'cut', text: 'Giving its session a first turn', state: 'sending', by: 'Agent Terminals', pid: 1 });
+    const done = old.add({ kind: 'session', agent: 'a2', sessionId: 'done', text: 'Giving its session a first turn', state: 'sending', by: 'Agent Terminals', pid: 1 });
+    const stopped = old.add({ kind: 'session', agent: 'a3', sessionId: 'stopped', text: 'Giving its session a first turn', state: 'sending', by: 'Agent Terminals', pid: 1 });
+    const start = old.add({ kind: 'start', agent: 'gone', sessionId: 'x', text: 'Starting Gone', state: 'starting', by: 'you', pid: 1 });
+    const message = old.add({ kind: 'message', agent: 'gone', sessionId: 'x', text: 'Message for Gone', state: 'queued', by: 'you' });
+    const mine = old.add({ kind: 'session', agent: 'a4', sessionId: 'mine', text: 'Giving its session a first turn', state: 'sending', by: 'Agent Terminals', pid: process.pid });
+    const ends = { cut: { end: { kind: 'completed', at: sent - 1000 } }, done: { end: { kind: 'completed', at: Date.now() } }, stopped: { end: { kind: 'aborted', at: Date.now() } } };
+    watch.fullState = async (sessionId) => ends[sessionId];
+    const { agents, journal } = engine({ dir, watch });
+    agents.start();
+    try {
+        const state = (entry) => journal.get(entry.id);
+        await until(() => state(cut).state !== 'sending' && state(done).state !== 'sending' && state(stopped).state !== 'sending', 'the first turns settled');
+        assert.deepEqual([state(cut).text, state(cut).state, state(cut).reason], ['Its session\'s first turn was cut off', 'stopped', 'DSH quit before the turn ended. The session is listed in the sidebar all the same.']);
+        assert.deepEqual([state(done).text, state(done).state], ['Gave its session a first turn', 'done']);
+        assert.deepEqual([state(stopped).text, state(stopped).state, state(stopped).reason], ['Its session\'s first turn did not finish', 'stopped', 'The turn was stopped, as DSH quit. The session is listed in the sidebar all the same.']);
+        assert.deepEqual([state(start).text, state(start).state, state(start).reason], ['Could not start Gone', 'failed', 'DSH quit before it started.']);
+        assert.deepEqual([state(message).state, state(message).reason], ['cancelled', 'Its agent was forgotten before it was typed in.']);
+        assert.equal(state(mine).state, 'sending', 'one this DSH still waits on is left to end');
+    } finally {
+        agents.stop();
+    }
+});
+
+test('engine: forgetting an agent closes its messages, and an answer it held is not raised again', async () => {
+    const { agents, watch, controller, journal, dir } = engine();
+    agents.start();
+    try {
+        const { agent } = await agents.launch({ program: FAKE, args: fakeArgs(join(dir, 'data')), style: 'flags', data: join(dir, 'data'), folder: dir, name: 'Leaving' });
+        const record = agents.records[agent.key];
+        await until(() => agents.view(record).ready, 'ready');
+        await agents.stopAgent(agent.key);
+        const { delivery } = agents.send(agent.key, 'for later');
+        assert.equal(record.deliveries.find((d) => d.id === delivery.id).state, 'waiting');
+        await agents.forget(agent.key);
+        const entry = journal.list().find((e) => e.kind === 'message' && e.delivery === delivery.id);
+        assert.deepEqual([entry.state, entry.reason], ['cancelled', 'Its agent was forgotten before it was typed in.']);
+        assert.equal(watch.asks.size, 0);
+    } finally {
+        agents.stop();
+        controller.restart();
+    }
+});
+
+test('engine: a message that failed is sent again whole, once; one on its way or delivered is not', async () => {
+    const { agents, controller, dir } = engine();
+    agents.start();
+    try {
+        const { agent } = await agents.launch({ program: FAKE, args: fakeArgs(join(dir, 'data')), style: 'flags', data: join(dir, 'data'), folder: dir, name: 'Retry' });
+        const record = agents.records[agent.key];
+        await until(() => agents.view(record).ready, 'ready');
+        const long = `#work=20 ${'a long message '.repeat(40)}end`;
+        const { delivery } = agents.send(agent.key, long);
+        await until(() => record.deliveries.find((d) => d.id === delivery.id).state === 'delivered', 'it delivered');
+        assert.throws(() => agents.resend(agent.key, delivery.id), /^Error: Its transcript shows it already\.$/);
+        // Lost (as to two restarts): sent again whole, not the 400 characters the page shows.
+        const item = record.deliveries.find((d) => d.id === delivery.id);
+        item.state = 'failed';
+        assert.ok(agents.view(record).deliveries.find((d) => d.id === delivery.id).text.length <= 400);
+        const { delivery: again } = agents.resend(agent.key, delivery.id);
+        assert.equal(record.deliveries.find((d) => d.id === again.id).text, long);
+        assert.equal(agents.view(record).deliveries.find((d) => d.id === delivery.id).resent, again.id, 'the page offers it no second time');
+        assert.throws(() => agents.resend(agent.key, delivery.id), /sent again already/);
+        await until(() => record.deliveries.find((d) => d.id === again.id).state === 'delivered', 'the new one delivered');
+    } finally {
+        agents.stop();
+        controller.restart();
+    }
+});
+
+test('engine: programs used before are listed once, with their conversations folder when it is not the default', () => {
+    const { agents, dir } = engine();
+    agents.remember({ program: '/x/standin', args: [], style: 'flags' });
+    agents.remember({ program: '/x/standin', args: [], style: 'flags', data: join(dir, '.standin') });
+    agents.remember({ program: '/x/standin', args: [], style: 'flags', data: '~/.standin' });
+    assert.equal(agents.recent.length, 1, 'the default folder, given as ~/… or in full, is one folder');
+    agents.remember({ program: '/x/standin', args: [], style: 'flags', data: '~/elsewhere' });
+    assert.deepEqual(agents.recent.map((r) => r.folder), [join(dir, 'elsewhere'), undefined], 'one that differs says where');
+    agents.store.data.recent = [...agents.store.data.recent, { program: '/x/standin', args: [], style: 'flags', data: join(dir, 'elsewhere') }];
+    assert.equal(agents.recent.length, 2, 'an older list with look-alikes reads once each');
+    // The chips show paths as people read them; the whole path stays for the hover and for a start.
+    assert.deepEqual(agents.recent.map((r) => r.shown), [{ program: '/x/standin', folder: '~/elsewhere' }, { program: '/x/standin' }]);
+    agents.remember({ program: join(dir, 'bin', 'agent'), args: [], style: 'flags' });
+    assert.deepEqual(agents.recent[0].shown, { program: '~/bin/agent' });
+    assert.equal(agents.recent[0].program, join(dir, 'bin', 'agent'));
 });

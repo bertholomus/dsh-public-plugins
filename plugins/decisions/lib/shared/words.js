@@ -50,16 +50,112 @@ export function stateWord(row) {
     return 'idle';
 }
 
+/*
+ * Code spans (`parser.py`, ``a`b``) keep their words whole while a line is
+ * read: no mark inside one is dropped (`__init__.py`, `a**b`), and no dot
+ * or question mark inside one ends a sentence. Each span stands in as one
+ * placeholder until the words are given back.
+ */
+
+/** A placeholder's ends: control characters a reply never holds (a text that has them is read without placeholders). */
+const HOLD_OPEN = '\u0001';
+const HOLD_CLOSE = '\u0002';
+/** One held code span in a text: its number. */
+export const HELD_SPAN = /\u0001(\d+)\u0002/;
+
+/** A code span on one line: a run of backticks, its words, and a run of the same length (Markdown's rule). */
+const CODE_SPAN = /(?<!`)(`+)(?!`)([^\n]*?[^`\n])\1(?!`)/g;
+
+/** A marker line written in code (`DECISION NEEDED: …`) is read as the line it is. */
+const MARKED_CODE = (inner) => /^[\s*_]*DECISION NEEDED\b/i.test(inner) || /^[\s*_]*BLOCKED\b/.test(inner);
+
+/**
+ * The text with each code span held as a placeholder: `{ text, spans }`,
+ * where `spans[i]` is `{ written, words }` (the span as written, and its
+ * words without the backticks).
+ */
+export function holdCode(text) {
+    const value = String(text ?? '');
+    const spans = [];
+    if (value.includes(HOLD_OPEN) || value.includes(HOLD_CLOSE)) return { text: value, spans };
+    const held = value.replace(CODE_SPAN, (written, ticks, inner) => {
+        if (MARKED_CODE(inner)) return inner;
+        // A space at both ends is Markdown's padding, not part of the words.
+        const words = /^ [\s\S]*[^ ][\s\S]* $/.test(inner) ? inner.slice(1, -1) : inner;
+        spans.push({ written, words });
+        return `${HOLD_OPEN}${spans.length - 1}${HOLD_CLOSE}`;
+    });
+    return { text: held, spans };
+}
+
+/** A held text with its code spans given back: their words (the default), or as written (`written: true`). */
+export function unholdCode(text, spans, { written = false } = {}) {
+    if (!spans?.length) return String(text ?? '');
+    return String(text ?? '').replace(new RegExp(HELD_SPAN.source, 'g'), (whole, n) => {
+        const span = spans[Number(n)];
+        return span ? (written ? span.written : span.words) : whole;
+    });
+}
+
+/**
+ * The bold, italic and stray code marks dropped from a text whose code
+ * spans are held: `**a**` and `*a*` (inside a word too, as Markdown reads
+ * them), `__a__` and `_a_` (not inside a word: `my__var` stays), what is
+ * left of a `**` or `__` unless it sits inside a word (`a**b`), and a lone
+ * backtick.
+ */
+export function dropMarks(text) {
+    return String(text ?? '')
+        .replace(/\*\*(?=[^\s*])((?:(?!\*\*).)*?[^\s*])\*\*/g, '$1')
+        .replace(/(?<![\p{L}\p{N}])__(?=[^\s_])((?:(?!__).)*?[^\s_])__(?![\p{L}\p{N}])/gu, '$1')
+        .replace(/(?<![\p{L}\p{N}])(?:\*\*|__)|(?:\*\*|__)(?![\p{L}\p{N}])/gu, '')
+        .replace(/`+/g, '')
+        .replace(/(^|\s)[*_](?=\S)/g, '$1')
+        .replace(/(?<=\S)[*_](?=\s|$|[.,:;!?)])/g, '');
+}
+
 /**
  * A line as a person reads it: the bold and code marks a model puts around
  * words (`**DECISION NEEDED:**`, `*Monday*`, `\`main\``) dropped. Marks
- * inside a word (`file_name`) stay.
+ * inside a word (`file_name`, `my__var`) and everything inside a code span
+ * (`__init__.py`, `a**b`) stay.
  */
 export function plainLine(line) {
-    return String(line)
-        .replace(/\*\*|__|`+/g, '')
-        .replace(/(^|\s)[*_](?=\S)/g, '$1')
-        .replace(/(?<=\S)[*_](?=\s|$|[.,:;!?)])/g, '');
+    const { text, spans } = holdCode(String(line));
+    return unholdCode(dropMarks(text), spans);
+}
+
+/** A fence's line: up to three spaces, then three or more backticks or tildes (an opening one may name a language). */
+const FENCE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+
+/**
+ * The text with each closed fenced code block (```…``` or ~~~…~~~) blanked
+ * out, line for line: what a reply shows as code (a DECISION NEEDED line
+ * quoted from a rules file, a prompt's "Continue?") is not what it asks. A
+ * fence that is never closed is read as text.
+ */
+export function unfenced(text) {
+    const lines = String(text ?? '').split('\n');
+    let open;
+    for (let i = 0; i < lines.length; i += 1) {
+        const fence = FENCE.exec(lines[i]);
+        if (!fence) continue;
+        if (open === undefined) {
+            // A backtick fence's language holds no backtick: "```a```" on one line is code inside a line, not a fence.
+            if (fence[1][0] === '`' && fence[2].includes('`')) continue;
+            open = { at: i, mark: fence[1] };
+        } else if (fence[1][0] === open.mark[0] && fence[1].length >= open.mark.length && fence[2].trim() === '') {
+            for (let j = open.at; j <= i; j += 1) lines[j] = '';
+            open = undefined;
+        }
+    }
+    return lines.join('\n');
+}
+
+/** A text's lines with their marks dropped and their code spans held, and how to give a part of them back in words. */
+function heldLines(text) {
+    const { text: held, spans } = holdCode(text);
+    return { lines: held.split('\n').map(dropMarks), words: (part) => unholdCode(part, spans) };
 }
 
 /*
@@ -71,7 +167,8 @@ export function plainLine(line) {
  * and, in the reply's last lines, also after the end of a sentence:
  * "…without valid credentials. BLOCKED: working staging credentials." A
  * marker inside a sentence ("the request was BLOCKED: by policy") is not
- * one. DECISION NEEDED is read in any case; BLOCKED only in capitals.
+ * one, nor is one inside a fenced code block (a rule quoted as an example).
+ * DECISION NEEDED is read in any case; BLOCKED only in capitals.
  */
 
 /** How many of a reply's last non-empty lines may carry a marker after a sentence's end. */
@@ -122,17 +219,19 @@ const RECOMMEND_LINE = /^[\s>*_`-]*recommend(?:ation|ed)?\s*[:：]\s*(.+?)\s*$/i
 /** The question and recommendation of the last decision line in a text, or undefined. */
 export function decisionIn(text) {
     if (typeof text !== 'string' || !/DECISION NEEDED/i.test(text)) return undefined;
-    const lines = text.split('\n').map(plainLine);
+    // Code spans are held while the line is read, so `__init__.py` or a `--flag` in one stays whole; a fenced
+    // code block is shown, not said, so a marker in one is none.
+    const { lines, words } = heldLines(unfenced(text));
     const tail = tailStart(lines);
     for (let i = lines.length - 1; i >= 0; i -= 1) {
         const rest = afterMarker(lines[i], 'DECISION NEEDED', { anyCase: true, inline: i >= tail });
         if (rest === undefined) continue;
         const [asked, picked] = splitRecommendation(trimMarks(rest));
-        const question = trimMarks(asked);
+        const question = words(trimMarks(asked)).trim();
         if (!question) continue;
         // Some write the recommendation on the next line.
         const next = picked ? undefined : lines.slice(i + 1).find((line) => line.trim() !== '');
-        const recommendation = pickWords(picked ?? (next ? RECOMMEND_LINE.exec(next)?.[1] : ''));
+        const recommendation = words(pickWords(picked ?? (next ? RECOMMEND_LINE.exec(next)?.[1] : ''))).trim();
         return { question, ...(recommendation ? { recommendation } : {}) };
     }
     return undefined;
@@ -148,26 +247,26 @@ export function decisionIn(text) {
 export function recommendationIn(text) {
     if (typeof text !== 'string' || !/recommend/i.test(text)) return undefined;
     const lines = text.trim().split('\n');
-    const last = plainLine(lines.at(-1) ?? '');
+    const { lines: [last = ''], words } = heldLines(lines.at(-1) ?? '');
     const before = lines.slice(0, -1).join('\n').trim();
     const own = RECOMMEND_LINE.exec(last);
     if (own) {
-        const recommendation = pickWords(own[1]);
+        const recommendation = words(pickWords(own[1])).trim();
         return before && recommendation ? { question: before, recommendation } : undefined;
     }
     const [asked, picked] = splitRecommendation(trimMarks(last));
-    const recommendation = pickWords(picked ?? '');
-    const question = [before, trimMarks(asked)].filter(Boolean).join('\n');
+    const recommendation = words(pickWords(picked ?? '')).trim();
+    const question = [before, words(trimMarks(asked)).trim()].filter(Boolean).join('\n');
     return recommendation && question ? { question, recommendation } : undefined;
 }
 
 /** The text of the last BLOCKED marker in a text, or undefined. */
 export function blockedIn(text) {
     if (typeof text !== 'string' || !/BLOCKED/.test(text)) return undefined;
-    const lines = text.split('\n').map(plainLine);
+    const { lines, words } = heldLines(unfenced(text));
     const tail = tailStart(lines);
     for (let i = lines.length - 1; i >= 0; i -= 1) {
-        const rest = trimMarks(afterMarker(lines[i], 'BLOCKED', { anyCase: false, inline: i >= tail }));
+        const rest = words(trimMarks(afterMarker(lines[i], 'BLOCKED', { anyCase: false, inline: i >= tail }))).trim();
         if (rest) return rest;
     }
     return undefined;
@@ -188,29 +287,70 @@ const cutAsk = (text) => {
  * plain question.
  * @returns {{ kind: 'decision', question: string, recommendation?: string } | { kind: 'blocked', question: string } | { kind: 'question', question: string } | undefined}
  */
-export function askIn(text) {
-    if (typeof text !== 'string' || text.trim() === '') return undefined;
+export function askIn(reply) {
+    if (typeof reply !== 'string') return undefined;
+    // A fenced code block is shown, not asked: read as blank lines.
+    const text = unfenced(reply);
+    if (text.trim() === '') return undefined;
     const decision = decisionIn(text);
     if (decision) return { kind: 'decision', question: cutAsk(decision.question), ...(decision.recommendation ? { recommendation: cutAsk(decision.recommendation) } : {}) };
     const blocked = blockedIn(text);
     if (blocked) return { kind: 'blocked', question: cutAsk(blocked) };
     if (!asksSomeone(text)) return undefined;
-    const lines = text.trim().split('\n').map((line) => line.replace(/^[\s>*_`#-]+|[\s*_`]+$/g, '').trim()).filter(Boolean);
+    // Code spans are held while the lines are read: a dot or a question mark inside one ends nothing.
+    const { text: held, spans } = holdCode(text.trim());
+    const lines = held.split('\n').map((line) => line.replace(/^[\s>*_`#-]+|[\s*_`]+$/g, '').trim()).filter(Boolean);
     const tail = lines.slice(-6);
     // The last sentence with a question mark; else the last line that asks for the person's word
     // ("It needs your decision on the port."), not a closing line such as "Reply here and I'll pass it on.".
     const asking = [...tail].reverse().find((line) => line.includes('?'));
     let question;
     if (asking) {
-        const sentences = asking.match(/[^.!?]*\?/g);
-        question = sentences ? sentences.at(-1).trim() : asking;
+        question = lastQuestion(asking);
     } else {
         const pleading = [...tail].reverse().find((line) => [...ASKS, ...OFFERS].some((pattern) => pattern.test(line)));
         question = pleading ?? tail.at(-1) ?? '';
     }
+    // The question as the reply wrote it, code spans and all.
+    question = unholdCode(question, spans, { written: true });
     // "Let me know if you want the docs too." offers more without waiting on an answer.
     const soft = !asksForAnswer(text);
     return question ? { kind: 'question', question: cutAsk(question), ...(soft ? { soft: true } : {}) } : undefined;
+}
+
+/**
+ * Where one sentence of a line ends and the next begins: a full stop, ! or
+ * ?, any closing quote, bracket or mark, then a space before a capital, an
+ * opening quote, bracket or mark, or a code span. So the dot in a file name
+ * (`parser.py`), a version (2.0.0), an address (staging.example.com), a
+ * number (2.5) or "e.g. with" ends nothing.
+ */
+const SENTENCE_BREAK = /(?<=[.!?。！？]["'”’)\]*_]*)\s+(?=[\p{Lu}\p{Lt}"'“‘(\[*_\u0001])/u;
+
+/** Words that end in a dot without ending a sentence: "e.g. Postgres", "Dr. Lee". */
+const ABBREVIATION = /(?:^|[\s(])(?:e\.g|i\.e|vs|cf|approx|incl|resp|fig|mr|mrs|ms|dr|prof)\.["'”’)\]*_]*$/i;
+
+/** A question that leans on the one before it ("Or should I wait?", "If so, …?"): read with that one. */
+const LEANS_BACK = /^["'“‘(\[*_]*(?:or|and|if (?:so|not)|otherwise|else|also)\b/i;
+
+/**
+ * The last sentence of a line that asks (it has a question mark), up to its
+ * last question mark; with the question before it when it leans on that one
+ * ("Should I fix it now? Or wait for the review?").
+ */
+function lastQuestion(line) {
+    const parts = [];
+    for (const part of line.split(SENTENCE_BREAK)) {
+        if (parts.length && ABBREVIATION.test(parts.at(-1))) parts[parts.length - 1] += ` ${part}`;
+        else parts.push(part);
+    }
+    const last = parts.findLastIndex((part) => part.includes('?'));
+    if (last < 0) return line.trim();
+    let first = last;
+    while (first > 0 && LEANS_BACK.test(parts[first]) && parts[first - 1].includes('?')) first -= 1;
+    const asking = parts.slice(first, last + 1).join(' ');
+    const end = /\?["'”’)\]*_]*(?!.*\?)/.exec(asking);
+    return (end ? asking.slice(0, end.index + end[0].length) : asking).trim();
 }
 
 /** Asks that wait on a person's answer. */
@@ -237,7 +377,7 @@ const tailOf = (text) => text.trim().split('\n').map((line) => line.trim()).filt
  */
 export function asksForAnswer(text) {
     if (typeof text !== 'string' || text.trim() === '') return false;
-    const lines = tailOf(text);
+    const lines = tailOf(unfenced(text));
     if (/\?\s*[*_`)\]]*\s*$/.test(lines.at(-1) ?? '')) return true;
     const tail = lines.slice(-6).join('\n');
     return ASKS.some((pattern) => pattern.test(tail));
@@ -252,7 +392,7 @@ export function asksForAnswer(text) {
 export function asksSomeone(text) {
     if (asksForAnswer(text)) return true;
     if (typeof text !== 'string' || text.trim() === '') return false;
-    const tail = tailOf(text).slice(-6).join('\n');
+    const tail = tailOf(unfenced(text)).slice(-6).join('\n');
     return OFFERS.some((pattern) => pattern.test(tail));
 }
 
@@ -269,12 +409,23 @@ export function timeWords(at, now = Date.now()) {
     return `${when.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${clock}`;
 }
 
-/** "45 seconds", "10 minutes", "2 hours", "3 days". */
+/** "45 seconds", "90 seconds", "2 minutes 30 seconds", "10 minutes", "2 hours", "3 days": never rounded up past what it says. */
 export function spanWords(ms) {
     const s = Math.max(0, Math.round(ms / 1000));
-    if (s < 90) return `${s} second${s === 1 ? '' : 's'}`;
+    if (s < 120) return `${s} second${s === 1 ? '' : 's'}`;
+    if (s < 600 && s % 60 !== 0) {
+        const whole = Math.floor(s / 60);
+        const rest = s % 60;
+        return `${whole} minute${whole === 1 ? '' : 's'} ${rest} second${rest === 1 ? '' : 's'}`;
+    }
     const m = Math.round(s / 60);
     if (m < 90) return `${m} minute${m === 1 ? '' : 's'}`;
+    // Hours and minutes up to ten hours, so 90 minutes never reads as 2 hours.
+    if (m < 600 && m % 60 !== 0) {
+        const whole = Math.floor(m / 60);
+        const rest = m % 60;
+        return `${whole} hour${whole === 1 ? '' : 's'} ${rest} minute${rest === 1 ? '' : 's'}`;
+    }
     const h = Math.round(m / 60);
     if (h < 36) return `${h} hour${h === 1 ? '' : 's'}`;
     const d = Math.round(h / 24);

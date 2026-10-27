@@ -15,13 +15,20 @@
  * are never counted.
  *
  * The folder diff sees every change in the window, whoever made it, so a
- * turn's shell edits count only when no other session's mutating call (a
- * shell command, or a file-tool edit) ran during it — the plugin watches
- * every session's calls as DSH runs them, and a turn that overlaps another
- * session's work counts nothing for its shell rather than guess. What no
- * DSH session ran (the user's editor, another app, another DSH on the same
- * folder) the window cannot tell apart, and counts as the thread's: that
- * is the rule's limit, not a proof.
+ * turn's shell edits count whole only when no other session's mutating
+ * call (a shell command, or a file-tool edit) ran during it — the plugin
+ * watches every session's calls as DSH runs them. When another session's
+ * call did run in the window, the turn keeps only the files its own calls
+ * alone could have written (ownWrite): the file's last change fell inside
+ * one of the thread's own calls, and no other session's call ran between
+ * the earliest the file could have changed and that change. A file gone in
+ * such a window, or one another call could have touched, counts nothing
+ * rather than guess. What no DSH session ran (the user's editor, another
+ * app, another DSH on the same folder) the window cannot tell apart, and
+ * counts as the thread's: that is the rule's limit, not a proof. File
+ * times come from the folder's own file system, so a network folder whose
+ * clock is off by more than the slack can be read wrong; one that stamps a
+ * change in the future makes the turn count nothing.
  *
  * @module dsh-plugin-coordinator/shell
  */
@@ -148,10 +155,12 @@ async function captureAt(at, kept) {
  * binary, or past the caps, on either side counts only that it changed.
  * @param {string} root
  * @param {{files: Map<string, ShellSide>}} before - snapshotFolder's answer for the same root.
+ * @param {Map<string, {changed: number, born: number}>} [times] - filled with each file the walk found: when it last
+ *   changed and when it was born (ms, from its stat), for a shared window's attribution (ownWrite).
  * @returns {Promise<Array<{path: string, added: number, deleted: number, created?: true, binary?: true, oversized?: true}>>}
  *   paths absolute, resolved like the snapshot's.
  */
-export async function diffFolder(root, before) {
+export async function diffFolder(root, before, times = undefined) {
     const edits = [];
     const seen = new Set();
     let partial = false;
@@ -191,6 +200,7 @@ export async function diffFolder(root, before) {
                 continue;
             }
             if (!st.isFile()) continue;
+            times?.set(at, { changed: st.mtimeMs, born: st.birthtimeMs });
             if (was === undefined) {
                 // The after walk keeps nothing, so its reads cost the one file, never a budget.
                 const side = await captureAt(at, 0);
@@ -242,12 +252,15 @@ export async function diffFolder(root, before) {
  * and its subagents', projects.js threadOfCall) or any other session's id.
  * The manager begins every mutating call and ends it after; a window from
  * `from` to `to` is clean when no other owner's call ran in it, and the
- * thread's own ran in no turn but the one being counted.
+ * thread's own ran in no turn but the one being counted. A window that is
+ * not clean hands its calls to ownWrite (spansIn), file by file.
  */
 export class Mutations {
     constructor() {
         /** owner → {running, since, turn, spans: [{from, to, turn}]} */
         this.owners = new Map();
+        /** How near two times may be and still be told apart, ms. */
+        this.slack = CLOCK_SLACK_MS;
     }
 
     /** A mutating call of `owner`, in `turn` when it is a thread's, is starting. */
@@ -269,7 +282,7 @@ export class Mutations {
         if (entry.running > 0) return;
         const span = { from: entry.since, to: Date.now(), turn: entry.turn };
         const last = entry.spans.at(-1);
-        if (last && last.turn === span.turn && span.from - last.to <= CLOCK_SLACK_MS) last.to = span.to;
+        if (last && last.turn === span.turn && span.from - last.to <= this.slack) last.to = span.to;
         else entry.spans.push(span);
         if (entry.spans.length > 2000) entry.spans.splice(0, entry.spans.length - 2000);
         for (const key of [...this.owners.keys()].slice(0, -500)) {
@@ -299,4 +312,54 @@ export class Mutations {
         }
         return false;
     }
+
+    /**
+     * Every owner's calls that came near the window from `from` to `to`
+     * (within the slack), a running one's until now, for ownWrite.
+     * @returns {Array<{owner: string, from: number, to: number, turn: number|null}>}
+     */
+    spansIn(from, to) {
+        const now = Date.now();
+        const out = [];
+        for (const [owner, entry] of this.owners) {
+            const spans = entry.running > 0 ? [...entry.spans, { from: entry.since, to: now, turn: entry.turn }] : entry.spans;
+            for (const span of spans) {
+                if (span.from <= to + this.slack && span.to >= from - this.slack) out.push({ owner, from: span.from, to: span.to, turn: span.turn });
+            }
+        }
+        return out;
+    }
+}
+
+/** Whether a file's stat says when it was born: true on macOS and Windows; elsewhere a birth time can be the change time or 0. */
+export const BIRTH_TIMES = process.platform === 'darwin' || process.platform === 'win32';
+
+/**
+ * Whether one file's change in a shared window is the thread's own
+ * (projects.js shellEdits): its last write, at `at`, fell inside one of
+ * the thread's own calls of `turn`, and no other owner's call, nor the
+ * thread's own in another turn, ran from `since` (the earliest the file
+ * could have changed: the snapshot's start, or a new file's birth) to that
+ * write. Each edge keeps the slack, so a write near another call's edge is
+ * nobody's.
+ * @param {Array<{owner: string, from: number, to: number, turn: number|null}>} spans - Mutations.spansIn's answer.
+ * @param {string} own - the thread's session.
+ * @param {number|null} turn
+ * @param {number} since - ms.
+ * @param {number} at - ms.
+ * @param {number} [slack]
+ */
+export function ownWrite(spans, own, turn, since, at, slack = CLOCK_SLACK_MS) {
+    if (!Number.isFinite(since) || !Number.isFinite(at)) return false;
+    const lo = Math.min(since, at) - slack;
+    const hi = at + slack;
+    let inOwn = false;
+    for (const span of spans) {
+        if (span.owner === own && span.turn === turn) {
+            if (span.from - slack <= at && at <= span.to + slack) inOwn = true;
+        } else if (span.from <= hi && span.to >= lo) {
+            return false;
+        }
+    }
+    return inOwn;
 }

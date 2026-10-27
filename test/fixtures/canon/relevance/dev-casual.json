@@ -1,0 +1,796 @@
+[
+  {
+    "id": "cc01",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "how do i list open ports on mac",
+    "answers": []
+  },
+  {
+    "id": "cc02",
+    "kind": "coding",
+    "folder": "~/scratch",
+    "prompt": "need a python script to split a big csv into 10k row chunks",
+    "answers": []
+  },
+  {
+    "id": "cc03",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "docker compose healthcheck for redis",
+    "answers": []
+  },
+  {
+    "id": "cc04",
+    "kind": "coding",
+    "folder": "~/src/harbor-gateway",
+    "prompt": "go http server graceful shutdown on sigterm",
+    "answers": []
+  },
+  {
+    "id": "cc05",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "how do i mock time.Now in go tests",
+    "answers": []
+  },
+  {
+    "id": "cc06",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "nginx config to redirect http to https",
+    "answers": []
+  },
+  {
+    "id": "cc07",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "vite proxy /api to localhost:8000 not working",
+    "answers": []
+  },
+  {
+    "id": "cc08",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "systemctl status says failed (Result: exit-code), how do i see the logs",
+    "answers": []
+  },
+  {
+    "id": "cc09",
+    "kind": "coding",
+    "folder": "~/code/tide-ledger",
+    "prompt": "psql: FATAL: password authentication failed for user \"postgres\"",
+    "answers": []
+  },
+  {
+    "id": "cc10",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "git rebase onto main without losing my changes",
+    "answers": []
+  },
+  {
+    "id": "cc11",
+    "kind": "coding",
+    "folder": "~/work/quartz-cache",
+    "prompt": "go: how to read a toml config file into a struct",
+    "answers": []
+  },
+  {
+    "id": "cc12",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "bash: check if a directory exists and create it if not",
+    "answers": []
+  },
+  {
+    "id": "cc13",
+    "kind": "coding",
+    "folder": "~/scratch",
+    "prompt": "fastapi file upload endpoint example",
+    "answers": []
+  },
+  {
+    "id": "cc14",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "make a dockerfile smaller, multi stage build for go",
+    "answers": []
+  },
+  {
+    "id": "cc15",
+    "kind": "coding",
+    "folder": "~/src/billing-api",
+    "prompt": "sqlalchemy session closed error after commit",
+    "answers": []
+  },
+  {
+    "id": "cc16",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "how to set a timeout on fetch in javascript",
+    "answers": []
+  },
+  {
+    "id": "cc17",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "react useEffect runs twice in dev",
+    "answers": []
+  },
+  {
+    "id": "cc18",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "terraform plan says the resource will be replaced, how do i stop that",
+    "answers": []
+  },
+  {
+    "id": "cc19",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "kill whatever is listening on port 8080",
+    "answers": []
+  },
+  {
+    "id": "cc20",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "grpc status code for not found in go",
+    "answers": []
+  },
+  {
+    "id": "cc21",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "yaml anchors example for a github actions matrix",
+    "answers": []
+  },
+  {
+    "id": "cc22",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "pip install fails with externally-managed-environment",
+    "answers": []
+  },
+  {
+    "id": "cc23",
+    "kind": "coding",
+    "folder": "~/scratch",
+    "prompt": "jq: filter an array by a field value",
+    "answers": []
+  },
+  {
+    "id": "cc24",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "how do i see which process is using all the cpu on linux",
+    "answers": []
+  },
+  {
+    "id": "cc25",
+    "kind": "coding",
+    "folder": "~/Projects/photo-sorter",
+    "prompt": "python pathlib glob recursively for jpg and png",
+    "answers": []
+  },
+  {
+    "id": "cc26",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "redis: set a key with an expiry in one command",
+    "answers": []
+  },
+  {
+    "id": "cc27",
+    "kind": "coding",
+    "folder": "~/src/harbor-gateway",
+    "prompt": "go test -run with a regex for two test names",
+    "answers": []
+  },
+  {
+    "id": "cc28",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "curl: show only the http status code",
+    "answers": []
+  },
+  {
+    "id": "cc29",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "npm ERR! code ERESOLVE unable to resolve dependency tree",
+    "answers": []
+  },
+  {
+    "id": "cc30",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "github actions: cache go modules",
+    "answers": []
+  },
+  {
+    "id": "cc31",
+    "kind": "coding",
+    "folder": "~/work/quartz-cache",
+    "prompt": "benchmark a map vs sync.Map in go",
+    "answers": []
+  },
+  {
+    "id": "cc32",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "cron: run a job on the first day of every month at 6am",
+    "answers": []
+  },
+  {
+    "id": "cc33",
+    "kind": "coding",
+    "folder": "~/code/tide-ledger",
+    "prompt": "python decimal rounding half up for money",
+    "answers": []
+  },
+  {
+    "id": "cc34",
+    "kind": "coding",
+    "folder": "~/src/billing-api",
+    "prompt": "aws alb health check keeps failing, target unhealthy",
+    "answers": []
+  },
+  {
+    "id": "cc35",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "how do i undo git add for one file",
+    "answers": []
+  },
+  {
+    "id": "cc36",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "go: json omitempty on a time.Time field doesnt work",
+    "answers": []
+  },
+  {
+    "id": "cc37",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "makefile: pass a variable from the command line",
+    "answers": []
+  },
+  {
+    "id": "cc38",
+    "kind": "coding",
+    "folder": "~/scratch",
+    "prompt": "websocket server in node with ws, minimal example",
+    "answers": []
+  },
+  {
+    "id": "cc39",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "ssh: permission denied (publickey) when pushing to github",
+    "answers": []
+  },
+  {
+    "id": "cc40",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "tailwind dark mode toggle with a class",
+    "answers": []
+  },
+  {
+    "id": "cc41",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "regex to match an ipv6 address",
+    "answers": []
+  },
+  {
+    "id": "cc42",
+    "kind": "coding",
+    "folder": "~/src/harbor-gateway",
+    "prompt": "go: read a yaml file and unmarshal it into a map",
+    "answers": []
+  },
+  {
+    "id": "cc43",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "postgres: show running queries and kill one",
+    "answers": []
+  },
+  {
+    "id": "cc44",
+    "kind": "coding",
+    "folder": "~/work/quartz-cache",
+    "prompt": "consistent hashing implementation in go, simple version",
+    "answers": []
+  },
+  {
+    "id": "cc45",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "k8s: why is my pod stuck in CrashLoopBackOff",
+    "answers": []
+  },
+  {
+    "id": "cc46",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "need a middleware that logs request duration",
+    "answers": []
+  },
+  {
+    "id": "cc47",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "bash script to rotate log files older than 7 days",
+    "answers": []
+  },
+  {
+    "id": "cc48",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "how to flush the dns cache on macos",
+    "answers": []
+  },
+  {
+    "id": "cc49",
+    "kind": "coding",
+    "folder": "~/scratch",
+    "prompt": "quick script that pings a list of hosts and prints which are down",
+    "answers": []
+  },
+  {
+    "id": "cc50",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "restart a docker container automatically when it crashes",
+    "answers": []
+  },
+  {
+    "id": "ca01",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "gateway health check port?",
+    "answers": [
+      "Projects/harbor-gateway/Gateway ports.md"
+    ]
+  },
+  {
+    "id": "ca02",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "rate limit per key",
+    "answers": [
+      "Projects/lantern-api/Rate limits.md"
+    ]
+  },
+  {
+    "id": "ca03",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "lantern api key header name",
+    "answers": [
+      "Projects/lantern-api/Authentication.md"
+    ]
+  },
+  {
+    "id": "ca04",
+    "kind": "answers",
+    "folder": "~/code/tide-ledger",
+    "prompt": "restore steps for the ledger db",
+    "answers": [
+      "Projects/tide-ledger/Ledger backups.md"
+    ]
+  },
+  {
+    "id": "ca05",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "quartz read timeout and retries",
+    "answers": [
+      "Projects/quartz-cache/Client settings.md"
+    ]
+  },
+  {
+    "id": "ca06",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "cdn purge command",
+    "answers": [
+      "Projects/lantern-web/Deploying lantern-web.md"
+    ]
+  },
+  {
+    "id": "ca07",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "who owns harbor-gateway",
+    "answers": [
+      "People/Owners.md"
+    ]
+  },
+  {
+    "id": "ca08",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "platform on-call handover time",
+    "answers": [
+      "People/On-call.md"
+    ]
+  },
+  {
+    "id": "ca09",
+    "kind": "answers",
+    "folder": "~/work/quartz-cache",
+    "prompt": "how many nodes per zone",
+    "answers": [
+      "Projects/quartz-cache/Cluster layout.md"
+    ]
+  },
+  {
+    "id": "ca10",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "lantern-api release day",
+    "answers": [
+      "Projects/lantern-api/Release checklist.md"
+    ]
+  },
+  {
+    "id": "ca11",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "node version for the dev server",
+    "answers": [
+      "Projects/lantern-web/Running lantern-web locally.md"
+    ]
+  },
+  {
+    "id": "ca12",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "ci agent out of disk space, what now",
+    "answers": [
+      "Runbooks/Disk full on a build agent.md"
+    ]
+  },
+  {
+    "id": "ca13",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "cert renewal command",
+    "answers": [
+      "Runbooks/Rotating TLS certificates.md"
+    ]
+  },
+  {
+    "id": "ca14",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "grpc port",
+    "answers": [
+      "Projects/lantern-api/Lantern ports.md"
+    ]
+  },
+  {
+    "id": "ca15",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "how long do quartz keys live",
+    "answers": [
+      "Decisions/2026-06 Quartz eviction policy.md"
+    ]
+  },
+  {
+    "id": "ca16",
+    "kind": "answers",
+    "folder": "~/code/tide-ledger",
+    "prompt": "can i deploy during month end close",
+    "answers": [
+      "Projects/tide-ledger/Month-end close.md"
+    ]
+  },
+  {
+    "id": "ca17",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "rollback a bad lantern-api release",
+    "answers": [
+      "Runbooks/Rolling back a lantern-api release.md"
+    ]
+  },
+  {
+    "id": "ca18",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "max upload size",
+    "answers": [
+      "Projects/lantern-api/Rate limits.md"
+    ]
+  },
+  {
+    "id": "ca19",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "safari versions we support",
+    "answers": [
+      "Projects/lantern-web/Browser support.md"
+    ]
+  },
+  {
+    "id": "ca20",
+    "kind": "answers",
+    "folder": "~/src/harbor-gateway",
+    "prompt": "where are routes defined",
+    "answers": [
+      "Projects/harbor-gateway/Routing rules.md"
+    ]
+  },
+  {
+    "id": "ca21",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "quartz flush command for one namespace",
+    "answers": [
+      "Runbooks/Flushing the quartz cache.md"
+    ]
+  },
+  {
+    "id": "ca22",
+    "kind": "answers",
+    "folder": "~/work/quartz-cache",
+    "prompt": "restart a node safely",
+    "answers": [
+      "Runbooks/Restarting a quartz-cache node.md"
+    ]
+  },
+  {
+    "id": "ca23",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "what's a bastion",
+    "answers": [
+      "People/Glossary.md"
+    ]
+  },
+  {
+    "id": "ca24",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "how do i run the tests locally",
+    "answers": [
+      "Projects/lantern-api/Local development.md"
+    ]
+  },
+  {
+    "id": "dd01",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "we decided to raise the default rate limit to 150 requests a second per key, record that in the notes",
+    "answers": [
+      "Projects/lantern-api/Rate limits.md"
+    ]
+  },
+  {
+    "id": "dd02",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "we decided lantern-api releases can go out on thursdays too, put that in the notes",
+    "answers": [
+      "Projects/lantern-api/Release checklist.md"
+    ]
+  },
+  {
+    "id": "dd03",
+    "kind": "answers",
+    "folder": "~/work/quartz-cache",
+    "prompt": "decision: quartz keys now expire after 10 minutes instead of 15. save it to the vault",
+    "answers": [
+      "Decisions/2026-06 Quartz eviction policy.md"
+    ]
+  },
+  {
+    "id": "dd04",
+    "kind": "answers",
+    "folder": "~/src/harbor-gateway",
+    "prompt": "we agreed to move the gateway health check from 8080 to 8081, please note it down",
+    "answers": [
+      "Projects/harbor-gateway/Gateway ports.md"
+    ]
+  },
+  {
+    "id": "dd05",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "lesson learned: never flush the prices namespace during business hours, it took the databases down. add it to the runbook notes",
+    "answers": [
+      "Runbooks/Flushing the quartz cache.md"
+    ]
+  },
+  {
+    "id": "dd06",
+    "kind": "answers",
+    "folder": "~/code/tide-ledger",
+    "prompt": "we decided the nightly ledger backup moves to 03:00 utc, record that",
+    "answers": [
+      "Projects/tide-ledger/Ledger backups.md"
+    ]
+  },
+  {
+    "id": "dd07",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "we've decided lantern-web flags get removed after 14 days on everywhere instead of 30. write that down in the canon",
+    "answers": [
+      "Projects/lantern-web/Feature flags.md"
+    ]
+  },
+  {
+    "id": "dd08",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "we settled on keeping v1 alive for 12 months after v2 ships, not 6. please record the decision",
+    "answers": [
+      "Decisions/2026-04 Lantern API versioning.md"
+    ]
+  },
+  {
+    "id": "dv01",
+    "kind": "vault",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "we decided to use zod for request validation going forward, put that in the notes",
+    "answers": []
+  },
+  {
+    "id": "dv02",
+    "kind": "vault",
+    "folder": "",
+    "prompt": "we decided to switch the team from npm to pnpm, record it in the vault",
+    "answers": []
+  },
+  {
+    "id": "dv03",
+    "kind": "vault",
+    "folder": "~/src/harbor-gateway",
+    "prompt": "decision: all new gateway code uses structured logging with slog. save that as a note",
+    "answers": []
+  },
+  {
+    "id": "dv04",
+    "kind": "vault",
+    "folder": "~/code/tide-ledger",
+    "prompt": "we agreed invoices are rounded half-even to the cent, record the decision",
+    "answers": []
+  },
+  {
+    "id": "dv05",
+    "kind": "vault",
+    "folder": "",
+    "prompt": "lesson learned: always pin docker base images by digest. add that to the notes",
+    "answers": []
+  },
+  {
+    "id": "dv06",
+    "kind": "vault",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "we decided to drop storybook, nobody used it. note it down",
+    "answers": []
+  },
+  {
+    "id": "dv07",
+    "kind": "vault",
+    "folder": "",
+    "prompt": "we decided code review needs two approvals for anything touching payments, put that in the notes",
+    "answers": []
+  },
+  {
+    "id": "dv08",
+    "kind": "vault",
+    "folder": "~/work/quartz-cache",
+    "prompt": "we chose prometheus histograms over summaries for latency metrics, record that decision",
+    "answers": []
+  },
+  {
+    "id": "ds01",
+    "kind": "answers",
+    "folder": "~/Projects/quartz-cache",
+    "prompt": "We just agreed in standup: quartz-cache client reads now time out after 80 ms instead of 50 ms. Save that as a draft decision note with the canon_capture tool, kind decision, with a short title. Do not edit any files yourself.",
+    "answers": [
+      "Projects/quartz-cache/Client settings.md"
+    ]
+  },
+  {
+    "id": "ds02",
+    "kind": "answers",
+    "folder": "~/src/harbor-gateway",
+    "prompt": "Use the capture tool to file this as a decision draft: we agreed the gateway's health check moves from 8080 to 8081 next week.",
+    "answers": [
+      "Projects/harbor-gateway/Gateway ports.md"
+    ]
+  },
+  {
+    "id": "ds03",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "decision: lantern-api releases may also go out on thursdays, still before 15:00 pacific. please capture this as a draft note, kind decision, and don't touch any files",
+    "answers": [
+      "Projects/lantern-api/Release checklist.md"
+    ]
+  },
+  {
+    "id": "ds04",
+    "kind": "answers",
+    "folder": "~/code/tide-ledger",
+    "prompt": "Record this as a decision draft (canon_capture): we decided the nightly ledger backup runs at 03:00 UTC from now on, not 02:00.",
+    "answers": [
+      "Projects/tide-ledger/Ledger backups.md"
+    ]
+  },
+  {
+    "id": "ds05",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "fyi we agreed to raise the per-key limit to 150 requests a second, bursts stay at 200. save it with canon_capture as a decision draft, nothing else",
+    "answers": [
+      "Projects/lantern-api/Rate limits.md"
+    ]
+  },
+  {
+    "id": "ds06",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "We decided flags that have been on everywhere for 14 days get removed, instead of waiting 30. Capture that as a decision draft via the canon_capture tool; don't edit flags.ts or anything else.",
+    "answers": [
+      "Projects/lantern-web/Feature flags.md"
+    ]
+  },
+  {
+    "id": "ds07",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "Please use canon_capture to save a draft decision: we agreed the platform on-call now hands over on Fridays at 09:00 Pacific instead of Thursdays.",
+    "answers": [
+      "People/On-call.md"
+    ]
+  },
+  {
+    "id": "ds08",
+    "kind": "answers",
+    "folder": "~/src/lantern-api",
+    "prompt": "Team decided old API versions keep working for 12 months after the next one ships, not 6. Draft a decision note for it with the capture tool (kind decision). No code changes.",
+    "answers": [
+      "Decisions/2026-04 Lantern API versioning.md"
+    ]
+  },
+  {
+    "id": "ds09",
+    "kind": "vault",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "We agreed every new endpoint gets an OpenAPI example before review. Save that as a draft decision note with canon_capture, and do not edit any files.",
+    "answers": []
+  },
+  {
+    "id": "ds10",
+    "kind": "vault",
+    "folder": "",
+    "prompt": "decision: design reviews move to tuesday afternoons. capture it as a decision draft with the canon_capture tool please",
+    "answers": []
+  },
+  {
+    "id": "ds11",
+    "kind": "vault",
+    "folder": "~/code/tide-ledger",
+    "prompt": "Record this as a decision draft (canon_capture): we decided invoices are shown in the customer's own currency, converted at the day's ECB rate.",
+    "answers": []
+  },
+  {
+    "id": "ds12",
+    "kind": "vault",
+    "folder": "~/src/harbor-gateway",
+    "prompt": "Use the capture tool to file a draft decision: we chose Go 1.24 for every service from next quarter. Don't touch the repo.",
+    "answers": []
+  }
+]

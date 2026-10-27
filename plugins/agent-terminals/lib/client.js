@@ -45,6 +45,10 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
     const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
     const win = typeof window === 'undefined' ? undefined : window;
     const doc = typeof document === 'undefined' ? undefined : document;
+    /** Choices made with the keyboard and not yet applied, by control id (see Choice). */
+    const pendingChoices = new Map();
+    /** Where and when the last press of a pointer was while a choice waited, so a blur toward an empty spot can be told from a redraw. */
+    const lastPointerDown = { at: 0, target: null };
 
     const css = [
         `:is(.${P}-page,.${P}-pane,.${P}-pop){--${P}-glass:rgba(14,18,17,var(--wp-tint,.55));--${P}-conv:rgba(10,13,12,calc(var(--wp-tint,.55) + .2));--${P}-fill:rgba(255,255,255,.04);--${P}-text-2:color-mix(in srgb,var(--dsw-alias-label-secondary) 80%,var(--dsw-alias-label-primary));--${P}-glyph:color-mix(in srgb,var(--dsw-alias-label-tertiary) 75%,var(--dsw-alias-label-primary));--${P}-error:color-mix(in srgb,var(--dsw-alias-state-error-primary) 85%,var(--dsw-alias-label-primary));--${P}-link:color-mix(in srgb,var(--dsw-alias-link,var(--dsw-alias-state-business-primary)) 85%,var(--dsw-alias-label-primary));--${P}-ok:color-mix(in srgb,var(--dsw-alias-state-success-primary) 60%,var(--dsw-alias-label-primary));--${P}-warn:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 40%,var(--dsw-alias-label-primary));--${P}-ring:var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}`,
@@ -99,7 +103,10 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         `.${P}-set-hint{margin-top:2px;font:var(--dsw-font-xs-13);color:var(--dsw-alias-label-secondary)}`,
         `.${P}-set-control{flex:0 0 auto;display:flex;align-items:center;gap:10px}`,
         `.${P}-choice{display:inline-flex}.${P}-seg-none>[aria-hidden="true"]{visibility:hidden}`,
-        `.${P}-set-reset{padding:0;border:0;background:none;font:var(--dsw-font-xs-13);color:var(--dsw-alias-link,var(--dsw-alias-state-business-primary));text-decoration:underline;text-underline-offset:2px;cursor:pointer}`,
+        // "Changed" and "Use the default" as DSH's own field draws them beside a typed value: one look for every row.
+        `.${P}-set-badges{display:inline-flex;align-items:center;gap:8px}`,
+        `.${P}-set-reset{padding:0;border:0;background:none;font:inherit;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary);cursor:pointer}`,
+        `.${P}-set-reset:hover:not(:disabled){color:var(--dsw-alias-label-primary)}.${P}-set-reset:disabled{cursor:default}`,
         `.${P}-set-reset:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:1px;border-radius:var(--dsw-radius-xs)}`,
         `.${P}-set-note{margin:10px 0 0;font:var(--dsw-font-xs-13);color:var(--dsw-alias-label-secondary);max-width:72ch}`,
         `.${P}-set-group{margin:14px 0 2px;font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-secondary)}`,
@@ -111,8 +118,17 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         `:is(.${P}-page,.${P}-pane,.${P}-pop) .${P}-tag[data-tone="danger"]{color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 75%,var(--dsw-alias-label-primary))}`,
         `:is(.${P}-page,.${P}-pane,.${P}-pop) .${P}-tag[data-tone="success"]{color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 50%,var(--dsw-alias-label-primary))}`,
         `:is(.${P}-page,.${P}-pane,.${P}-pop) .${P}-tag[data-tone="info"]{color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 65%,var(--dsw-alias-label-primary))}`,
+        // DSH tints a tag's ground with its tone over nothing (see-through), so over a picture at a low tint its words
+        // lose contrast. On the suite's pages the same tint lies over the card's own colour instead: a solid chip.
+        `:is(.${P}-page,.${P}-pane,.${P}-pop){--${P}-chip:rgb(14,18,17)}body:not([data-ds-dark-theme]) :is(.${P}-page,.${P}-pane,.${P}-pop){--${P}-chip:rgb(250,250,246)}`,
+        `:is(.${P}-page,.${P}-pane,.${P}-pop) .${P}-tag[data-tone="warning"]{background-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 12%,var(--${P}-chip))}`,
+        `:is(.${P}-page,.${P}-pane,.${P}-pop) .${P}-tag[data-tone="danger"]{background-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,var(--${P}-chip))}`,
+        `:is(.${P}-page,.${P}-pane,.${P}-pop) .${P}-tag[data-tone="success"]{background-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 10%,var(--${P}-chip))}`,
+        `:is(.${P}-page,.${P}-pane,.${P}-pop) .${P}-tag[data-tone="info"]{background-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 10%,var(--${P}-chip))}`,
         // Quiet and neutral words ("idle", "stopped") would be drawn in DSH's glyph colour, which is for glyphs, not small text.
         `:is(.${P}-page,.${P}-pane,.${P}-pop) .${P}-tag:is([data-tone="quiet"],[data-tone="neutral"]){color:var(--${P}-text-2)}`,
+        // The settings form sits on DSH's Plugins page, outside the page's colours: the same secondary text, said here.
+        `.${P}-settings .${P}-tag:is([data-tone="quiet"],[data-tone="neutral"]){color:color-mix(in srgb,var(--dsw-alias-label-secondary) 80%,var(--dsw-alias-label-primary))}`,
         `.${P}-choice{display:inline-flex;flex-direction:column;align-items:inherit;gap:4px;min-width:0}`,
         `.${P}-choice-hint{font:var(--dsw-font-xxs-12);color:var(--${P}-text-2)}`,
         `.${P}-choice[aria-busy="true"]{cursor:progress}`,
@@ -255,9 +271,31 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
     // ── One open request per window, for every suite plugin ───────────
     const HUB_KEY = 'dsh-plugin-session-watch/hub/v1';
     const HUB_NS = 'dsh-plugin-session-watch';
+    /** How often a window looks at DSH's plugin list while Session Watch is not running. */
+    const HUB_DOWN_MS = 4000;
+
+    /**
+     * Whether Session Watch runs, from DSH's own list of plugins (what its
+     * Plugins page reads): 'on'; 'off' (switched off, starting, stopping,
+     * failed, or not installed); or 'unknown' when this DSH gives no list.
+     * Asking the list rather than Session Watch's own endpoint keeps the
+     * window's console free of failed requests while it is off.
+     */
+    async function watchRuns(c) {
+        let result;
+        try {
+            result = await c.rpc.call('/api', 'pluginManager/listPlugins', { args: {} });
+        } catch {
+            return 'unknown';
+        }
+        if (!isRecord(result) || result.ok !== true || !Array.isArray(result.value)) return 'unknown';
+        const rows = result.value.filter((row) => isRecord(row) && row.moduleName === HUB_NS);
+        if (rows.length === 0) return 'off';
+        return rows.some((row) => row.enabled !== false && row.fiberPhase === 'active') ? 'on' : 'off';
+    }
 
     function createHub() {
-        const state = { providers: new Set(), subs: new Set(), since: undefined, running: false, failures: 0 };
+        const state = { providers: new Set(), subs: new Set(), since: undefined, running: false, failures: 0, down: false, watch: 'unknown' };
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const hidden = () => Boolean(doc && doc.visibilityState === 'hidden');
         const visible = () => new Promise((resolve) => {
@@ -301,6 +339,18 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                         await sleep(1000);
                         continue;
                     }
+                    if (state.down) {
+                        // Session Watch did not answer: DSH's plugin list says whether it runs, so the window never
+                        // asks an endpoint that is not there. While it is off, nothing else is asked.
+                        state.watch = await watchRuns(c);
+                        if (state.watch === 'off') {
+                            state.failures = 0;
+                            await sleep(HUB_DOWN_MS);
+                            continue;
+                        }
+                        // It runs but did not answer, or this DSH has no list: ask again after a few seconds (at most 10).
+                        if (state.failures > 0) await sleep(Math.min(10000, 2000 * 2 ** Math.min(state.failures, 3)));
+                    }
                     let result;
                     try {
                         result = await c.rpc.call('/api', `${HUB_NS}/wait`, { args: { since: state.since, timeoutMs: 25000 } });
@@ -310,9 +360,13 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                     if (isRecord(result) && result.ok === true && isRecord(result.value)) {
                         const next = result.value;
                         const prev = state.since;
+                        const wasDown = state.down;
                         state.since = next;
                         state.failures = 0;
-                        if (!prev || prev.epoch !== next.epoch) notify('all');
+                        state.down = false;
+                        state.watch = 'on';
+                        // Back after a stop (or the first answer): every page reads again.
+                        if (!prev || prev.epoch !== next.epoch || wasDown) notify('all');
                         else {
                             const changed = new Set();
                             const was = prev.versions ?? {};
@@ -321,11 +375,13 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                         }
                         continue;
                     }
-                    // The watcher is not running (or failed): read again every few seconds (at most 10), so a page that
-                    // says so comes back soon after it runs again.
+                    // The watcher stopped (or did not answer): pages read once, so each can say what it needs (a page
+                    // that opened before any answer has read already); then the loop above waits for it to run.
                     state.failures += 1;
-                    notify('all');
-                    await sleep(Math.min(10000, 2000 * 2 ** Math.min(state.failures, 3)));
+                    if (!state.down) {
+                        state.down = true;
+                        if (state.since) notify('all');
+                    }
                 }
             } finally {
                 state.running = false;
@@ -345,6 +401,8 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                 return () => state.subs.delete(sub);
             },
             get since() { return state.since; },
+            /** What the hub last knew of Session Watch: 'on', 'off' (DSH's plugin list says it is not running) or 'unknown'. */
+            get watch() { return state.down ? state.watch : state.since ? 'on' : state.watch; },
         };
     }
 
@@ -362,7 +420,9 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
     /**
      * Data from `read`, read again whenever the hub moves on one of `channels`
      * (gathered over `delayMs`). A failed read keeps the last good data and
-     * says so in `error`.
+     * says so in `error`. On a slow host reads can finish out of order: a read
+     * that finishes after a newer one has landed is old news and is dropped,
+     * so the page never goes back to what was true before.
      */
     function useLive(read, channels, { delayMs = 250 } = {}) {
         const [state, setState] = React.useState({ data: undefined, error: undefined, code: undefined, loading: true });
@@ -370,12 +430,20 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         readRef.current = read;
         const timer = React.useRef(undefined);
         const alive = React.useRef(true);
+        const asked = React.useRef(0);
+        const landed = React.useRef(0);
         const refresh = React.useCallback(async () => {
+            const n = ++asked.current;
+            const fresh = () => {
+                if (!alive.current || n < landed.current) return false;
+                landed.current = n;
+                return true;
+            };
             try {
                 const data = await readRef.current();
-                if (alive.current) setState({ data, error: undefined, code: undefined, loading: false });
+                if (fresh()) setState({ data, error: undefined, code: undefined, loading: false });
             } catch (error) {
-                if (alive.current) setState((s) => ({ data: s.data, error: String(error?.message ?? error), code: typeof error?.code === 'string' ? error.code : undefined, loading: false }));
+                if (fresh()) setState((s) => ({ data: s.data, error: String(error?.message ?? error), code: typeof error?.code === 'string' ? error.code : undefined, loading: false }));
             }
         }, []);
         const key = channels.join(',');
@@ -547,39 +615,70 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
      * A choice between a few values that commits only when the person means
      * it: a click commits at once; with the keyboard, the arrow keys move
      * between the values and Enter or Space commits the one in focus (Escape,
-     * or leaving the control, goes back to the saved one). It is never
-     * disabled while a change is on its way, so focus stays where it was; a
-     * choice made meanwhile is applied next. `onChoose(value)` may return a
-     * promise of false when the change did not go through: the control then
-     * shows the saved value again.
+     * or leaving the control for another place, goes back to the saved one).
+     * It is never disabled while a change is on its way, so focus stays where
+     * it was; a choice made meanwhile is applied next. `onChoose(value)` may
+     * return a promise of false when the change did not go through: the
+     * control then shows the saved value again.
+     *
+     * A choice not yet applied outlives a redraw of its list (the row moved,
+     * or was drawn anew): it is kept by the control's id, and the focus comes
+     * back to it, so the next Enter still applies it.
      */
     function Choice({ id, label, value, options, busy = false, onChoose, className = '' }) {
-        const [shown, setShown] = React.useState(value);
+        const kept = pendingChoices.get(id);
+        // A kept choice counts only while the saved value is the one it was made against.
+        if (kept && kept.from !== value) pendingChoices.delete(id);
+        const [shown, setShownState] = React.useState(kept && kept.from === value ? kept.value : value);
         const sent = React.useRef(undefined);
         const queued = React.useRef(undefined);
         const valueRef = React.useRef(value);
+        const box = React.useRef(null);
+        const mounted = React.useRef(false);
         valueRef.current = value;
+        /** Show a value; one that is not the saved one is kept by id until it is applied or dropped. */
+        const setShown = (next, focused) => {
+            setShownState(next);
+            if (next === valueRef.current) pendingChoices.delete(id);
+            else pendingChoices.set(id, { value: next, from: valueRef.current, focused: focused ?? pendingChoices.get(id)?.focused ?? true });
+        };
         React.useEffect(() => {
+            // The first run is the mount: a kept choice stays. Later, a new saved value replaces what is shown.
+            if (!mounted.current) {
+                mounted.current = true;
+                return;
+            }
             setShown(value);
             sent.current = undefined;
         }, [value]);
+        // Drawn anew, or moved, with its choice kept and the focus lost to the page: the focus comes back.
+        React.useEffect(() => {
+            const entry = pendingChoices.get(id);
+            if (!entry?.focused || entry.value !== shown || shown === value || !doc || !box.current) return;
+            const active = doc.activeElement;
+            if (active && active !== doc.body && active !== doc.documentElement) return;
+            const tab = box.current.querySelector?.('[role="tab"][aria-selected="true"]') ?? box.current.querySelector?.('[role="tab"]');
+            tab?.focus?.({ preventScroll: true });
+        });
         const commit = (next) => {
             if (!options.some((o) => o.value === next && o.disabled !== true)) return;
             if (busy) {
                 queued.current = next;
-                setShown(next);
+                setShownState(next);
+                pendingChoices.delete(id);
                 return;
             }
+            pendingChoices.delete(id);
             if (next === valueRef.current || next === sent.current) return;
             sent.current = next;
-            setShown(next);
+            setShownState(next);
             void Promise.resolve(onChoose(next)).then((ok) => {
                 if (ok !== false || sent.current !== next) return;
                 sent.current = undefined;
-                setShown(valueRef.current);
+                setShownState(valueRef.current);
             }, () => {
                 sent.current = undefined;
-                setShown(valueRef.current);
+                setShownState(valueRef.current);
             });
         };
         React.useEffect(() => {
@@ -589,12 +688,31 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             commit(next);
         }, [busy]);
         const pending = shown !== value && shown !== sent.current && shown !== queued.current;
+        // While a choice waits, note where the pointer goes down (and nothing after it is applied or this control goes).
+        React.useEffect(() => {
+            if (!pending || !doc?.addEventListener) return undefined;
+            const note = (event) => {
+                lastPointerDown.at = Date.now();
+                lastPointerDown.target = event.target;
+            };
+            doc.addEventListener('pointerdown', note, true);
+            return () => {
+                doc.removeEventListener('pointerdown', note, true);
+                lastPointerDown.at = 0;
+                lastPointerDown.target = null;
+            };
+        }, [pending]);
         const shownLabel = options.find((o) => o.value === shown)?.label ?? shown;
         const tabValue = (target) => {
             const tab = target?.closest?.('[role="tab"]');
             return tab && typeof tab.id === 'string' && tab.id.startsWith(`${id}-`) ? tab.id.slice(id.length + 1) : undefined;
         };
+        const drop = () => {
+            pendingChoices.delete(id);
+            setShownState(valueRef.current);
+        };
         return h('div', {
+            ref: box,
             className: `${P}-choice${className ? ` ${className}` : ''}`,
             'aria-busy': busy ? 'true' : undefined,
             'data-suite-choice': id,
@@ -610,14 +728,27 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                     commit(shown);
                 } else if (event.key === 'Escape' && pending) {
                     event.preventDefault();
-                    setShown(value);
+                    drop();
                 }
             },
+            onFocusCapture: () => {
+                const entry = pendingChoices.get(id);
+                if (entry) entry.focused = true;
+            },
             onBlurCapture: (event) => {
-                if (pending && !event.currentTarget.contains(event.relatedTarget)) setShown(value);
+                if (!pending) return;
+                const to = event.relatedTarget;
+                if (to && !event.currentTarget.contains(to)) {
+                    // The person went to another place on the page.
+                    drop();
+                    return;
+                }
+                // The focus went nowhere: a click on an empty spot drops the choice; a redraw that moved the row
+                // (no click) keeps it, and the focus comes back on the next draw.
+                if (!to && Date.now() - lastPointerDown.at < 600 && !event.currentTarget.contains(lastPointerDown.target)) drop();
             },
         },
-        h(ui.SegmentedControl, { id, label, value: shown, options, onChange: setShown }),
+        h(ui.SegmentedControl, { id, label, value: shown, options, onChange: (next) => setShown(next, true) }),
         h('span', { className: pending ? `${P}-choice-hint` : `${P}-sr`, role: 'status', 'aria-live': 'polite' }, pending ? `Press Enter to apply ${shownLabel}.` : ''));
     }
 
@@ -625,6 +756,17 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
 
     const WATCH_PACKAGE = 'dsh-plugin-session-watch';
     const watchLink = link(WATCH_PACKAGE, { name: 'Session Watch' });
+
+    /** Whether Session Watch runs: DSH's plugin list first (no request to an endpoint that is not there), else its status. */
+    async function watchRunning() {
+        const c = connections.current ?? await whenConnected();
+        if (c) {
+            const runs = await watchRuns(c);
+            if (runs !== 'unknown') return runs === 'on';
+        }
+        const result = await watchLink.call('status');
+        return result.ok || result.error?.code !== 'not-running';
+    }
 
     /**
      * What the page shows when its plugin cannot be read: not running (with
@@ -637,7 +779,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         React.useEffect(() => {
             if (code !== 'not-running' || !needsWatch) return undefined;
             let alive = true;
-            void watchLink.call('status').then((result) => { if (alive) setWatchUp(result.ok || result.error?.code !== 'not-running'); });
+            void watchRunning().then((up) => { if (alive) setWatchUp(up); }, () => {});
             return () => { alive = false; };
         }, [code, needsWatch, text]);
         const button = (label, target) => (typeof nav.current?.openBundle === 'function'
@@ -674,9 +816,11 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
     /**
      * A setting is wrong, so the plugin does no work: which setting, what it
      * must be, and where to change it (its settings in Plugins when the
-     * person can change it there, else DSH's profile).
+     * person can change it there, else DSH's profile). `profileApplies`: the
+     * plugin restarts with its new settings when DSH's profile is saved, so
+     * no restart of DSH is needed (else the line says to restart DSH).
      */
-    function SettingsProblem({ name, packageName, problem }) {
+    function SettingsProblem({ name, packageName, problem, profileApplies = false }) {
         const live = problem?.live === true;
         const its = whose(name);
         return h('div', { className: `${P}-trouble`, role: 'alert', 'data-suite-trouble': 'setting' },
@@ -684,7 +828,9 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             h('p', { className: `${P}-trouble-text` }, `${String(problem?.text ?? 'A setting is wrong').replace(/\.$/, '')}.`),
             h('p', { className: `${P}-trouble-text` }, live
                 ? `Change it in ${its} settings in Plugins. ${name} starts working again as soon as you save.`
-                : `Change it in ${its} entry in DSH's profile (cordis.patch.yml), then restart DSH.`),
+                : profileApplies
+                    ? `Change it in ${its} entry in DSH's profile (cordis.patch.yml). DSH applies the file when you save it.`
+                    : `Change it in ${its} entry in DSH's profile (cordis.patch.yml), then restart DSH.`),
             live && typeof nav.current?.openBundle === 'function'
                 ? h('div', { className: `${P}-actions` }, h(ui.Button, { variant: 'primary', size: 'sm', onClick: () => openPlugin(packageName, { focus: problem?.key }) }, `Open ${its} settings`)) : null);
     }
@@ -701,15 +847,18 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         const whole = (text) => (/^\d+$/.test(text) ? Number(text) : undefined);
         // A stored value of the wrong kind shows as it is, so the form can flag it rather than show it as empty.
         const raw = (v) => (v === undefined || v === null ? '' : typeof v === 'string' ? v : JSON.stringify(v));
+        // Where text is the wrong kind (a number, a list or a switch saved in quotes), it shows with its quotes: the
+        // form flags it as it opens, and the value typed without them counts as a change, so Save stores it.
+        const quoted = (v) => (typeof v === 'string' ? JSON.stringify(v) : raw(v));
         switch (f.kind) {
             case 'switch':
-                return { field: f.name, format: (v) => (v === true ? 'on' : v === false ? 'off' : raw(v)), parse: (t) => (t === 'on' ? { kind: 'set', value: true } : t === 'off' ? { kind: 'set', value: false } : t === '' ? clear : undefined) };
+                return { field: f.name, format: (v) => (v === true ? 'on' : v === false ? 'off' : quoted(v)), parse: (t) => (t === 'on' ? { kind: 'set', value: true } : t === 'off' ? { kind: 'set', value: false } : t === '' ? clear : undefined) };
             case 'choice':
                 return { field: f.name, format: raw, parse: (t) => (t === '' ? clear : f.options.some((o) => o.value === t) ? { kind: 'set', value: t } : undefined) };
             case 'number':
                 return {
                     field: f.name,
-                    format: (v) => (Number.isFinite(v) ? String(v) : raw(v)),
+                    format: (v) => (Number.isFinite(v) ? String(v) : quoted(v)),
                     parse: (t) => {
                         const text = String(t).trim();
                         if (text === '') return clear;
@@ -720,7 +869,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             case 'numbers':
                 return {
                     field: f.name,
-                    format: (v) => (Array.isArray(v) ? v.join(', ') : raw(v)),
+                    format: (v) => (Array.isArray(v) && v.every((n) => Number.isFinite(n)) ? v.join(', ') : Array.isArray(v) ? JSON.stringify(v) : quoted(v)),
                     parse: (t) => {
                         const text = String(t).trim();
                         if (text === '') return clear;
@@ -742,8 +891,15 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         }
     }
 
-    /** The words under a value that does not fit: what does. */
-    function invalidWords(f) {
+    /** Whether a setting's text is a value saved in quotes (text where a number or a list of numbers belongs). */
+    const inQuotes = (text) => typeof text === 'string' && text.length >= 2 && text.startsWith('"') && text.endsWith('"');
+
+    /** The words under a value that does not fit: what does (and, for one saved in quotes, that the quotes are what is wrong). */
+    function invalidWords(f, text) {
+        if (inQuotes(text) && (f.kind === 'number' || f.kind === 'numbers')) {
+            const what = f.kind === 'number' ? `a whole number from ${f.min} to ${f.max}` : `up to ${f.maxItems ?? 10} whole numbers from ${f.min} to ${f.max}, with commas between them`;
+            return `It is saved as text, in quotes. Type ${what}, without the quotes, then save.`;
+        }
         if (f.invalid) return f.invalid;
         if (f.kind === 'number') return `A whole number from ${f.min} to ${f.max}, or empty for the default (${f.default}).`;
         if (f.kind === 'numbers') return `Up to ${f.maxItems ?? 10} whole numbers from ${f.min} to ${f.max}, with commas between them, or empty for the default (${(f.default ?? []).join(', ')}).`;
@@ -786,7 +942,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         };
         return h('div', { className: `${P}-set-row`, 'data-suite-setting': f.name, 'data-suite-secret': info.configured ? (fromEnvironment ? 'env' : 'set') : 'unset' },
             h('div', { className: `${P}-set-text` },
-                h(ui.SettingsSecretField, { id: `${P}-set-${f.name}`, label: f.title, hint: fromEnvironment ? (f.envHint ?? f.hint) : f.hint, disabled: disabled || info.writable === false, text: draft, configured: info.configured === true, stateLabel, onEdit }),
+                h(ui.SettingsSecretField, { id: `${P}-set-${f.name}`, label: f.title, hint: fromEnvironment ? (f.envHint ?? f.hint) : info.configured ? (f.setHint ?? f.hint) : f.hint, disabled: disabled || info.writable === false, text: draft, configured: info.configured === true, stateLabel, onEdit }),
                 problem ? h('p', { className: `${P}-set-error`, role: 'alert' }, problem) : null,
                 info.configured && !fromEnvironment && info.writable !== false && keeper
                     ? h('button', { type: 'button', className: `${P}-set-reset`, disabled: disabled || removing, onClick: () => void remove() }, f.removeLabel ?? 'Remove it') : null));
@@ -840,14 +996,18 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
     function SettingRow({ f, state, disabled, actions }) {
         const id = `${P}-set-${f.name}`;
         const edit = (text) => actions.edit(f.name, text);
+        // As DSH's own field marks a typed value: "Changed", then "Use the default".
         const reset = state.overridden
-            ? h('button', { type: 'button', className: `${P}-set-reset`, disabled, onClick: () => actions.resetField(f.name), 'aria-label': `Use the default for ${f.title}` }, 'Use the default') : null;
+            ? h('span', { className: `${P}-set-badges` },
+                h(ui.Tag, { tone: 'neutral', className: `${P}-tag` }, 'Changed'),
+                h('button', { type: 'button', className: `${P}-set-reset`, disabled, onClick: () => actions.resetField(f.name), 'aria-label': `Use the default for ${f.title}` }, 'Use the default'))
+            : null;
         if (f.kind === 'switch' || f.kind === 'choice') {
             return h('div', { className: `${P}-set-row`, 'data-suite-setting': f.name, ...(state.invalid ? { 'data-suite-invalid': '' } : {}) },
                 h('div', { className: `${P}-set-text` },
                     h('div', { className: `${P}-set-title`, id: `${id}-label` }, f.title),
                     h('div', { className: `${P}-set-hint` }, f.hint),
-                    state.invalid ? h('p', { className: `${P}-set-error`, role: 'alert' }, invalidWords(f)) : null),
+                    state.invalid ? h('p', { className: `${P}-set-error`, role: 'alert' }, invalidWords(f, state.text)) : null),
                 h('div', { className: `${P}-set-control` }, reset,
                     f.kind === 'switch'
                         ? h(ui.Switch, { checked: state.text === 'on', label: f.title, disabled, onChange: (next) => edit(next ? 'on' : 'off') })
@@ -864,7 +1024,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                     invalid: state.invalid,
                     overriddenLabel: 'Changed',
                     resetLabel: 'Use the default',
-                    invalidLabel: invalidWords(f),
+                    invalidLabel: invalidWords(f, state.text),
                     disabled,
                     numeric: f.kind === 'number',
                     onEdit: edit,
@@ -934,8 +1094,11 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             }
             // DSH's form checks only what is typed; a saved value that does not fit (typed into the profile) is
             // flagged too, with what does fit.
-            const wrong = !state.invalid && state.text !== '' && fieldSpec(f).parse(state.text) === undefined;
-            rows.push(h(SettingRow, { key: f.name, f, state: wrong ? { ...state, invalid: true } : state, disabled, actions: form.actions }));
+            const parsed = state.invalid || state.text === '' ? undefined : fieldSpec(f).parse(state.text);
+            const wrong = !state.invalid && state.text !== '' && parsed === undefined;
+            // A value saved in the profile that equals its default is not a change: no "Changed", nothing to reset.
+            const atDefault = state.overridden && parsed?.kind === 'set' && f.default !== undefined && JSON.stringify(parsed.value) === JSON.stringify(f.default);
+            rows.push(h(SettingRow, { key: f.name, f, state: wrong ? { ...state, invalid: true } : atDefault ? { ...state, overridden: false } : state, disabled, actions: form.actions }));
         }
         return h('div', { className: `${P}-settings`, 'data-suite-settings': bundle, ref: root },
             h(ui.SettingsForm, { labels, state: snap, onSave: form.actions.save, onDiscard: form.actions.discard },
@@ -995,7 +1158,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
      * serves them, which is while the plugin runs. Each field:
      * `{ name, kind: 'switch'|'choice'|'number'|'numbers'|'text'|'secret', title, hint, default, min?, max?, options?, group? }`;
      * a secret also takes `keyFrom`, `defaultKey`, `check(text)`, its
-     * labels (`setLabel`, `envLabel`, `unsetLabel`, `envHint`, `removeLabel`)
+     * labels (`setLabel`, `envLabel`, `unsetLabel`, `envHint`, `setHint`, `removeLabel`)
      * and, to log it, `stored(change)` ('set' or 'removed', never the value),
      * and needs DSH's `remote.credentials`.
      * Does nothing on a DSH without settings forms.
@@ -1053,7 +1216,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             entry: 'Coding agents',
             title: 'Coding agents',
             summary: 'Command-line coding agents, each in a terminal tab beside its own DSH session. They start again after DSH restarts, your messages are typed in and proven read, and what each one is doing shows here, on its session\'s row and in Decisions.',
-            disabled: 'Agent Terminals is switched off in DSH\'s profile (enabled: false in its entry in cordis.patch.yml), so it starts, reads and types nothing. To use it, set enabled to true there and restart DSH. To remove it instead, switch it off in Plugins.',
+            disabled: 'Agent Terminals is switched off in DSH\'s profile (enabled: false in its entry in cordis.patch.yml), so it starts, reads and types nothing. To use it, set enabled to true there; DSH applies it when you save the file. To remove it instead, switch it off in Plugins.',
             noTerminals: 'DSH\'s terminals are not running, so no agent can start or be reached. Restart DSH: agents that were running start again by themselves.',
             agents: 'Agents',
             none: 'No coding agents yet',
@@ -1132,7 +1295,9 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             `.${P}-textarea::placeholder,.${P}-input::placeholder{color:var(--${P}-text-2)}`,
             `.${P}-hint{font:var(--dsw-font-xs-13);color:var(--${P}-text-2)}`,
             `.${P}-details{margin-top:8px}`,
-            `.${P}-details>summary{cursor:pointer;font:var(--dsw-font-xs-13);color:var(--${P}-link);width:max-content;max-width:100%;border-radius:var(--dsw-radius-xs)}`,
+            // A disclosure in small type: the page's secondary text colour, which keeps 4.5:1 on Wallpaper's reading glass
+            // where the link colour does not (about 3.2:1 at a low tint over a mid picture in light).
+            `.${P}-details>summary{cursor:pointer;font:var(--dsw-font-xs-13);color:var(--${P}-text-2);width:max-content;max-width:100%;border-radius:var(--dsw-radius-xs)}`,
             `.${P}-details>summary:focus-visible{outline:2px solid var(--${P}-ring);outline-offset:1px}`,
             `.${P}-msgs{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}`,
             `.${P}-msg{display:flex;align-items:flex-start;gap:8px;min-width:0}`,
@@ -1197,7 +1362,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         const preset = makeStore(undefined);
         /** An agent to bring into view on the page: `{ key, n }`. */
         const spotlight = makeStore(undefined);
-        /** An agent's terminal tab to show once its session is on screen: `{ sessionId, terminalId, at }`. */
+        /** An agent's terminal tab to show once its session is on screen: `{ key, sessionId, terminalId, at }`. */
         const reveal = makeStore(undefined);
 
         const agentOfSession = (sessionId) => marks.get().agents.find((agent) => agent.sessionId === sessionId);
@@ -1314,11 +1479,14 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                 const want = reveal.get();
                 if (want && now - want.at > 10000) reveal.set(undefined);
                 const m = marks.get();
-                if (m.off) return;
+                // While nobody follows the agents (switched off, a wrong setting), no tab opens by itself; Open its terminal still brings the agent's.
+                if (m.off && !want) return;
                 let sessionId;
                 try { sessionId = sidebar.mounted?.getSnapshot?.(); } catch { sessionId = undefined; }
                 if (typeof sessionId !== 'string') return;
-                const agent = agentOfSession(sessionId);
+                const agent = m.off
+                    ? (want?.sessionId === sessionId ? { key: want.key, sessionId, terminalId: want.terminalId, running: true } : undefined)
+                    : agentOfSession(sessionId);
                 if (!agent) return;
                 const asked = want?.sessionId === sessionId && want.terminalId === agent.terminalId;
                 const tabs = terminalTabs(sessionId).map((tab) => ({ tab, id: boundTerminal(sidebar, sessionId, tab) }));
@@ -1368,7 +1536,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             try { offs.push(sidebar.openTabs?.subscribe?.(soon)); } catch { /* an older DSH */ }
             // A terminal DSH lists later than its tab looked, or a session whose surface was not ready: looked at again.
             const every = setInterval(() => {
-                if (doc?.visibilityState !== 'hidden' && marks.get().agents.length) soon();
+                if (doc?.visibilityState !== 'hidden' && (marks.get().agents.length || reveal.get())) soon();
             }, 2000);
             soon();
             return () => {
@@ -1403,7 +1571,8 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         const folderName = (folder) => String(folder ?? '').replace(/\/+$/, '').split('/').pop() || String(folder ?? '');
 
         /** How a stopped agent comes back, in words. */
-        const againText = (agent) => (agent.canResume ? 'Start again resumes its conversation.' : 'Start again runs it anew: this program cannot resume a conversation.');
+        const againText = (agent) => (typeof agent.again === 'string' && agent.again ? agent.again
+            : agent.canResume ? 'Start again resumes its conversation.' : 'Start again runs it anew: this program cannot resume a conversation.');
 
         /**
          * The line under the list, kept true: a message you sent says where
@@ -1431,15 +1600,16 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         }
 
         /** What an action did, in a line (shown where the person is looking, and read out). */
-        function saidText(method, agent, value) {
+        function saidText(method, agent, value, args) {
             const name = agent?.name ? `“${agent.name}”` : 'The agent';
             switch (method) {
                 case 'send':
-                    if (value?.delivery?.state === 'waiting' && value.delivery.why) return `Queued for ${name}: ${String(value.delivery.why).replace(/\.$/, '')}.`;
-                    return agent?.keepsTranscript === false ? `Queued for ${name}. It is typed in when the agent is ready.` : `Queued for ${name}. It is typed in when the agent is ready, and marked delivered once its transcript shows it.`;
+                case 'resend':
+                    if (value?.delivery?.state === 'waiting' && value.delivery.why) return `Queued for ${name}${method === 'resend' ? ' again' : ''}: ${String(value.delivery.why).replace(/\.$/, '')}.`;
+                    return agent?.keepsTranscript === false ? `Queued for ${name}${method === 'resend' ? ' again' : ''}. It is typed in when the agent is ready.` : `Queued for ${name}${method === 'resend' ? ' again' : ''}. It is typed in when the agent is ready, and marked delivered once its transcript shows it.`;
                 case 'cancel': return 'Taken back before it was typed in.';
                 case 'stop': return `Stopped ${name}. ${againText(value?.agent ?? agent ?? {})}`;
-                case 'startAgain': return value?.problem ? '' : `Started ${name} again.`;
+                case 'startAgain': return value?.problem ? '' : args?.fresh ? `Started ${name} anew, with a new conversation.` : `Started ${name} again.`;
                 case 'forget': return `Forgot ${name}. Its session stays in DSH.`;
                 default: return '';
             }
@@ -1475,10 +1645,14 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                 h('path', { d: 'M9 12H13' }));
         }
 
-        /** DSH's state dot for an agent's state, where it has one. */
+        /**
+         * DSH's state dot for an agent's state, where it has one. A program
+         * that keeps no transcript is only "running": nobody knows whether it
+         * works, so it gets the steady terminal glyph, never the working spinner.
+         */
         function dotOf(agent) {
             if (agent.status === 'waiting on you') return 'warning';
-            if (agent.status === 'working' || agent.status === 'starting' || agent.status === 'running') return 'ongoing';
+            if (agent.status === 'working' || agent.status === 'starting') return 'ongoing';
             return undefined;
         }
 
@@ -1528,8 +1702,10 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             return null;
         }
 
-        function MessageRow({ item, busy, onCancel }) {
+        function MessageRow({ item, busy, onCancel, onResend }) {
             const word = deliveryWord(item);
+            // A message that did not go in, or was not proven: sent again as it was (its whole text, from the host).
+            const again = onResend && !item.resent && (item.state === 'failed' || item.state === 'not proven');
             return h('li', { className: `${P}-msg`, 'data-agent-terminals-message': item.state },
                 h('div', { className: `${P}-msg-main` },
                     h('div', { className: `${P}-msg-text` }, item.text),
@@ -1540,7 +1716,15 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                     item.why && item.state !== 'delivered' ? h('div', { className: `${P}-why` }, item.why) : null),
                 h('div', { className: `${P}-item-side` },
                     h(kit.StateTag, { word }),
-                    OPEN.has(item.state) ? h(ui.Button, { variant: 'ghost', size: 'sm', disabled: busy, onClick: () => void onCancel(item) }, 'Take back') : null));
+                    OPEN.has(item.state) ? h(ui.Button, { variant: 'ghost', size: 'sm', disabled: busy, onClick: () => void onCancel(item) }, 'Take back') : null,
+                    again ? h(ui.Button, {
+                        variant: 'ghost',
+                        size: 'sm',
+                        disabled: busy,
+                        'data-agent-terminals-resend': '',
+                        title: item.state === 'not proven' ? 'Look at its terminal first: the message may still be in its input box.' : undefined,
+                        onClick: () => void onResend(item),
+                    }, 'Send again') : null));
         }
 
         function SendBox({ agent, busy, send }) {
@@ -1702,7 +1886,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                 agent.lastReply?.text ? h(LastReply, { agent }) : null,
                 messages.length ? h('div', { className: `${P}-details` },
                     h('div', { className: `${P}-label` }, `Messages (${messages.length})`),
-                    h('ul', { className: `${P}-msgs` }, ...shown.map((item) => h(MessageRow, { key: item.id, item, busy, onCancel: (m) => doing('cancel', { id: m.id }) }))),
+                    h('ul', { className: `${P}-msgs` }, ...shown.map((item) => h(MessageRow, { key: item.id, item, busy, onCancel: (m) => doing('cancel', { id: m.id }), onResend: followed ? (m) => doing('resend', { id: m.id }) : undefined }))),
                     messages.length > shown.length ? h('div', { style: { marginTop: '6px' } }, h(ui.Button, { variant: 'ghost', size: 'sm', onClick: () => setAll(true) }, `Show all ${messages.length}`)) : null) : null,
                 followed ? h(SendBox, { agent, busy, send }) : null,
                 failure ? h('p', { className: `${P}-alert`, role: 'alert', tabIndex: -1, ref: alertRef, 'data-agent-terminals-error': '' }, /^Not /.test(failure) ? failure : `Not done: ${failure}`) : null,
@@ -1788,7 +1972,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                 onStarted(value?.agent, value?.problem);
             };
             const ids = { program: `${P}-program`, args: `${P}-args`, data: `${P}-data`, folder: `${P}-folder`, name: `${P}-name`, task: `${P}-task`, folders: `${P}-folders` };
-            return h(kit.Card, { title: TEXT.start, sub: TEXT.startSub, attrs: { 'data-agent-terminals-start': '' } },
+            return h(kit.Card, { title: TEXT.start, main: true, sub: TEXT.startSub, attrs: { 'data-agent-terminals-start': '' } },
                 h('form', { className: `${P}-form`, onSubmit: submit, noValidate: true },
                     found.length || recent.length ? h('div', { className: `${P}-field` },
                         found.length ? h('div', { className: `${P}-label`, id: `${P}-found` }, 'Found on this computer') : null,
@@ -1800,13 +1984,20 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                             onClick: () => pick(d),
                         }, h('span', { className: `${P}-code` }, d.program), h('span', { className: `${P}-chip-sub` }, [plural(d.conversations, 'conversation'), d.latest ? `last ${kit.agoText(d.latest)}` : '', d.path ? '' : 'not found where DSH looks for programs'].filter(Boolean).join(' · '))))) : null,
                         recent.length ? h('div', { className: `${P}-label`, id: `${P}-recent` }, 'Used here before') : null,
-                        recent.length ? h('div', { className: `${P}-chips`, role: 'group', 'aria-labelledby': `${P}-recent` }, ...recent.map((r, i) => h('button', {
-                            key: `r-${i}`,
-                            type: 'button',
-                            className: `${P}-chip`,
-                            'data-agent-terminals-recent': String(i),
-                            onClick: () => pick(r),
-                        }, h('span', { className: `${P}-code` }, [r.program, ...(r.args ?? [])].join(' ')), h('span', { className: `${P}-chip-sub` }, data.styles.find((s) => s.id === r.style)?.label ?? '')))) : null) : null,
+                        recent.length ? h('div', { className: `${P}-chips`, role: 'group', 'aria-labelledby': `${P}-recent` }, ...recent.map((r, i) => {
+                            // Paths as people read them (~/…), the whole of each on hover.
+                            const shown = kit.isRecord(r.shown) ? r.shown : {};
+                            const program = typeof shown.program === 'string' && shown.program ? shown.program : r.program;
+                            const folder = typeof shown.folder === 'string' && shown.folder ? shown.folder : typeof r.folder === 'string' ? r.folder : '';
+                            return h('button', {
+                                key: `r-${i}`,
+                                type: 'button',
+                                className: `${P}-chip`,
+                                'data-agent-terminals-recent': String(i),
+                                title: [[r.program, ...(r.args ?? [])].join(' '), typeof r.folder === 'string' && r.folder ? `conversations in ${r.folder}` : ''].filter(Boolean).join('\n'),
+                                onClick: () => pick(r),
+                            }, h('span', { className: `${P}-code` }, [program, ...(r.args ?? [])].join(' ')), h('span', { className: `${P}-chip-sub` }, [data.styles.find((s) => s.id === r.style)?.label ?? '', folder ? `conversations in ${folder}` : ''].filter(Boolean).join(' · ')));
+                        })) : null) : null,
                     h('div', { className: `${P}-row2` },
                         h('div', { className: `${P}-field` },
                             h('label', { className: `${P}-label`, htmlFor: ids.program }, 'Program'),
@@ -1874,7 +2065,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             const [all, setAll] = React.useState(false);
             const names = React.useMemo(() => new Map(data.agents.map((a) => [a.key, a.name])), [data.agents]);
             const shown = all ? data.history : data.history.slice(0, 30);
-            return h(kit.Card, { title: TEXT.history, sub: TEXT.historySub, attrs: { 'data-agent-terminals-history': '' } },
+            return h(kit.Card, { title: TEXT.history, main: true, sub: TEXT.historySub, attrs: { 'data-agent-terminals-history': '' } },
                 data.history.length === 0 ? h(kit.Empty, { title: TEXT.noHistory, text: TEXT.noHistoryText })
                     : [
                         h('ul', { key: 'l', className: `${P}-list` }, ...shown.map((entry) => h(HistoryRow, { key: entry.id, entry, names, onOpen }))),
@@ -1896,9 +2087,9 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                 const { problem, value } = await run(method, args);
                 setBusyKey(undefined);
                 if (!problem) {
-                    const text = method === 'startAgain' && value?.problem ? '' : saidText(method, agent, value);
+                    const text = method === 'startAgain' && value?.problem ? '' : saidText(method, agent, value, args);
                     // A message you sent: the line follows it (typed in, delivered, not proven).
-                    const follow = method === 'send' && value?.delivery?.id ? { delivery: value.delivery.id, key: agent?.key } : {};
+                    const follow = (method === 'send' || method === 'resend') && value?.delivery?.id ? { delivery: value.delivery.id, key: agent?.key } : {};
                     if (text) setSaid((was) => ({ text, n: was.n + 1, at: Date.now(), ...follow }));
                     if (method === 'startAgain' && value?.problem) return `It could not start: ${value.problem}`;
                 }
@@ -1921,14 +2112,15 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                         : data.problem
                             ? [
                                 h(kit.Card, { key: 'head', title: TEXT.title, headingLevel: 1, main: true, sub: TEXT.summary, attrs: { 'data-agent-terminals-header': 'problem' } },
-                                    h(kit.SettingsProblem, { name: 'Agent Terminals', packageName: BUNDLE, problem: data.problem })),
+                                    h(kit.SettingsProblem, { name: 'Agent Terminals', packageName: BUNDLE, problem: data.problem, profileApplies: true })),
                                 data.agents.length ? h(AgentsCard, { key: 'agents', data, act, busyKey, said, onOpen, openTerminal, onStart }) : null,
                                 h(HistoryCard, { key: 'history', data, onOpen }),
                             ]
                             : [
                                 h(HeaderCard, { key: 'head', data, onStart }),
                                 live.error ? h(kit.ErrorLine, { key: 'refresh', text: live.error, onRetry: live.refresh }) : null,
-                                data.enabled ? h(AgentsCard, { key: 'agents', data, act, busyKey, said, onOpen, openTerminal, onStart }) : null,
+                                // Switched off, its agents still show: one that runs in its terminal says so, not followed, with only Open its terminal.
+                                data.enabled || data.agents.length ? h(AgentsCard, { key: 'agents', data, act, busyKey, said, onOpen, openTerminal, onStart }) : null,
                                 data.enabled ? h(StartCard, { key: 'start', data, onStarted, formRef }) : null,
                                 h(HistoryCard, { key: 'history', data, onOpen }),
                             ]);
@@ -1962,10 +2154,10 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             const m = useStore(marks);
             const agent = m.off ? undefined : m.agents.find((a) => a.sessionId === sessionId);
             if (!agent) return null;
-            const dot = dotOf(agent) ?? 'idle';
+            const dot = dotOf(agent) ?? (agent.status === 'idle' ? 'idle' : undefined);
             return h('div', { className: `${P}-hover`, 'data-agent-terminals-hover': agent.status },
                 h('div', { className: `${P}-hover-head` },
-                    ui.StateDot ? h(ui.StateDot, { state: dot }) : null,
+                    dot && ui.StateDot ? h(ui.StateDot, { state: dot }) : h(TerminalGlyph, { size: 12, stopped: agent.status === 'stopped' }),
                     h('span', null, `Coding agent in its terminal: ${statusWord(agent)}`)),
                 agent.detail ? h('div', { className: `${P}-hover-line` }, String(agent.detail).length > 160 ? `${String(agent.detail).slice(0, 159)}…` : agent.detail) : null);
         }
@@ -2043,7 +2235,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                 /** Open the agent's session with its terminal tab in front (opened if it is not there). */
                 openTerminal(agent) {
                     if (!agent?.sessionId || !agent.terminalId) return;
-                    reveal.set({ sessionId: agent.sessionId, terminalId: agent.terminalId, at: Date.now() });
+                    reveal.set({ key: agent.key, sessionId: agent.sessionId, terminalId: agent.terminalId, at: Date.now() });
                     views.openSession(agent.sessionId);
                 },
                 startHere(sessionId, title) {

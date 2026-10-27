@@ -51,7 +51,7 @@ import {
 import {
     coordinatorPolicy, threadPolicy, rosterLines, briefMessage, coordinatorMessage, cardSummary,
     handbackMessage, idleMessage, approvalMessage, questionMessage, userMustFix, describeEnding, endingStateOf, continueMessage, HANDBACK_STATUSES, TAGS, STOPPED_BY_USER, NUDGE,
-    IDLE_NUDGE, outsideMessage, replyMessage, declinedResult, UNTITLED_CHAT,
+    IDLE_NUDGE, outsideMessage, replyMessage, declinedResult, UNTITLED_CHAT, againMessage,
 } from './prompts.js';
 import { META_MARK, MAX_THREADS, PROJECTION_KEY } from './projection.js';
 import { changeRecord, changeTotals, withChange, editsIn, editOf, editSummary, FILE_TOOLS, diffFiles, subagentsIn, placeIn, MAX_NET_CHARS, MAX_VIEW_CHARS } from './changes.js';
@@ -59,7 +59,8 @@ import { NetTexts, changedPath, canonicalPath, notKept, expectedAfter, NET_SWEEP
 import { sendOf, codeSendOf, described, withoutCredentials } from './sends.js';
 import { grantsIn, asksFor as asksToDo, doing } from './grants.js';
 import { deletesOf, codeDeletesOf, deletesWhat, isFree, madeDirsOf, identityOf, isSame, bornOf, CLOCK_SLACK_MS } from './deletes.js';
-import { SHELL_TOOLS, MUTATING_TOOLS, snapshotFolder, diffFolder, Mutations } from './shell.js';
+import { SHELL_TOOLS, MUTATING_TOOLS, BIRTH_TIMES, snapshotFolder, diffFolder, ownWrite, Mutations } from './shell.js';
+import { guardedToolsOf, textSettingProblem, trustedHostsOf } from './config.js';
 
 /** Order of the project section in the assembled system prompt (after first-party guidance). */
 const SECTION_ORDER = 9500;
@@ -122,9 +123,12 @@ const SEND_REASONS = {
 };
 /** Why a thread's command that deletes didn't run, by who tried it; `what` says what it deletes ("deletes build/ (rm)"). */
 const DELETE_REASONS = {
-    subagent: (what) => `Not run: the command ${what}. A subagent doesn't delete files its thread didn't create: say in your result what you would delete, and the thread you work for asks the user first.`,
-    never: (what) => `Not run: the command ${what}. A thread asks the user before each command that deletes files it didn't create, and this thread's permission never asks. Hand back with status needs_decision and say exactly what you would delete; the user can put this thread on Workspace Write so it can ask. Don't delete it another way.`,
+    subagent: (what, moved) => `Not run: the command ${what}. A subagent doesn't delete files its thread didn't create${moved ? ' or move them out of its folder' : ''}: say in your result what you would ${moved ? 'delete or move' : 'delete'}, and the thread you work for asks the user first.`,
+    never: (what, moved) => `Not run: the command ${what}. A thread asks the user before each command that ${deleteRule(moved)}, and this thread's permission never asks. Hand back with status needs_decision and say exactly what you would ${moved ? 'delete or move' : 'delete'}; the user can put this thread on Workspace Write so it can ask. Don't ${moved ? 'move or delete' : 'delete'} it another way.`,
 };
+
+/** What a thread asks before, said after "each command that": a move out of its folder is asked as a delete is. */
+const deleteRule = (moved) => `deletes files it didn't create${moved ? ' or moves them out of its folder' : ''}`;
 
 /**
  * What the thread says its call is for, for the prompt: its description and,
@@ -378,6 +382,19 @@ function rosterIds(threads) {
 }
 
 /** The handbacks among the messages a pause holds: which thread, with what status. */
+/** A path under the home folder as "~/…", as the owner would type it. */
+function homeWords(path) {
+    const home = homedir();
+    return path === home ? '~' : path.startsWith(`${home}${sep}`) ? `~${path.slice(home.length)}` : path;
+}
+
+/** An ISO time as the owner's clock reads it ("7:12 PM"), or "an unknown time". */
+function clockWords(iso) {
+    const at = new Date(iso);
+    if (Number.isNaN(at.getTime())) return 'an unknown time';
+    return at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
 function heldHandbacks(pending) {
     const out = [];
     for (const item of Array.isArray(pending) ? pending : []) {
@@ -487,6 +504,59 @@ function turnRange(events, current) {
     return { start, end: lastEnd + 1, reason: events[lastEnd].data?.reason ?? null, ended: true };
 }
 
+/** The plugin's messages a chat answers; an approval note is not one of them, as the prompt it was about closes with DSH. */
+const ANSWERED_TAGS = [TAGS.handback, TAGS.idle, TAGS.question, TAGS.reply];
+
+/**
+ * A chat's last turn when DSH closing cut it off (a quit or a crash: DSH
+ * closes it as interrupted at its next start, or has not closed it yet)
+ * while it was taking the plugin's messages, which it so never answered:
+ * the turn's key and each such message, with the session it came from.
+ * null when the last turn finished, or took none of them.
+ */
+function cutOffTurn(events) {
+    const lastIndex = (type, before) => {
+        for (let i = before - 1; i >= 0; i--) if (events[i]?.type === type) return i;
+        return -1;
+    };
+    const lastEnd = lastIndex('turn/end', events.length);
+    const lastStart = lastIndex('turn/start', events.length);
+    let start;
+    let end;
+    if (lastStart > lastEnd) {
+        start = lastStart;
+        end = events.length;
+    } else {
+        if (lastEnd < 0) return null;
+        const reason = events[lastEnd].data?.reason;
+        const cut = reason?.kind === 'interrupted' || (reason?.kind === 'aborted' && reason.reason?.kind === 'disposed');
+        if (!cut) return null;
+        start = Math.max(lastIndex('turn/start', lastEnd), lastIndex('turn/end', lastEnd) + 1);
+        end = lastEnd + 1;
+    }
+    const messageOf = (event) => {
+        const prompt = promptOf(event);
+        if (!prompt?.fromProject || !ANSWERED_TAGS.some((tag) => prompt.text.startsWith(tag))) return null;
+        const source = (event?.data?.message ?? event?.data)?.source;
+        return { text: prompt.text, ...(typeof source?.senderSessionId === 'string' ? { from: source.senderSessionId } : {}) };
+    };
+    const messages = [];
+    for (let i = start; i < end; i++) {
+        const message = messageOf(events[i]);
+        if (message) messages.push(message);
+    }
+    // A turn with no prompt of its own took the last one before it.
+    if (messages.length === 0) {
+        for (let i = start - 1; i >= 0; i--) {
+            if (!promptOf(events[i])) continue;
+            const message = messageOf(events[i]);
+            if (message) messages.push(message);
+            break;
+        }
+    }
+    return messages.length > 0 ? { key: events[start]?.seq ?? start, messages } : null;
+}
+
 /** A model selection as one comparable string. */
 function selectionKey(selection) {
     return `${selection?.provider}\u0000${selection?.model}\u0000${selection?.reasoningEffort ?? ''}`;
@@ -501,10 +571,12 @@ export class ProjectManager {
      * @param {object} options.config - validated plugin config.
      * @param {Function} options.buildTools - (manager, who) => tool definitions for one agent.
      */
-    constructor({ ctx, config, buildTools }) {
+    constructor({ ctx, config, buildTools, problems = [] }) {
         this.ctx = ctx;
         this.config = config;
         this.buildTools = buildTools;
+        /** The fixed settings that were wrong when the plugin started (config.js checkConfig), each in words. */
+        this.fixedProblems = Array.isArray(problems) ? problems : [];
         /** The store's file; its copy is `store`. */
         this.storeFile = dataPath(config.storeFile);
         // With no other manager running on the file (the plugin was switched off, or this is the first), read it
@@ -514,6 +586,8 @@ export class ProjectManager {
         managers.set(this.storeFile, this);
         this.disposed = false;
         this.logFile = config.logFile ? dataPath(config.logFile) : '';
+        /** Where the store says what went wrong with its file (store.js): this manager's log, while it is the newest. */
+        this.storeReport = (line) => this.log(line);
         /** Set by apply when the notifications plugin is around: one news item, for a system notification (noteNews). */
         this.newsSink = undefined;
         if (this.logFile) {
@@ -533,6 +607,8 @@ export class ProjectManager {
         this.turns = new Map();
         /** sessionId → (approval id → timer) for permission prompts not yet answered. */
         this.approvals = new Map();
+        /** Thread sessionId → (approval id → {what, tool}): its prompts not yet answered, for its roster line once they are. */
+        this.openPrompts = new Map();
         /** Thread sessionId → {callId, turn, step}: the send it asked the user about in its current step (holdSend). */
         this.pendingSends = new Map();
         /** Thread sessionId → (callId → {turn, step}), from its tool/call events: the model step each call came in. */
@@ -607,7 +683,26 @@ export class ProjectManager {
      * into the copy the newest manager reads, never over it.
      */
     get store() {
-        return ProjectStore.open(this.storeFile);
+        return ProjectStore.open(this.storeFile, managers.get(this.storeFile) === this ? this.storeReport : undefined);
+    }
+
+    /**
+     * What went wrong with the plugin's own file (store.js `problems`), in
+     * words for its page: a file it couldn't read, and a save that fails.
+     */
+    storeProblems() {
+        const { unreadable, saveFailed } = this.store.problems ?? {};
+        const out = [];
+        const folder = homeWords(dirname(this.storeFile));
+        if (unreadable) {
+            out.push(unreadable.kept
+                ? `At ${clockWords(unreadable.at)} the plugin couldn't read its record of coordinating chats (${unreadable.reason}), so it started without them. That file is kept as ${unreadable.kept} in ${folder}: to bring them back, put it back as ${basename(this.storeFile)} while DSH is closed, or run /coordinate again in each chat.`
+                : `At ${clockWords(unreadable.at)} the plugin couldn't read its record of coordinating chats (${unreadable.reason}) or move it aside, so it saves nothing over it, and what changes now is lost when DSH closes. Fix or move ${basename(this.storeFile)} in ${folder}, then switch the plugin off and on.`);
+        }
+        if (saveFailed) {
+            out.push(`Since ${clockWords(saveFailed.at)} the plugin can't save its record of coordinating chats (${saveFailed.reason}). What changed since then is lost if DSH closes before a save goes through; it tries again at each change.`);
+        }
+        return out;
     }
 
     project(projectId) {
@@ -692,7 +787,50 @@ export class ProjectManager {
      * (live config) and the tools other plugins mark as the user's own.
      */
     guards() {
-        return withPersonal(guardList(liveValue(this.config.guardedTools)), this.personalTools());
+        return withPersonal(guardList(guardedToolsOf(liveValue(this.config.guardedTools)).value), this.personalTools());
+    }
+
+    /**
+     * Every setting that is wrong now, in words, with what the plugin uses
+     * meanwhile: the fixed ones as the plugin started with them, and the
+     * live ones (guardedTools, trustedHosts and the access defaults) as they
+     * are now. The plugin's page shows them.
+     * @returns {{key: string, message: string}[]}
+     */
+    configProblems() {
+        const out = [...this.fixedProblems];
+        for (const found of [guardedToolsOf(liveValue(this.config.guardedTools)), trustedHostsOf(liveValue(this.config.trustedHosts))]) {
+            if (found.problem) out.push(found.problem);
+        }
+        for (const key of ['threadModel', 'threadEffort', 'yourTools', 'threadPermission']) {
+            const found = textSettingProblem(key, liveValue(this.config[key]));
+            if (found) out.push(found);
+        }
+        const tools = liveValue(this.config.yourTools);
+        if (typeof tools === 'string' && tools.trim() !== '' && !['asked', 'always'].includes(tools.trim().toLowerCase())) {
+            out.push({ key: 'yourTools', message: `yourTools must be "asked" or "always" (it is ${JSON.stringify(tools.trim()).slice(0, 80)}), so threads get your tools only when asked until you fix it.` });
+        }
+        const permission = liveValue(this.config.threadPermission);
+        if (typeof permission === 'string' && permission.trim() !== '' && this.permissionCatalog() && this.presetOf(permission.trim()) === undefined) {
+            const names = this.permissionCatalog().options.map((o) => `"${o.value}"`).join(', ');
+            out.push({ key: 'threadPermission', message: `threadPermission must be a permission DSH offers (${names}) or "default" (it is ${JSON.stringify(permission.trim()).slice(0, 80)}), so chats that use this default start no new threads until you fix it.` });
+        }
+        this.logLiveProblems(out.slice(this.fixedProblems.length));
+        return out;
+    }
+
+    /**
+     * A live setting that is wrong, in the log as the fixed ones are
+     * (index.js): `config-problem <key>` once when it goes wrong, and
+     * `config-fixed <key>` once when it is put right (round-1 nit 10: only
+     * the page said so). Read at start and at each read of the problems.
+     */
+    logLiveProblems(live) {
+        const keys = new Set(live.map((p) => p.key));
+        const was = this.loggedProblems ?? new Set(this.fixedProblems.map((p) => p.key));
+        for (const key of keys) if (!was.has(key)) this.log(`config-problem ${key}`);
+        for (const key of was) if (!keys.has(key) && !this.fixedProblems.some((p) => p.key === key)) this.log(`config-fixed ${key}`);
+        this.loggedProblems = new Set([...keys, ...this.fixedProblems.map((p) => p.key)]);
     }
 
     /**
@@ -889,7 +1027,7 @@ export class ProjectManager {
             const cwd = this.cwdOf(session) ?? first;
             const here = typeof args.workdir === 'string' && args.workdir.trim() !== '' ? resolve(expand(cwd), expand(args.workdir.trim())) : expand(cwd);
             // The machines the user trusts (config.trustedHosts, read now): a send that reaches only these is no send.
-            const trustedHosts = liveValue(this.config.trustedHosts);
+            const trustedHosts = trustedHostsOf(liveValue(this.config.trustedHosts)).value;
             const trustedSends = [];
             const found = exec.name === 'run_code'
                 ? codeSendOf(String(args.code ?? ''), { depth: 0, cwd: here, read: (path) => textInside(roots, path), trustedHosts, trustedSends }, 'run_code')
@@ -945,7 +1083,9 @@ export class ProjectManager {
      * folder outside the workspace or made by mktemp. The workspace's .git
      * never is, and what can't be told (a variable, a pattern, a list on the
      * input, a cleaning script, something moved into its folder or reached
-     * through a link) asks. A script the thread created is read for what it
+     * through a link) asks. A move out of the thread's folders (mv, rsync
+     * --remove-source-files) asks as a delete of what moves; one inside them
+     * is a rename. A script the thread created is read for what it
      * deletes. Undefined lets it run, as in holdSend, and an ask DSH's own
      * checks made (`asked`) keeps its words after the plugin's; `out`, when
      * given, gets what it deletes (holdCommand). Never logs the command or a
@@ -975,17 +1115,19 @@ export class ProjectManager {
                 : deletesOf(String(args.command ?? ''), { shell: exec.name, cwd: this.keepsFolder(exec) ? undefined : here, read });
             const held = found.filter((d) => !isFree(d, { work, mine }));
             if (held.length === 0) return undefined;
-            const what = deletesWhat(held);
-            if (out) out.what = what;
+            // Each path as the user knows it: relative to the thread's folder when it is in it, else cut in the middle.
+            const what = deletesWhat(held, { folders: work });
+            const moved = held.some((d) => d.moved);
+            if (out) Object.assign(out, { what, moved });
             const programs = [...new Set(held.map((d) => String(d.program).replace(/\s+/g, '-')))].join(',').slice(0, 40);
             const label = `${who.projectId}/${who.threadId}${own ? '' : ' subagent'} ${programs}`;
             if (!own) {
                 this.log(`delete-refused ${label}`);
-                return { kind: 'deny', reason: DELETE_REASONS.subagent(what) };
+                return { kind: 'deny', reason: DELETE_REASONS.subagent(what, moved) };
             }
             if (this.approvalPolicyOf(session) !== 'ask') {
                 this.log(`delete-refused ${label} never-asks`);
-                return { kind: 'deny', reason: DELETE_REASONS.never(what) };
+                return { kind: 'deny', reason: DELETE_REASONS.never(what, moved) };
             }
             this.noteAsked(exec, what);
             this.log(`delete-ask ${label}`);
@@ -994,7 +1136,7 @@ export class ProjectManager {
             return {
                 kind: 'ask',
                 reason: `the command ${what}; if the user doesn't allow it, hand back with status needs_decision${theirs?.reason ? `; ${withoutCredentials(theirs.reason)}` : ''}`,
-                displayReason: { en: `This command ${what}. A thread asks you before each command that deletes files it didn't create.${also ? `\n${also}` : ''}` },
+                displayReason: { en: `This command ${what}. A thread asks you before each command that ${deleteRule(moved)}.${also ? `\n${also}` : ''}` },
             };
         } catch (error) {
             this.log(`error delete-check ${String(error?.message ?? error).slice(0, 200)}`);
@@ -1023,7 +1165,7 @@ export class ProjectManager {
             return {
                 kind: 'ask',
                 reason: `the command ${sent.said} and ${gone.what}${sent.words ? `. The thread says: ${sent.words}` : ''}; if the user doesn't allow it, hand back with status needs_decision${theirs?.reason ? `; ${withoutCredentials(theirs.reason)}` : ''}`,
-                displayReason: { en: `This command ${sent.said} and ${gone.what}. A thread asks you before each command that sends outside the workspace or deletes files it didn't create.${sent.words ? `\nThe thread says: ${sent.words}` : ''}${also ? `\n${also}` : ''}` },
+                displayReason: { en: `This command ${sent.said} and ${gone.what}. A thread asks you before each command that sends outside the workspace or ${deleteRule(gone.moved)}.${sent.words ? `\nThe thread says: ${sent.words}` : ''}${also ? `\n${also}` : ''}` },
             };
         } catch (error) {
             this.log(`error delete-check ${String(error?.message ?? error).slice(0, 200)}`);
@@ -1365,6 +1507,8 @@ export class ProjectManager {
         this.log('defaults saved');
         // Your tools, or the list of them, may have changed.
         try { this.rewall(); } catch (error) { this.log(`error wall ${String(error?.message ?? error).slice(0, 200)}`); }
+        // A setting saved wrong (or put right) says so in the log, as the page does.
+        try { this.configProblems(); } catch (error) { this.log(`error config-check ${String(error?.message ?? error).slice(0, 200)}`); }
     }
 
     /** Whether the user paused a coordinating chat's threads: no new ones start, and their reports wait. */
@@ -1424,13 +1568,14 @@ export class ProjectManager {
         this.netTimer = setInterval(() => void this.sweepNet(), NET_SWEEP_MS);
         this.netTimer.unref?.();
         for (const agent of this.ctx.agents.list?.() ?? []) this.maybeInstall(agent);
+        try { this.configProblems(); } catch (error) { this.log(`error config-check ${String(error?.message ?? error).slice(0, 200)}`); }
         await this.refreshRecords();
         if (this.disposed) return;
         // A coordinating chat archived or unarchived in DSH while the plugin was off: its threads follow it now.
         await this.matchArchive();
         for (const id of [...this.projects.keys()]) {
             if (this.disposed) return;
-            await this.resume(id);
+            await this.resume(id, { atStart: true });
         }
         if (!this.disposed) await this.catchUpReplies();
     }
@@ -1440,8 +1585,11 @@ export class ProjectManager {
      * was held for it delivered and the turns its threads ended meanwhile
      * reviewed. Not while it is archived or stopped coordinating; a chat DSH
      * no longer has is marked gone, and what its threads send it waits.
+     * `atStart`: the plugin is starting (DSH started, or the plugin was
+     * switched on or reloaded), so a turn of the chat that DSH closing cut
+     * off is looked for first (raiseCutOff).
      */
-    async resume(id) {
+    async resume(id, { atStart = false } = {}) {
         if (this.archived(id) || !this.coordinating(id)) return;
         const sessionId = this.store.projects[id]?.coordinatorSessionId;
         if (typeof sessionId !== 'string' || sessionId === '') return;
@@ -1465,8 +1613,54 @@ export class ProjectManager {
         }
         // Reloaded meanwhile: the new manager delivers and reviews.
         if (this.disposed) return;
+        if (atStart) await this.raiseCutOff(id);
         await this.flushPending(id);
         await this.catchUp(id);
+    }
+
+    /**
+     * At a start: when DSH closing (a quit or a crash) cut off the chat's
+     * last turn while it was taking the plugin's messages (a handback, an
+     * idle note, a thread's question, a reply), so the chat never answered
+     * them, each is sent to it again, once (againMessage says so). The
+     * turn's key is kept, so a later start sends nothing again; a chat whose
+     * turn runs now is left alone. Held as any message is while its threads
+     * are paused.
+     */
+    async raiseCutOff(projectId) {
+        const stored = this.store.projects[projectId];
+        const sessionId = stored?.coordinatorSessionId;
+        // Only a chat the plugin sent a message whose turn it never saw end: no other chat's log is read.
+        if (!stored?.answering || typeof sessionId !== 'string' || sessionId === '' || this.ctx.agents.get(sessionId)?.status === 'running') return;
+        let cut;
+        try {
+            cut = cutOffTurn(ownEvents(await this.sc.inspect(sessionId, AbortSignal.timeout(20000))));
+        } catch (error) {
+            this.log(`error raise-cut ${projectId} ${String(error?.message ?? error).slice(0, 200)}`);
+            return;
+        }
+        if (this.disposed) return;
+        const again = cut && this.store.projects[projectId]?.raisedCut !== cut.key;
+        // Noted before anything is sent, so no later start sends it twice.
+        this.store.putProject(projectId, { answering: undefined, ...(again ? { raisedCut: cut.key } : {}) });
+        if (!again) return;
+        for (const message of cut.messages) await this.deliver(projectId, againMessage(message.text), message.from);
+        this.log(`raise-cut ${projectId} turn=${cut.key} messages=${cut.messages.length}`);
+    }
+
+    /**
+     * A coordinating chat's status, for raiseCutOff: a turn that starts
+     * after the plugin sent it a message takes it, and that turn's end
+     * clears the mark. A status listener: it never throws.
+     */
+    onChatStatus(projectId, status) {
+        try {
+            const answering = this.store.projects[projectId]?.answering;
+            if (status === 'running' && answering === 'sent') this.store.putProject(projectId, { answering: 'taken' });
+            else if (status === 'idle' && answering === 'taken') this.store.putProject(projectId, { answering: undefined });
+        } catch (error) {
+            this.log(`error chat-status ${projectId} ${String(error?.message ?? error).slice(0, 200)}`);
+        }
     }
 
     /**
@@ -1493,8 +1687,7 @@ export class ProjectManager {
             this.retries.delete(who.projectId);
             this.forget(agent);
             this.log(`coordinate ${who.projectId} off`);
-            const open = Object.values(this.store.project(who.projectId).threads).filter((t) => !t.resolved).length;
-            return { kind: 'success', text: open > 0 ? `Stopped coordinating. Its ${open === 1 ? 'thread keeps' : `${open} threads keep`} running; reports wait until you run /coordinate here again.` : 'Stopped coordinating.' };
+            return { kind: 'success', text: this.stoppedText(who.projectId) };
         }
         if (who?.role === 'coordinator' && this.coordinating(who.projectId)) return { kind: 'success', text: 'This chat already coordinates threads.' };
         const projectId = who?.projectId ?? sessionId;
@@ -1516,6 +1709,19 @@ export class ProjectManager {
         }, 0);
         later.unref?.();
         return { kind: 'success', text: 'Coordinating. Ask for work here as usual: what runs long or splits into parts goes to threads that report back to this chat.' };
+    }
+
+    /**
+     * What /coordinate off answers: that the chat's open threads stay, how
+     * many of them run now, and that what they hand back waits.
+     */
+    stoppedText(projectId) {
+        const open = Object.values(this.store.project(projectId).threads).filter((t) => !t.resolved);
+        if (open.length === 0) return 'Stopped coordinating.';
+        const running = open.filter((t) => this.liveStatus(t.sessionId) === 'running').length;
+        const now = running === 0 ? 'none running' : running === open.length ? (open.length === 1 ? 'running' : 'all running') : `${running} running`;
+        const stay = open.length === 1 ? `Its thread stays open (${running === 0 ? 'idle' : now})` : `Its ${open.length} threads stay open (${now})`;
+        return `Stopped coordinating. ${stay}; what ${open.length === 1 ? 'it hands' : 'they hand'} back waits until you run /coordinate here again.`;
     }
 
     /** What the user typed after /coordinate: nothing or "on" starts, "off" or "stop" stops. */
@@ -1763,6 +1969,8 @@ export class ProjectManager {
                 text: () => (role === 'coordinator' ? this.coordinatorText(projectId) : this.threadText(projectId, threadId)),
             }));
             for (const tool of this.buildTools(this, who)) add(scoped.tools.register(tool));
+            // The chat's turns, for raiseCutOff: whether one that took the plugin's message has ended.
+            if (role === 'coordinator') add(scoped.on('agent/status', ({ status }) => this.onChatStatus(projectId, status)));
             if (role !== 'thread') return () => { for (const d of disposers.reverse()) { try { d(); } catch {} } };
             if (this.selectionMode === 'override') {
                 // Outermost, so the Host's own selection listener cannot undo it.
@@ -2107,11 +2315,19 @@ export class ProjectManager {
         if (event.type === 'approval/decided') {
             clearTimeout(this.approvals.get(agent.id)?.get(id));
             this.approvals.get(agent.id)?.delete(id);
+            const prompt = this.openPrompts.get(agent.id)?.get(id);
+            this.openPrompts.get(agent.id)?.delete(id);
             // The user answered its prompt (Allow once or Reject; a policy that never asks rejects by itself), so what
             // it does next is new: a turn that then ends without a handback gets its own nudge, as after their words.
             const outcome = event.data?.outcome;
             if ((outcome === 'allowed-once' || outcome === 'rejected') && this.approvalPolicyOf(agent.session) === 'ask') {
                 const t = this.store.thread(projectId, threadId);
+                // On its roster line until it hands back, so the chat's next reply doesn't say it still waits (round-1 finding 5).
+                if (t && !t.resolved) {
+                    const what = prompt?.what ? `its command that ${prompt.what}` : prompt?.tool ? `its ${prompt.tool} call` : 'its prompt';
+                    this.store.putThread(projectId, threadId, { lastAnswer: { outcome: outcome === 'rejected' ? 'declined' : 'allowed', what: what.slice(0, 240), at: new Date().toISOString() } });
+                    this.log(`prompt-decided ${projectId}/${threadId} ${outcome === 'rejected' ? 'declined' : 'allowed'}`);
+                }
                 if (t?.nudged || t?.stalled) {
                     this.store.putThread(projectId, threadId, { nudged: undefined, stalled: undefined });
                     this.log(`prompt-answered ${projectId}/${threadId} ${outcome}`);
@@ -2120,6 +2336,12 @@ export class ProjectManager {
             return;
         }
         if (event.type !== 'approval/asked') return;
+        // What it asks about, kept for when the user answers: the plugin's own words for a call it held (noteAsked).
+        const prompts = this.openPrompts.get(agent.id) ?? new Map();
+        const held = typeof event.data?.callId === 'string' ? this.askedCalls.get(agent.id)?.get(event.data.callId) : undefined;
+        prompts.set(id, { what: held ? withoutCredentials(held).trim() : undefined, tool: typeof event.data?.toolName === 'string' ? event.data.toolName.slice(0, 60) : undefined });
+        for (const key of [...prompts.keys()].slice(0, -20)) prompts.delete(key);
+        this.openPrompts.set(agent.id, prompts);
         const notice = () => {
             void this.noticeApproval(projectId, threadId, agent, event.data).catch((error) => {
                 this.log(`error approval ${projectId}/${threadId} ${String(error?.message ?? error).slice(0, 200)}`);
@@ -2462,8 +2684,9 @@ export class ProjectManager {
             if (was && was.turn === turn) return;
             const root = this.shellFolder(thread);
             if (root === undefined) return;
+            const started = Date.now();
             const files = await snapshotFolder(resolve(expand(root)));
-            this.shellSnaps.set(thread, { turn, root: resolve(expand(root)), at: Date.now(), files, edits: null });
+            this.shellSnaps.set(thread, { turn, root: resolve(expand(root)), started, at: Date.now(), files, edits: null });
             for (const key of [...this.shellSnaps.keys()].slice(0, -200)) this.shellSnaps.delete(key);
         } catch (error) {
             this.log(`error shell-snap ${String(error?.message ?? error).slice(0, 200)}`);
@@ -2485,25 +2708,48 @@ export class ProjectManager {
 
     /**
      * A turn's shell-command edits (shell.js diffFolder): the folder now
-     * against the snapshot its first shell command took, counted only when
+     * against the snapshot its first shell command took, counted whole when
      * no other session's mutating call ran in the window, and the thread's
-     * own in no turn but this one. Computed once per turn; a turn without a
-     * snapshot (no shell command, or a restart) has none.
+     * own in no turn but this one. When one did (round-1 finding 7: threads
+     * that share a folder and run at once), the turn keeps the files only
+     * its own calls could have written (shell.js ownWrite): a file's last
+     * change inside one of its calls, and no other call between the earliest
+     * the file could have changed (the snapshot's start, or a new file's
+     * birth) and then. A file gone in such a window, or one another call
+     * could have touched, counts nothing; a change stamped in the future
+     * makes the file times untrustworthy, and the turn counts nothing.
+     * Computed once per turn; a turn without a snapshot (no shell command,
+     * or a restart) has none.
      * @returns {Promise<Array<{path: string, added: number, deleted: number, created?: true, binary?: true, oversized?: true}>>}
      */
     shellEdits(thread, turn) {
         const snap = this.shellSnaps.get(thread);
         if (!snap || snap.turn !== turn) return Promise.resolve([]);
         if (snap.edits === null) {
-            const { root, at, turn: countedTurn } = snap;
+            const { root, at, started = at, turn: countedTurn } = snap;
             snap.edits = (async () => {
                 try {
                     const before = snap.files;
                     snap.files = null;
-                    const edits = await diffFolder(root, before);
-                    if (!this.mutations.overlapped(thread, at, Date.now(), countedTurn)) return edits;
-                    this.log(`shell-window ${thread} turn=${countedTurn} shared`);
-                    return [];
+                    const times = new Map();
+                    const edits = await diffFolder(root, before, times);
+                    const end = Date.now();
+                    if (!this.mutations.overlapped(thread, at, end, countedTurn)) return edits;
+                    const slack = this.mutations.slack;
+                    if (edits.some((e) => (times.get(e.path)?.changed ?? 0) > end + slack)) {
+                        this.log(`shell-window ${thread} turn=${countedTurn} shared kept=0/${edits.length} future-times`);
+                        return [];
+                    }
+                    const spans = this.mutations.spansIn(started, end);
+                    const kept = edits.filter((e) => {
+                        const t = times.get(e.path);
+                        // Gone now: nothing says whose command removed it.
+                        if (t === undefined) return false;
+                        const born = e.created === true && BIRTH_TIMES && t.born >= started - slack && t.born <= t.changed;
+                        return ownWrite(spans, thread, countedTurn, born ? t.born : started, t.changed, slack);
+                    });
+                    this.log(`shell-window ${thread} turn=${countedTurn} shared kept=${kept.length}/${edits.length}`);
+                    return kept;
                 } catch (error) {
                     this.log(`error shell-diff ${thread} ${String(error?.message ?? error).slice(0, 200)}`);
                     return [];
@@ -2958,6 +3204,8 @@ export class ProjectManager {
             const next = this.store.project(projectId).pendingHandbacks[0];
             const text = typeof next === 'string' ? next : typeof next?.text === 'string' ? next.text : '';
             try {
+                // Marked before it goes, so a quit while the chat takes it is found at the next start (raiseCutOff).
+                if (text.trim() !== '' && this.store.project(projectId).answering !== 'sent') this.store.putProject(projectId, { answering: 'sent' });
                 if (text.trim() !== '') await this.prompt(sessionId, text, 'queue', typeof next?.from === 'string' ? next.from : undefined);
             } catch (error) {
                 this.log(`error deliver ${projectId} ${String(error?.message ?? error).slice(0, 200)}`);
@@ -3624,7 +3872,8 @@ export class ProjectManager {
         this.store.putSettings(projectId, next);
         let flushed = 0;
         if (wasPaused && !this.paused(projectId)) flushed = await this.flushPending(projectId);
-        this.log(`settings ${projectId} ${Object.keys(next).join(',')}`);
+        // With the values, so a pause and a resume read apart in the log (round-1 nit 10).
+        this.log(`settings ${projectId} ${Object.entries(next).map(([key, value]) => `${key}=${value === undefined ? 'default' : String(value).slice(0, 80)}`).join(',')}`);
         return { notes, flushed };
     }
 

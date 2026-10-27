@@ -22,7 +22,8 @@ import { request, safeHost } from './http.js';
 import { editIcs, newUid, readIcs } from './ical.js';
 import { addressKey, cleanRecord, instantOf, isEmailAddress, sameTime } from './model.js';
 import { describeRule, expandWall, parseRule, ruleText, WEEKDAYS } from './recur.js';
-import { CalendarStore, dataPath, ensurePrivateDir } from './store.js';
+import { dataPath } from './config.js';
+import { CalendarStore, ensurePrivateDir } from './store.js';
 import { SourceError, problemOf, sourceModule } from './sources/index.js';
 import { addDays, dayIn, daysBetween, isDay, isZone, localZone, normalLocal, toInstant, toLocal, wallMs, wallOf } from './zones.js';
 import { dirname } from 'node:path';
@@ -138,7 +139,8 @@ export class CalendarManager {
         // Once Personal is known: leftover temporary files go, other calendars' events files stay.
         this.store.sweep();
         this.saveState();
-        const minutes = Math.max(5, Number(this.config.syncMinutes) || 15);
+        // 5 minutes to a day: a longer interval than a timer can hold would fire at once, again and again.
+        const minutes = Math.min(1440, Math.max(5, Number(this.config.syncMinutes) || 15));
         this.later(() => this.syncAll(), 3000);
         const every = setInterval(() => { void this.syncAll(); }, minutes * MINUTE);
         every.unref?.();
@@ -330,6 +332,13 @@ export class CalendarManager {
      * for the user; `problem`, its fixed category, is all agents are told.
      */
     accountView(account) {
+        // A calendar of it that failed (its server couldn't be reached, or refused it) is the account's trouble too:
+        // its row says so, with the calendar's name when the account has more than one.
+        const own = account.error;
+        const mine = Object.values(this.store.calendars).filter((c) => c.accountId === account.id);
+        const failing = own ? undefined : mine.find((c) => c.error);
+        const error = own ?? failing?.error;
+        const words = error ? (failing && mine.length > 1 ? `${this.calendarName(failing)}: ${error.message}` : error.message) : '';
         return {
             id: account.id,
             kind: account.kind,
@@ -340,9 +349,11 @@ export class CalendarManager {
             ...(account.url && account.kind !== 'ics' ? { url: safeAddress(account.url) } : {}),
             ...(account.host ? { host: account.host } : {}),
             ...(account.preset ? { preset: account.preset } : {}),
-            status: this.syncing.has(account.id) ? 'syncing' : account.error?.code === 'auth' ? 'signin' : account.error ? 'error' : 'ok',
-            ...(account.error ? { error: account.error.message, problem: problemOf(account.error.code) } : {}),
+            status: this.syncing.has(account.id) ? 'syncing' : own?.code === 'auth' ? 'signin' : error ? 'error' : 'ok',
+            ...(error ? { error: words, problem: problemOf(error.code) } : {}),
+            // When every calendar of it last synced (a failed try leaves it), and when it last tried.
             ...(account.syncedAt ? { syncedAt: account.syncedAt } : {}),
+            ...(account.triedAt ? { triedAt: account.triedAt } : {}),
         };
     }
 
@@ -364,6 +375,23 @@ export class CalendarManager {
         if (main) return main.id;
         if (remote.length === 1) return remote[0].id;
         return writable.find((c) => c.accountId === 'local')?.id;
+    }
+
+    /**
+     * Before a new account brings its calendars: with no default chosen, a
+     * calendar that new events have been going to and that holds events
+     * stays the default, kept as the choice. So adding an account never
+     * moves new events, a chat's too, to a server calendar (where guests can
+     * be emailed) once the user has used another; a store with no events yet
+     * takes the account's main calendar, and the window says so.
+     */
+    holdDefault() {
+        if (this.store.prefs.defaultCalendar) return;
+        const now = this.defaultCalendarId();
+        if (now && Object.keys(this.store.itemsOf(now)).length > 0) {
+            this.store.prefs.defaultCalendar = now;
+            this.log(`default kept ${now}`);
+        }
     }
 
     /** Read the account's calendars from its server; add new ones, drop gone ones. */
@@ -448,6 +476,7 @@ export class CalendarManager {
             await this.refreshCalendars(id);
             const [calendar] = Object.values(this.store.calendars).filter((c) => c.accountId === id);
             await this.syncCalendar(calendar.id, { throwErrors: true });
+            account.syncedAt = account.triedAt = this.now();
             if (!input.name && calendar.name) account.name = calendar.name;
         } catch (error) {
             this.forgetAccount(id);
@@ -478,6 +507,7 @@ export class CalendarManager {
             const module = await sourceModule('caldav');
             const found = await module.discover(account, await this.envFor(account));
             if (!found?.calendars?.length) throw new CalendarError('The server has no calendars for this account.');
+            this.holdDefault();
             this.store.accounts[id] = account;
             await this.refreshCalendars(id);
         } catch (error) {
@@ -708,6 +738,7 @@ export class CalendarManager {
             }
             await this.secrets.set(account.id, result.grant);
             delete account.error;
+            if (this.store.accounts[account.id] === undefined) this.holdDefault();
             this.store.accounts[account.id] = account;
             this.sources.delete(account.id);
             await this.refreshCalendars(account.id);
@@ -807,8 +838,12 @@ export class CalendarManager {
                 if (!ok) failed = true;
                 if (account.error?.code === 'auth') break;
             }
-            if (!failed) delete account.error;
-            account.syncedAt = this.now();
+            // Synced means every calendar of it synced: a try with one failing keeps the last good time.
+            account.triedAt = this.now();
+            if (!failed) {
+                delete account.error;
+                account.syncedAt = account.triedAt;
+            }
             this.saveState();
         } finally {
             this.syncing.delete(accountId);
@@ -1030,12 +1065,22 @@ export class CalendarManager {
         return out;
     }
 
-    /** The occurrences in [from, to) as views. */
+    /**
+     * The names of the calendars hidden on the page, which a list that names
+     * no calendars leaves out (busy and free time count them all the same).
+     */
+    hiddenNames(calendars) {
+        if (calendars?.length) return [];
+        return Object.values(this.store.calendars).filter((c) => c.hidden === true).map((c) => this.calendarName(c));
+    }
+
+    /** The occurrences in [from, to) as views; `hidden`: the calendars left out, when it named none. */
     events({ from, to, calendars, limit = 3000 }) {
         if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from) throw new CalendarError('Give a start and an end, the end after the start.');
         if (to - from > 3 * 366 * DAY) throw new CalendarError('Ask for at most three years at a time.');
         const found = this.find({ from, to, calendars });
-        return { occurrences: found.slice(0, limit).map((f) => this.view(f)), more: found.length > limit };
+        const hidden = this.hiddenNames(calendars);
+        return { occurrences: found.slice(0, limit).map((f) => this.view(f)), more: found.length > limit, ...(hidden.length ? { hidden } : {}) };
     }
 
     /**
@@ -1058,7 +1103,8 @@ export class CalendarManager {
         const upcoming = hits.filter(({ o }) => o.end >= now);
         const past = hits.filter(({ o }) => o.end < now).reverse();
         const ordered = [...upcoming, ...past];
-        return { occurrences: ordered.slice(0, limit).map((f) => this.view(f)), more: ordered.length > limit };
+        const hidden = this.hiddenNames(calendars);
+        return { occurrences: ordered.slice(0, limit).map((f) => this.view(f)), more: ordered.length > limit, ...(hidden.length ? { hidden } : {}) };
     }
 
     /** One occurrence by id. */
@@ -1084,10 +1130,12 @@ export class CalendarManager {
     /**
      * Busy times in [from, to): merged spans when the user is taken (events
      * that show as busy, not declined, not cancelled), and the free gaps.
+     * Every calendar counts, or the ones given: one hidden on the page to
+     * calm it is still time the user is taken.
      */
     busy({ from, to, calendars }) {
         const spans = [];
-        for (const f of this.find({ from, to, calendars })) {
+        for (const f of this.find({ from, to, calendars, all: true })) {
             const { o, calendar } = f;
             if (o.record.busy === false || o.record.status === 'cancelled') continue;
             const self = this.selfOf(o.record, this.store.accounts[calendar.accountId]);
@@ -1135,6 +1183,64 @@ export class CalendarManager {
             if (e - s >= need) slots.push({ start: s, end: e });
         }
         return { slots: slots.slice(0, limit), zone };
+    }
+
+    // ── Reminders ──────────────────────────────────────────────────────
+
+    /**
+     * The reminders due now that no window has shown yet, each an event's
+     * view with `reminder` {key, minutes, at (when it was due)}, the
+     * earliest first. A reminder is due from its time (the start, less its
+     * minutes) until ten minutes after the later of that and the start,
+     * while the event is on (so a window opened late still shows one about
+     * to start, never one long over). Calendars the user hid keep theirs;
+     * subscriptions' are their publisher's, so none; a cancelled event or an
+     * invitation the user declined has none. With `claim`, each is marked
+     * shown and kept so in calendar.json for two days, so one window shows
+     * it, once, across windows and restarts. None while `reminders` is off.
+     */
+    dueReminders({ claim = false } = {}) {
+        if (this.config.reminders === false) return [];
+        const now = this.now();
+        const reminded = this.store.reminded ?? {};
+        const due = this.alarmsNear(now).filter((a) => a.at <= now && now < a.until && reminded[a.key] === undefined);
+        if (claim && due.length > 0) {
+            for (const a of due) reminded[a.key] = now;
+            for (const [key, at] of Object.entries(reminded)) if (at < now - 2 * DAY) delete reminded[key];
+            this.store.reminded = reminded;
+            this.saveState();
+            this.log(`reminders shown ${due.length}`);
+        }
+        return due.map(({ f, key, minutes, at }) => ({ ...this.view(f), reminder: { key, minutes, at } }));
+    }
+
+    /**
+     * Every reminder from a day back to four weeks ahead (the longest a
+     * reminder is set), {f, at, until, minutes, key}: kept until the events
+     * change or an hour has passed.
+     */
+    alarmsNear(now) {
+        const cache = this.alarmCache;
+        if (cache && cache.version === this.version && now >= cache.from && now < cache.from + HOUR) return cache.list;
+        const calendars = Object.values(this.store.calendars).filter((c) => this.store.accounts[c.accountId]?.kind !== 'ics').map((c) => c.id);
+        const list = [];
+        if (calendars.length > 0) {
+            for (const f of this.find({ from: now - DAY, to: now + 40320 * MINUTE + 2 * HOUR, calendars })) {
+                const { o, calendar } = f;
+                const record = o.record;
+                if (!record.alarms?.length || record.status === 'cancelled') continue;
+                if (this.selfOf(record, this.store.accounts[calendar.accountId])?.status === 'declined') continue;
+                for (const minutes of record.alarms) {
+                    const at = o.start - minutes * MINUTE;
+                    const until = Math.min(Math.max(at, o.start) + 10 * MINUTE, Math.max(o.end, o.start + 10 * MINUTE));
+                    // The key names the occurrence and the reminder, not the event's text: a moved event is due again at its new time.
+                    list.push({ f, at, until, minutes, key: hex(`${calendar.id}|${record.uid}|${o.start}|${minutes}`, 20) });
+                }
+            }
+        }
+        list.sort((a, b) => a.at - b.at);
+        this.alarmCache = { version: this.version, from: now, list };
+        return list;
     }
 
     // ── Finding what a change is about ─────────────────────────────────
@@ -1440,7 +1546,55 @@ export class CalendarManager {
             : undefined;
         if (plan === undefined) throw new CalendarError(`"${kind}" isn't a change.`);
         if (plan.move) this.checkHalfMove(plan.at, plan.target);
-        return { mail: plan.mail, ...(plan.move ? { move: true } : {}) };
+        const shape = this.shapeOf(kind, plan);
+        return { mail: plan.mail, ...(plan.move ? { move: true } : {}), ...(shape ? { shape } : {}) };
+    }
+
+    /**
+     * What a planned change does, for the approval prompt's words, worked
+     * out as the change itself is: the calendar (and, for a move, the one it
+     * goes to); the event's time as it is (`before`: the occurrence the call
+     * names, or the event) and, for a new time or a new event, as it will be
+     * (`after`: recordFrom on that occurrence, as the write does); the new
+     * title, the repeat rule in words, and whether a series is reached.
+     * Undefined when it can't be told (the prompt then goes by the call).
+     * Never throws.
+     */
+    shapeOf(kind, plan) {
+        try {
+            const zone = this.zone();
+            const repeats = (rule) => describeRule(rule, untilWords(rule, zone));
+            if (kind === 'create') {
+                return { calendar: this.calendarName(plan.calendar), after: this.spanOf(plan.record), ...(plan.record.rrule ? { repeats: repeats(plan.record.rrule) } : {}) };
+            }
+            const at = plan.at;
+            const seen = at.recurrenceId ? this.occurrenceRecord(at) : (at.override ?? at.master);
+            const shape = { calendar: this.calendarName(at.calendar), title: seen.title || '(No title)', before: this.spanOf(seen), series: at.series || at.instance };
+            if (plan.move) return { ...shape, target: this.calendarName(plan.target) };
+            if (kind === 'update') {
+                const f = plan.fields;
+                if (['start', 'end', 'allDay', 'timeZone'].some((k) => f[k] !== undefined)) {
+                    shape.after = this.spanOf(this.recordFrom({ start: f.start, end: f.end, allDay: f.allDay, timeZone: f.timeZone }, seen));
+                }
+                if (f.title !== undefined && f.title !== null) shape.newTitle = String(f.title).trim();
+                if (typeof f.repeat === 'string' && f.repeat.trim() !== '') shape.repeats = repeats(f.repeat.trim().replace(/^RRULE:/i, '').toUpperCase());
+            }
+            return shape;
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * A record's time as the prompt says it: {allDay: true, startDay,
+     * lastDay}, or {start, end} in epoch ms with `tz`, the event's own zone
+     * (null for a floating or UTC event, which shows on the user's clock).
+     */
+    spanOf(record) {
+        if (record.allDay) return { allDay: true, startDay: record.start.date, lastDay: addDays(record.end.date, -1) };
+        const zone = this.zone();
+        const own = record.start.tz;
+        return { allDay: false, start: instantOf(record.start, zone), end: instantOf(record.end, zone), tz: own && own !== 'UTC' && isZone(own) ? own : null };
     }
 
     /** A new event: its calendar, its record, and who it emails or reaches. */

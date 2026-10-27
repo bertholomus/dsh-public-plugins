@@ -77,12 +77,19 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
         // label colour takes them past 5:1 in light and further from the background in dark.
         const ERROR_TEXT = 'color-mix(in srgb,var(--dsw-alias-state-error-primary) 85%,var(--dsw-alias-label-primary))';
         const LINK_TEXT = 'color-mix(in srgb,var(--dsw-alias-link,var(--dsw-alias-state-business-primary)) 85%,var(--dsw-alias-label-primary))';
+        /** Every view the plugin draws, by its root: what the motion rules reach (with what DSH draws inside them). */
+        const MOTION_ROOTS = ':is(.dshp-t-hdr,.dshp-t-menu,.dshp-mp,.dshp-mp-menu,.dshp-pp,.dshp-ps,.dshp-page,.dshp-t-pane,.dshp-t-cards,.dshp-t-card,.dshp-nt,.dshp-dock,.dshp-start,.dshp-ch,.dshp-t-chat,.dshp-t-hover,.dshp-t-mark,.dshp-t-tab,.dshp-rn,.dshp-problems)';
         const CSS = [
             // Keyboard focus: DSH's ring on every plugin control. DSH's own buttons (Open, Retry, Save…) get its outline;
             // the plugin's own controls draw it inset below, so a scrolling list can't clip it.
             `:where(.dshp-t-card-actions,.dshp-t-paused,.dshp-dock,.dshp-ps,.dshp-page,.dshp-t-chat-bar,.dshp-t-pane-gear) button:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid ${RING};outline-offset:2px}`,
             // Default models form
             '.dshp-heading{margin:0 0 4px;font-size:14px;font-weight:600;line-height:1.5;color:var(--dsw-alias-label-primary)}',
+            // Settings to fix: a line in the error colour, no ground of its own (the page is DSH's).
+            '.dshp-problems{display:flex;flex-direction:column;gap:4px;margin:0 0 16px;padding:2px 0 2px 12px;border-left:2px solid var(--dsw-alias-state-error-primary)}',
+            `.dshp-problems-title{color:${ERROR_TEXT}}`,
+            '.dshp-problems-list{margin:2px 0 0;padding-left:18px;font-size:13px;line-height:20px;color:var(--dsw-alias-label-primary)}',
+            '.dshp-problems-list>li+li{margin-top:4px}',
             '.dshp-section{display:flex;flex-direction:column;gap:2px;padding:12px 0}',
             '.dshp-section+.dshp-section{border-top:.5px solid var(--dsw-alias-border-l2)}',
             '.dshp-title{margin:0;font-size:13px;font-weight:500;line-height:1.5;color:var(--dsw-alias-label-primary)}',
@@ -158,11 +165,6 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             '.dshp-heading-next{margin-top:20px}',
             // Threads: header menu
             '.dshp-t-hdr{position:relative;display:inline-flex;align-items:center;gap:2px;min-width:0}',
-            // In a chat with a Threads menu, the title crumb may use more of the header than DSH's 220 px; it still
-            // gives way first when the header is narrow. Found by DSH's markup (the title is a span in the hierarchy
-            // nav's last part, the nav right before the header actions that hold the Threads menu), not by its
-            // generated class names.
-            'nav[aria-label]:has(+div [data-projects-threads])>span:last-child>span{max-width:min(560px,40vw)}',
             '.dshp-t-trigger{display:inline-flex;align-items:center;gap:5px;min-width:0;min-height:28px;padding:3px 6px;border:0;border-radius:var(--dsw-radius-sm);background:none;font:inherit;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);white-space:nowrap;cursor:pointer}',
             '.dshp-t-trigger:hover,.dshp-t-trigger:focus-visible,.dshp-t-trigger[aria-expanded=true]{color:var(--dsw-alias-label-primary)}',
             `.dshp-t-trigger:focus-visible{outline:none;background:var(--dsw-alias-interactive-bg-hover);box-shadow:inset 0 0 0 2px ${RING}}`,
@@ -425,6 +427,8 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             '.dshp-dock{box-sizing:border-box;width:calc(100% - 2 * var(--dsh-composer-side-clearance,0px) - 4 * var(--dsh-composer-dock-inset,0px));margin:0 auto;container:dshp-dock/inline-size}',
             '.dshp-dock-bar{isolation:isolate;position:relative;box-sizing:border-box;display:flex;align-items:center;gap:10px;width:100%;max-width:calc(var(--dsh-composer-card-max-width,760px) - 4 * var(--dsh-composer-dock-inset,0px));min-height:36px;margin:0 auto;padding:4px 5px 4px 12px;border-radius:var(--dsw-radius-md);box-shadow:var(--dsw-elevation-panel);--dsw-elevation-stroke-color:var(--dsw-alias-border-l1)}',
             '.dshp-dock-bar::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);pointer-events:none}',
+            // Asked for less transparency, the bar's menu glass is laid on DSH's own opaque card ground and blurs nothing.
+            '@media (prefers-reduced-transparency:reduce){.dshp-dock-bar::before{background:linear-gradient(var(--dsw-specific-menu),var(--dsw-specific-menu)),var(--dsw-alias-bg-layer-2);backdrop-filter:none}}',
             '.dshp-dock-glyph{flex:none;display:inline-flex;color:var(--dsw-alias-label-tertiary)}',
             '.dshp-dock-label{flex:none;font-size:13px;font-weight:500;line-height:24px;color:var(--dsw-alias-label-primary)}',
             '.dshp-dock-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:20px;color:var(--dsw-alias-label-primary-dimmed,var(--dsw-alias-label-secondary))}',
@@ -511,15 +515,30 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             '.dshp-ps-reach>span:last-child{min-width:0}',
             // A place DSH's own drag may not drop a session (useSessionDragGuard): no line there.
             '[data-projects-refused] [data-row-key^="session:"]::before,[data-projects-refused] [data-row-key^="session:"]::after{display:none!important}',
+            // Motion stops while Wallpaper's motion switch is off (body.wp-still) or the system asks for less motion:
+            // the plugin's own transitions and spinner, and DSH's parts drawn inside its views, pseudo-elements too.
+            `body.wp-still ${MOTION_ROOTS},body.wp-still ${MOTION_ROOTS}::before,body.wp-still ${MOTION_ROOTS}::after,body.wp-still ${MOTION_ROOTS} *,body.wp-still ${MOTION_ROOTS} *::before,body.wp-still ${MOTION_ROOTS} *::after{animation:none!important;transition:none!important}`,
+            `@media (prefers-reduced-motion:reduce){${MOTION_ROOTS},${MOTION_ROOTS}::before,${MOTION_ROOTS}::after,${MOTION_ROOTS} *,${MOTION_ROOTS} *::before,${MOTION_ROOTS} *::after{animation:none!important;transition:none!important}}`,
         ].join('');
         const CSS_ID = `${BUNDLE}/client.css`;
-        if (typeof document !== 'undefined' && document.querySelector(`style[data-plugin-css=${JSON.stringify(CSS_ID)}]`) === null) {
-            const tag = document.createElement('style');
-            tag.dataset.plugin = BUNDLE;
-            tag.dataset.pluginCss = CSS_ID;
-            tag.textContent = CSS;
-            document.head.appendChild(tag);
+        /** The plugin's one style sheet in <head>, added once; never a throw, which would stop other plugins loading. */
+        function mountStyle() {
+            try {
+                if (typeof document === 'undefined' || document.querySelector(`style[data-plugin-css=${JSON.stringify(CSS_ID)}]`) !== null) return;
+                const tag = document.createElement('style');
+                tag.dataset.plugin = BUNDLE;
+                tag.dataset.pluginCss = CSS_ID;
+                tag.textContent = CSS;
+                document.head.appendChild(tag);
+            } catch {}
         }
+        /** Take the style sheet away again: switched off, the plugin leaves no rule behind. */
+        function unmountStyle() {
+            try {
+                if (typeof document !== 'undefined') document.querySelector(`style[data-plugin-css=${JSON.stringify(CSS_ID)}]`)?.remove?.();
+            } catch {}
+        }
+        mountStyle();
 
         // ── Default models form ────────────────────────────────────────────
 
@@ -1088,7 +1107,11 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                     if (!alive || !result.ok || !isObject(result.value)) return;
                     const guarded = Array.isArray(result.value.guarded) ? result.value.guarded.filter((name) => typeof name === 'string' && name !== '') : [];
                     const permissions = isObject(result.value.permissions) ? result.value.permissions : null;
-                    setValue((was) => (was && was.guarded.join('\n') === guarded.join('\n') && JSON.stringify(was.permissions) === JSON.stringify(permissions) ? was : { guarded, permissions }));
+                    const problems = Array.isArray(result.value.problems) ? result.value.problems.filter((text) => typeof text === 'string' && text !== '') : [];
+                    const store = Array.isArray(result.value.store) ? result.value.store.filter((text) => typeof text === 'string' && text !== '') : [];
+                    const off = result.value.off === true;
+                    setValue((was) => (was && was.guarded.join('\n') === guarded.join('\n') && JSON.stringify(was.permissions) === JSON.stringify(permissions)
+                        && was.problems.join('\n') === problems.join('\n') && was.store.join('\n') === store.join('\n') && was.off === off ? was : { guarded, permissions, problems, store, off }));
                 };
                 void read();
                 const timer = setInterval(() => {
@@ -1099,6 +1122,14 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             return value;
         }
 
+        const PROBLEMS = {
+            one: 'A setting to fix',
+            many: (n) => `${n} settings to fix`,
+            where: 'In your profile\'s cordis.patch.yml, in the row "- id: coordinator". The plugin keeps running meanwhile, as each line says.',
+            store: 'Its record of coordinating chats',
+            off: 'Switched off',
+            offWhy: 'Its row in your profile\'s cordis.patch.yml ("- id: coordinator") says enabled: false, so no chat coordinates and no chat is offered the thread tools. Set it to true, or take the line out, to coordinate again.',
+        };
         const ACCESS_NOTE = 'These apply to every coordinating chat that doesn\'t set its own in its Thread settings. Your tools are the ones listed under guardedTools in this plugin\'s config.';
 
         /**
@@ -1134,6 +1165,34 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             ];
         }
 
+        /**
+         * The plugin's settings that are wrong, each in the words the plugin
+         * logs: what it must be, what it is, and what the plugin uses
+         * meanwhile. Nothing while all are right.
+         */
+        /**
+         * The settings to fix, in words, at the top of the plugin's page; or,
+         * while the plugin is switched off in its settings, that it is and
+         * how to switch it on, with any setting to fix below.
+         */
+        function SettingProblems({ problems, off = false }) {
+            const list = Array.isArray(problems) ? problems : [];
+            if (!off && list.length === 0) return null;
+            return h('section', { className: 'dshp-problems', 'data-projects-problems': '', 'data-projects-off': off ? '' : undefined, 'aria-labelledby': 'dshp-problems-title' },
+                h('h4', { id: 'dshp-problems-title', className: 'dshp-title dshp-problems-title' }, off ? PROBLEMS.off : list.length === 1 ? PROBLEMS.one : PROBLEMS.many(list.length)),
+                h('p', { className: 'dshp-hint' }, off ? PROBLEMS.offWhy : PROBLEMS.where),
+                list.length > 0 ? h('ul', { className: 'dshp-problems-list' }, ...list.map((text, i) => h('li', { key: i }, text))) : null);
+        }
+
+        /** What went wrong with the plugin's own record (remote.js list `store`), each in words with what to do; nothing while it is fine. */
+        function StoreProblems({ notes }) {
+            const list = Array.isArray(notes) ? notes : EMPTY;
+            if (list.length === 0) return null;
+            return h('section', { className: 'dshp-problems', 'data-projects-store-problems': '', 'aria-labelledby': 'dshp-store-title' },
+                h('h4', { id: 'dshp-store-title', className: 'dshp-title dshp-problems-title' }, PROBLEMS.store),
+                h('ul', { className: 'dshp-problems-list' }, ...list.map((text, i) => h('li', { key: i }, text))));
+        }
+
         function DefaultsForm({ form, catalog, link }) {
             const snapshot = React.useSyncExternalStore(form.subscribe, form.getSnapshot);
             const cat = React.useSyncExternalStore(catalog.subscribe, catalog.getSnapshot);
@@ -1145,6 +1204,8 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             const labels = snapshot.insertedTwice ? { ...LABELS, readOnly: INSERTED_TWICE } : LABELS;
             const disabled = !state.writable || state.saving;
             return h('div', { 'data-projects-defaults': true },
+                h(SettingProblems, { problems: listed?.problems, off: listed?.off === true }),
+                h(StoreProblems, { notes: listed?.store }),
                 h('h3', { className: 'dshp-heading' }, 'Default models'),
                 h(ui.SettingsForm, { labels, state, onSave: form.actions.save, onDiscard: form.actions.discard },
                     ...ROUTES.map((route) => h(RouteSection, { key: route.id, route, state, actions: form.actions, catalog: cat, models, disabled })),
@@ -1226,25 +1287,25 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
         /** DSH's Review tab for one turn's changes (dsh-client-ui-deliverables): `<session>/<seq>/<turn>`. */
         const REVIEW_PREFIX = 'dsh-resource://changes-review/session/';
         const IDS = {
-            menu: `${BUNDLE}/threads-menu`,
-            cards: `${BUNDLE}/thread-cards`,
-            mark: `${BUNDLE}/thread-mark`,
-            hover: `${BUNDLE}/thread-hover`,
-            chat: `${BUNDLE}/thread-chat`,
-            pane: `${BUNDLE}/threads-pane`,
-            link: `${BUNDLE}/thread-link`,
-            changes: `${BUNDLE}/thread-changes`,
-            settings: `${BUNDLE}/project-settings`,
-            settingsItem: `${BUNDLE}/project-settings-item`,
-            rename: `${BUNDLE}/rename`,
-            fullItem: `${BUNDLE}/full-view-item`,
-            paused: `${BUNDLE}/paused-bar`,
-            ending: `${BUNDLE}/ending-bar`,
-            place: `${BUNDLE}/row-place`,
-            sessionList: `${BUNDLE}/session-list`,
-            news: `${BUNDLE}/news-notice`,
-            coordinate: `${BUNDLE}/coordinate`,
-            start: `${BUNDLE}/start-coordinating`,
+            menu: `${BUNDLE}:threads-menu`,
+            cards: `${BUNDLE}:thread-cards`,
+            mark: `${BUNDLE}:thread-mark`,
+            hover: `${BUNDLE}:thread-hover`,
+            chat: `${BUNDLE}:thread-chat`,
+            pane: `${BUNDLE}:threads-pane`,
+            link: `${BUNDLE}:thread-link`,
+            changes: `${BUNDLE}:thread-changes`,
+            settings: `${BUNDLE}:project-settings`,
+            settingsItem: `${BUNDLE}:project-settings-item`,
+            rename: `${BUNDLE}:rename`,
+            fullItem: `${BUNDLE}:full-view-item`,
+            paused: `${BUNDLE}:paused-bar`,
+            ending: `${BUNDLE}:ending-bar`,
+            place: `${BUNDLE}:row-place`,
+            sessionList: `${BUNDLE}:session-list`,
+            news: `${BUNDLE}:news-notice`,
+            coordinate: `${BUNDLE}:coordinate`,
+            start: `${BUNDLE}:start-coordinating`,
         };
         /** The conversation inside a thread's sidebar chat; its tab body declares it. */
         const CONVERSATION_SLOT = 'projects.thread.conversation';
@@ -1327,9 +1388,14 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             pausedCoordinator: 'New threads and handbacks wait until you resume.',
             pausedNewThreads: 'New threads wait too.',
             pausedThread: 'This thread\'s handbacks wait until you resume.',
-            heldLine: 'held until you resume',
+            // What a held handback waits for: Resume (paused), /coordinate in its chat (stopped coordinating), or both.
+            heldLine: { paused: 'held until you resume', off: 'held until you coordinate again', both: 'held until you coordinate again and resume' },
             handbackHeld: 'Handback held',
-            handbackHeldWhy: 'Threads are paused, so the chat that started this thread gets this handback when you resume.',
+            handbackHeldWhy: {
+                paused: 'Threads are paused, so the chat that started this thread gets this handback when you resume.',
+                off: 'The chat that started this thread stopped coordinating, so it gets this handback when you run /coordinate there again.',
+                both: 'The chat that started this thread stopped coordinating and its threads are paused, so it gets this handback when you run /coordinate there again and resume.',
+            },
             resume: 'Resume',
             resuming: 'Resuming…',
             resumeFailed: 'Couldn\'t resume the threads.',
@@ -1432,7 +1498,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
          * another version of the plugin, until the session is next loaded; the
          * session list's rows go by this then, not by their titles.
          */
-        const known = { map: new Map(), version: 0, listeners: new Set() };
+        const known = { map: new Map(), off: false, version: 0, listeners: new Set() };
         const subscribeKnown = (listener) => {
             known.listeners.add(listener);
             return () => { known.listeners.delete(listener); };
@@ -1440,13 +1506,15 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
         const knownVersion = () => known.version;
         /** Re-render with the sessions the store knows, once they are read. */
         const useKnown = () => React.useSyncExternalStore(subscribeKnown, knownVersion);
-        function takeKnown(sessions) {
+        /** @param off - the plugin is switched off in its settings (`enabled: false`): no Coordinate anywhere. */
+        function takeKnown(sessions, off = false) {
             const map = new Map();
             for (const [id, s] of Object.entries(isObject(sessions) ? sessions : {})) {
                 if (!isObject(s) || (s.role !== 'coordinator' && s.role !== 'thread')) continue;
                 map.set(id, { role: s.role, ...(typeof s.coordinator === 'string' && s.coordinator !== '' ? { coordinator: s.coordinator } : {}) });
             }
             known.map = map;
+            known.off = off === true;
             known.version += 1;
             for (const listener of [...known.listeners]) listener();
         }
@@ -1915,7 +1983,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                 const result = await link.call('sessions', {});
                 if (!result.ok || !isObject(result.value?.sessions)) return;
                 knownRead = true;
-                takeKnown(result.value.sessions);
+                takeKnown(result.value.sessions, result.value.off === true);
             }));
             const read = (key, maxAge) => (key === 'list' ? list(maxAge) : describe(key.slice(2), maxAge));
             const tick = () => {
@@ -2047,16 +2115,41 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
 
         /** How many messages a pause holds for a coordinator, as last read. */
         const useHeld = (facts, coordinator) => React.useSyncExternalStore(facts.subscribe, () => facts.info(coordinator)?.paused?.held ?? 0);
-        /** The handbacks a pause holds ([{thread, status}]), as last read. */
+        /** The handbacks the plugin holds for a coordinator ([{thread, status}]), as last read. */
         const useHeldHandbacks = (facts, coordinator) => React.useSyncExternalStore(facts.subscribe, () => facts.info(coordinator)?.paused?.handbacks ?? EMPTY);
+        /**
+         * Whether a coordinating chat has stopped coordinating (/coordinate off): from its own value when the view has
+         * it (a coordinator's), else from the plugin's description of it.
+         */
+        const useStopped = (facts, info) => React.useSyncExternalStore(facts.subscribe,
+            () => (info?.me?.role === 'coordinator' ? info.me.off === true : facts.info(info?.coordinator)?.project?.off === true));
+        /** Why what threads hand back waits now: 'paused', 'off' (the chat stopped coordinating), 'both', or null. */
+        const holdOf = (paused, off) => (paused && off ? 'both' : off ? 'off' : paused ? 'paused' : null);
 
         /**
-         * A thread whose handback a pause holds says so, instead of "No
-         * handback yet", and sits where that handback puts it (Done, or
-         * Waiting on you for a decision).
+         * Each thread's name for its rows and controls, as the user knows it: its title, never the plugin's id
+         * ("t1"); a title two threads share says which by number ("Fix tests, thread 3"); none, "Untitled thread".
+         * @returns {Map<string, string>} thread id → name.
          */
-        function withHeld(rows, handbacks) {
-            if (!Array.isArray(handbacks) || handbacks.length === 0) return rows;
+        const threadNames = (threads) => {
+            const titleOf = (t) => (typeof t.title === 'string' && t.title.trim() !== '' ? t.title.trim() : 'Untitled thread');
+            const seen = new Map();
+            for (const t of threads) seen.set(titleOf(t), (seen.get(titleOf(t)) ?? 0) + 1);
+            return new Map(threads.map((t) => {
+                const n = /^t(\d+)$/.exec(t.id)?.[1];
+                return [t.id, seen.get(titleOf(t)) > 1 && n ? `${titleOf(t)}, thread ${n}` : titleOf(t)];
+            }));
+        };
+
+        /**
+         * A thread whose handback is held (its chat paused its threads or
+         * stopped coordinating) says so, and what it waits for, instead of
+         * "No handback yet", and sits where that handback puts it (Done, or
+         * Waiting on you for a decision).
+         * @param why - holdOf's answer; null holds nothing.
+         */
+        function withHeld(rows, handbacks, why = 'paused') {
+            if (why === null || !Array.isArray(handbacks) || handbacks.length === 0) return rows;
             const held = new Map();
             for (const hb of handbacks) if (isObject(hb) && typeof hb.thread === 'string') held.set(hb.thread, hb.status);
             return rows.map((row) => {
@@ -2064,7 +2157,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                 const status = held.get(row.id);
                 const state = rowState({ resolved: false, running: false, pending: undefined, hb: { status }, ending: undefined });
                 const label = HANDBACK_LABELS[status] ?? 'Handback';
-                return { ...row, group: state.group, dot: state.dot, stateLabel: state.label, ending: undefined, line: `${label} · ${TEXT.heldLine}`, held: true };
+                return { ...row, group: state.group, dot: state.dot, stateLabel: state.label, ending: undefined, line: `${label} · ${TEXT.heldLine[why] ?? TEXT.heldLine.paused}`, held: true };
             });
         }
 
@@ -2702,7 +2795,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
          * @param held - the handbacks a pause holds ([{thread, status}]).
          * @param threads - describe's threads for the chat, for newestRoster; `scope` that chat.
          */
-        function useRows(projects, useSessions, listed, statuses, byId, held, threads, scope) {
+        function useRows(projects, useSessions, listed, statuses, byId, held, threads, scope, why = 'paused') {
             // Rename, Mark resolved or Reopen from a row's ⋯ shows at once (newestRoster).
             const seen = React.useRef(null);
             if (seen.current === null) seen.current = new Map();
@@ -2714,7 +2807,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             React.useEffect(() => {
                 for (const id of sessions) projects.refresh(id);
             }, [key, projects]);
-            return React.useMemo(() => withHeld(rowsOf(roster, statuses, byId, endings, live), held), [roster, statuses, byId, endings, live, held]);
+            return React.useMemo(() => withHeld(rowsOf(roster, statuses, byId, endings, live), held, why), [roster, statuses, byId, endings, live, held, why]);
         }
 
         /** The model labels of a roster's sessions, read live from DSH. */
@@ -2883,11 +2976,12 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
          * coordinating one the user stopped. A chat the user forked from
          * another is their own, though DSH lists it under its source. Not
          * while DSH is still reading its value, so a coordinating chat never
-         * shows Coordinate for a moment.
+         * shows Coordinate for a moment. Never while the plugin is switched
+         * off in its settings.
          */
         function canCoordinate(state, sessionId) {
             const row = state?.byId?.[sessionId];
-            if (!isObject(row)) return false;
+            if (!isObject(row) || known.off) return false;
             if (row.origin === 'subagent' || row.origin === 'teammate') return false;
             const value = valueIn(state, sessionId);
             if (value) return value.role === 'coordinator' && value.off === true;
@@ -3101,8 +3195,9 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             }, [away, unknown, open, coordinator, projects]);
             const paused = usePaused(projects.facts, coordinator, coordinator ? `d:${coordinator}` : null) === true;
             const handbacks = useHeldHandbacks(projects.facts, coordinator);
+            const why = holdOf(paused, useStopped(projects.facts, info));
             const described = useProjectInfo(projects.facts, sessionId, info !== undefined, open);
-            const rows = useRows(projects, useSessions, info?.roster, statuses, byId, paused ? handbacks : EMPTY, described?.threads, coordinator);
+            const rows = useRows(projects, useSessions, info?.roster, statuses, byId, why ? handbacks : EMPTY, described?.threads, coordinator, why);
             const { cv, models } = useRosterModels(projects, useSessions, rows, open);
             const changes = useThreadChanges(projects, useSessions, coordinator, rowSessions(rows), open);
             // In a thread, its own changes as a pill in its header.
@@ -3275,8 +3370,9 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             const visible = tab.visible !== false;
             const paused = usePaused(projects.facts, coordinator, coordinator && visible ? `d:${coordinator}` : null) === true;
             const handbacks = useHeldHandbacks(projects.facts, coordinator);
+            const why = holdOf(paused, useStopped(projects.facts, info));
             const described = useProjectInfo(projects.facts, sessionId, info !== undefined, visible);
-            const rows = useRows(projects, useSessions, info?.roster, statuses, byId, paused ? handbacks : EMPTY, described?.threads, coordinator);
+            const rows = useRows(projects, useSessions, info?.roster, statuses, byId, why ? handbacks : EMPTY, described?.threads, coordinator, why);
             const { cv, models } = useRosterModels(projects, useSessions, rows, info !== undefined && visible);
             const changes = useThreadChanges(projects, useSessions, coordinator, rowSessions(rows), info !== undefined && visible);
             const permissions = usePermissions(useSessions, rowSessions(rows));
@@ -3862,7 +3958,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
          * How one card reads: its icon, its line above the name, and what it
          * opens. `held` lists the handbacks a pause holds.
          */
-        function cardView(card, info, statuses, byId, here, endings, held = EMPTY) {
+        function cardView(card, info, statuses, byId, here, endings, held = EMPTY, why = 'paused') {
             const handback = HANDBACK_LABELS[card.status] ?? card.status;
             if (info.me.role === 'thread') {
                 // A thread's own turn: only its handback is news, and it points at the chat that started it.
@@ -3873,13 +3969,13 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                 return {
                     key: `handback-${card.seq ?? ''}`, kind: card.kind, icon: waits ? ui.IconPauseOutlineRegular : ui.IconTreeCornerRegular,
                     verb: `${waits ? TEXT.handbackHeld : 'Handed back'}${handback ? ` · ${handback}` : ''}`,
-                    note: waits ? TEXT.handbackHeldWhy : undefined,
+                    note: waits ? TEXT.handbackHeldWhy[why] ?? TEXT.handbackHeldWhy.paused : undefined,
                     title: info.project.name || TEXT.coordinator, session: info.coordinator === here ? undefined : info.coordinator,
                 };
             }
             const entry = (info.roster ?? EMPTY).find((t) => isObject(t) && t.id === card.thread);
             // A handback a pause holds counts as the thread's state, as in the Threads menu.
-            const row = entry ? withHeld([threadRow(entry, statuses, byId, endings)], held)[0] : undefined;
+            const row = entry ? withHeld([threadRow(entry, statuses, byId, endings)], held, why)[0] : undefined;
             const base = {
                 key: card.thread ?? `${card.kind}-${card.seq ?? ''}`, kind: card.kind, threadId: card.thread, seq: card.seq,
                 title: row?.title ?? card.thread ?? TEXT.thread, session: row?.session, row,
@@ -3927,7 +4023,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
         /** The sources DSH draws those messages with: another session's (a handback, a brief) and a plugin's (the notes). */
         const NOTICE_SOURCES = new Set(['agent-message', 'cordis-host-runner']);
         /** The closing note in which the plugin tells the coordinator how to answer (prompts.js NOTE_START); the user's notice leaves it out. */
-        const CLOSING_NOTE = /(?:^|\n\n)\((?:The user has not seen this|For the user|Full conversation|Tell the user|If its last reply|Sent by the chat)\b[^\n]*\)\s*$/;
+        const CLOSING_NOTE = /(?:^|\n\n)\((?:The user has not seen this|For the user|Full conversation|Tell the user|If its last reply|Sent by the chat|DSH closed before you answered this)\b[^\n]*\)\s*$/;
         /** A handback's state as its notice says it: the state the thread reported, not its state now. */
         const NOTICE_STATES = {
             done: { dot: 'done', label: 'Done' },
@@ -4144,11 +4240,12 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             const coordinator = info?.me.role === 'coordinator' ? sessionId : info?.coordinator;
             const paused = usePaused(projects.facts, coordinator, coordinator ? 'list' : null) === true;
             const heldList = useHeldHandbacks(projects.facts, coordinator);
-            React.useEffect(() => { if (paused && coordinator) void projects.facts.describe(coordinator, 15000); }, [paused, coordinator, projects]);
-            const held = paused ? heldList : EMPTY;
+            const why = holdOf(paused, useStopped(projects.facts, info));
+            React.useEffect(() => { if (why && coordinator) void projects.facts.describe(coordinator, 15000); }, [why, coordinator, projects]);
+            const held = why ? heldList : EMPTY;
             const all = info?.me.role === 'coordinator' && Array.isArray(info.me.cards) ? info.me.cards : EMPTY;
             const newest = (view) => view.threadId !== undefined && !all.some((c) => isObject(c) && c.thread === view.threadId && c.seq > view.seq);
-            const views = info === undefined ? EMPTY : cards.map((card) => cardView(card, info, statuses, byId, sessionId, endings, held)).filter(Boolean)
+            const views = info === undefined ? EMPTY : cards.map((card) => cardView(card, info, statuses, byId, sessionId, endings, held, why)).filter(Boolean)
                 .map((view) => (newest(view) ? { ...view, newest: true } : view));
             // A coordinator's cards say what each thread runs on.
             const threadSessions = views.filter((view) => view.threadId !== undefined && view.session !== undefined).map((view) => view.session);
@@ -4761,6 +4858,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             const cv = useCatalogView(projects.catalog, info !== undefined);
             const paused = usePaused(projects.facts, info?.coordinator, info?.coordinator ? 'list' : null) === true;
             const handbacks = useHeldHandbacks(projects.facts, info?.coordinator);
+            const why = holdOf(paused, useStopped(projects.facts, info));
             const thread = info?.me.role === 'thread';
             const changed = useThreadChanges(projects, useSessions, thread ? info.coordinator : undefined, thread ? [sessionId] : EMPTY, true)[info?.me.thread?.id];
             const live = useSessions((state) => permissionIn(state, sessionId));
@@ -4779,7 +4877,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             const pause = paused ? h('div', { className: 'dshp-t-hover-line', 'data-projects-paused': '' }, `${TEXT.projectPaused}. ${pausedText(info.me.role, 0)}`) : null;
             if (info.me.role === 'thread') {
                 const entry = (info.roster ?? EMPTY).find((t) => isObject(t) && t.session === sessionId);
-                const row = entry ? withHeld([threadRow(entry, statuses, byId, endings)], paused ? handbacks : EMPTY)[0] : undefined;
+                const row = entry ? withHeld([threadRow(entry, statuses, byId, endings)], why ? handbacks : EMPTY, why)[0] : undefined;
                 const line = row ? hoverLine(row) : undefined;
                 return h('div', { className: 'dshp-t-hover', 'data-projects-thread-hover': '' },
                     h('div', { className: 'dshp-t-hover-head' }, h(ui.IconTreeCornerRegular, { size: 12 }), project ? `${TEXT.thread} of ${project}` : TEXT.thread),
@@ -5284,7 +5382,35 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                 scope.slots.inject('sidebar.right.pane.tab.title', () => scope.slots.register({
                     name: 'sidebar.right.pane.tab.title', key: IDS.changes,
                 }, ThreadChangesTitle));
+                // Switched off: its tabs in the chat on screen close first, while their kinds are still registered, so
+                // none is left saying "Nothing here can view this kind of content yet" (round-1 finding 8). DSH keeps
+                // other chats' layouts out of reach; their tabs read that until the plugin is on again.
+                scope.effect(() => {
+                    const sidebar = ctx.sidebarRight;
+                    return () => closeOwnTabs(sidebar);
+                }, 'coordinator: close its tabs when switched off');
             });
+        }
+
+        /** Close the plugin's own right-sidebar tabs (a thread's chat, the Threads pane, a thread link, Changes) in the chat on screen. */
+        function closeOwnTabs(sidebar) {
+            const ours = new Set(Object.values(KINDS));
+            let onScreen;
+            try { onScreen = sidebar?.mounted?.getSnapshot?.(); } catch { onScreen = undefined; }
+            if (typeof onScreen !== 'string' || onScreen === '') return 0;
+            let tabs;
+            try { tabs = sidebar.tabsIn?.(onScreen); } catch { tabs = undefined; }
+            let closed = 0;
+            for (const tab of Array.isArray(tabs) ? [...tabs] : EMPTY) {
+                if (!ours.has(tab?.kind) || typeof tab.id !== 'string') continue;
+                try {
+                    sidebar.close(tab.id);
+                    closed += 1;
+                } catch (error) {
+                    console.warn(`[coordinator] could not close its tab: ${error?.message ?? error}`);
+                }
+            }
+            return closed;
         }
 
         // ── DSH's session list ─────────────────────────────────────────────
@@ -6020,8 +6146,10 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                 const threads = Array.isArray(data.threads) ? data.threads.filter((t) => isObject(t) && typeof t.id === 'string') : [];
                 const open = threads.filter((t) => !t.resolved);
                 const resolved = threads.filter((t) => t.resolved);
+                const named = threadNames(threads);
                 const threadRowFor = (t) => {
                     const key = `thread:${t.id}`;
+                    const name = named.get(t.id);
                     const status = typeof t.session === 'string' ? statuses?.get?.(t.session) : undefined;
                     const running = status?.running === true;
                     // The same states as the Threads menu.
@@ -6034,7 +6162,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                     const permission = typeof t.permission === 'string' ? t.permission : undefined;
                     const reach = joined([perms && permission ? permissionName(permission, perms) : null, guarded.length > 0 ? toolsWords(t.tools) : null]);
                     return h(SettingRow, {
-                        key, id: key, title: t.title || t.id, message: messageFor(key),
+                        key, id: key, title: name, message: messageFor(key),
                         note: notesFor(resolveRoute(cv, t.model ?? undefined, t.effort ?? undefined), t.live),
                         lead: h('span', { className: 'dshp-ps-dot' }, h(ui.StateDot, { state: dot })),
                         description: t.resolved ? SETTINGS.resolved : running ? SETTINGS.running : undefined,
@@ -6042,12 +6170,12 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                             perms && permission ? permissionGlyph(permission, 12) : null, h('span', null, ...reach))] : undefined,
                         control: h('div', { className: 'dshp-ps-controls' },
                             h(ModelPicker, {
-                                id: `dshp-ps-${t.id}`, label: `${t.title || t.id} (${t.id})`, catalog: catalog.value, busy: busy === key, disabled,
+                                id: `dshp-ps-${t.id}`, label: name, catalog: catalog.value, busy: busy === key, disabled,
                                 value: { model: t.model ?? undefined, effort: t.effort ?? undefined }, own: { model: true, effort: true }, autoOpen: threadInView === key,
                                 onPick: (pick) => change(key, { thread: t.id, ...pick }),
                             }),
                             perms && !t.resolved && typeof t.session === 'string' ? h(PermissionPicker, {
-                                id: `dshp-ps-${t.id}-permission`, label: `${t.title || t.id}: ${SETTINGS.permission}`, catalog: perms, value: permission, compact: true,
+                                id: `dshp-ps-${t.id}-permission`, label: `${name}: ${SETTINGS.permission}`, catalog: perms, value: permission, compact: true,
                                 risk: RISK.thread, disabled, onPick: (next) => change(key, { thread: t.id, permission: next }),
                             }) : null),
                     });
@@ -6270,6 +6398,11 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
         const inject = ['slots'];
 
         function apply(ctx) {
+            // The style sheet goes with the plugin: back when it is switched on again, gone when it is off.
+            ctx.effect(() => {
+                mountStyle();
+                return unmountStyle;
+            }, 'coordinator: style sheet');
             const dialog = settingsDialog();
             const renames = renameFlow();
             // DSH's services the parts share, once DSH provides them: one model catalog and one link to the plugin.
@@ -6301,7 +6434,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
         module.exports.internals = {
             withHit, valueIn, takeKnown, projectContext, threadRow, rowsOf, countsOf, summaryText, cardsOf, cardView, resolveLink, linkTarget, chatAddress, chatSessionOf, isThreadRow, ago, rowPlace, sectionGroups, nestingCss, nestedPlaces, nestedOrder, markNesting, readInOrder, describeRows, markUnread, undoRows, rowWords,
             catalogView, catalogSource, picksIn, followDefault, ThreadRow, resolveRoute, effortNote, liveNote, settingsDialog, hostLink, errorText, noteText,
-            selectionIn, selectionText, summaryModels, sourceLine, toldText, projectFacts, pausedText, withHeld,
+            selectionIn, selectionText, summaryModels, sourceLine, toldText, projectFacts, pausedText, withHeld, holdOf, threadNames, closeOwnTabs,
             changesOf, changesText, lastChange, REVIEW_PREFIX,
             CardChanges, changesOpener, ThreadChangesTab, ThreadChangesTitle, ChangedFile, shownCounts, editsText, fileAddress, readFailure, changesAddress, changesSessionOf, DIFF_LABELS,
             threadMenuItems, rowMenuItems, runThreadItem, ThreadMore, ThreadList, inMoreList, newestRoster, arrowKeys, ThreadFind, findRows, FIND_FROM, ThreadsMenu,
@@ -6313,7 +6446,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             noticeOf, noticeView, TriggerNotice, ProjectNotice,
             permissionName, permissionShown, permissionIn, toolsText, accessOf, accessSummary, PermissionPicker, ToolsControl, ModelsSummary,
             NewsNotice, newsLine, newsDot, ThreadMark, RowPlace, SettingsMenuItem,
-            CoordinateAction, canCoordinate, stoppedEmpty, ThreadSettings, Section, SettingRow, SETTINGS,
+            CoordinateAction, canCoordinate, stoppedEmpty, SettingProblems, ThreadSettings, Section, SettingRow, SETTINGS,
             StartCoordinating, startState, isNewChat, commandSaid,
         };
         return module.exports;

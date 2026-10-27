@@ -1,15 +1,15 @@
 /**
- * One-shot cheap-model call used for thread titles. Mirrors the
- * dsh-session-title-llm pattern: a framed single-user-message request streamed
- * through the host `llm` runtime and assembled into text.
+ * One-shot cheap-model call used for thread titles: a framed single-user
+ * message streamed through the host `llm` runtime and assembled into text.
+ * DSH's message helpers come in through `host`, so tests can run it.
  *
  * @module dsh-plugin-discord/llm
  */
-import { createUserMessage, BlockAssembler } from '@deepseek-ai/dsh-llm';
 
 /**
  * Generate a short title for a conversation starter.
  * @param {object} ctx - runtime context with the `llm` service.
+ * @param {{ createUserMessage: Function, BlockAssembler: Function }} host - DSH's llm helpers.
  * @param {object} options
  * @param {string} options.provider - LLM provider id.
  * @param {string} options.model - model id.
@@ -18,12 +18,12 @@ import { createUserMessage, BlockAssembler } from '@deepseek-ai/dsh-llm';
  * @param {number} [options.timeoutMs] - call deadline.
  * @returns {Promise<string>} raw model text (cleaned by the caller).
  */
-export async function generateTitle(ctx, { provider, model, sessionId, text, timeoutMs = 20000 }) {
+export async function generateTitle(ctx, host, { provider, model, sessionId, text, timeoutMs = 20000 }) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new Error('title generation timed out')), timeoutMs);
+    const timer = setTimeout(() => controller.abort(new Error(`the title model did not answer within ${Math.round(timeoutMs / 1000)} s`)), timeoutMs);
     try {
-        const messages = [createUserMessage({
-            content: [{ type: 'text', text }],
+        const messages = [host.createUserMessage({
+            content: [{ type: 'text', text: text || '(no text)' }],
             source: { kind: 'discord-plugin' },
         })];
         const system = [
@@ -32,7 +32,7 @@ export async function generateTitle(ctx, { provider, model, sessionId, text, tim
             'Use the language of the message.',
             'Aim for 3 to 7 words.',
         ].join('\n');
-        const assembler = new BlockAssembler();
+        const assembler = new host.BlockAssembler();
         for await (const chunk of ctx.llm.stream({
             provider,
             model,
@@ -48,14 +48,14 @@ export async function generateTitle(ctx, { provider, model, sessionId, text, tim
         }
         const finish = assembler.finish;
         if (finish && finish.kind === 'error') {
-            throw new Error(`title stream failed: ${JSON.stringify(finish).slice(0, 200)}`);
+            throw new Error(`the title model failed (${String(finish.error?.message ?? finish.message ?? 'no reason given').slice(0, 160)})`);
         }
-        const text2 = assembler.blocks()
+        const title = assembler.blocks()
             .filter((block) => block.type === 'text')
             .map((block) => block.text)
             .join(' ');
-        if (text2.trim().length === 0) throw new Error('title model produced no text');
-        return text2;
+        if (title.trim().length === 0) throw new Error('the title model gave no text');
+        return title;
     } finally {
         clearTimeout(timer);
     }

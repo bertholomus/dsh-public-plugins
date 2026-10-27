@@ -689,8 +689,9 @@ try {
     await say(coord, call('thread_send', { thread: 't1', text: `E2E:slow 5000\n${call('thread_handback', { status: 'done', summary: 'Finished while the chat was off.' })}` }));
     answer = await command(coord, '/coordinate off');
     const stoppedView = await viewOf(coord);
-    check('/coordinate off stops it, says its threads keep running, and the window\'s record of the chat says it stopped', answer.ok
-        && /^Stopped coordinating\. Its \d+ threads keep running; reports wait until you run \/coordinate here again\.$/.test(answer.value?.result?.text ?? '')
+    const openNow = Object.values(project().threads ?? {}).filter((t) => t.resolved !== true).length;
+    check('/coordinate off stops it, says how many of its threads stay open and how many run (t1 alone), and the window\'s record of the chat says it stopped', answer.ok
+        && answer.value?.result?.text === `Stopped coordinating. Its ${openNow} threads stay open (1 running); what they hand back waits until you run /coordinate here again.`
         && project().off === true && readText(logFile).includes(`coordinate ${coord} off\n`) && stoppedView?.role === 'coordinator' && stoppedView.off === true,
         `${JSON.stringify(answer).slice(0, 300)} ${JSON.stringify(stoppedView)}`);
     const heldBack = await waitFor(() => resultOf(since(mark, 't1')), 't1\'s handback while the chat is off', 30000);
@@ -747,12 +748,19 @@ try {
     check('the first turn handed back', since(mark, 'coordinator').some((r) => r.fresh.includes('Eta part one done.')));
     check('the queued turn that failed gets its note', saw.fresh.includes('[Thread idle without a handback: t7 · "Eta"]') && saw.fresh.includes('The turn failed (HTTP 400):'), saw.fresh.slice(0, 300));
 
-    // 16. DSH dies mid-turn. At the next start the chat hears once that the
+    // 16. DSH dies mid-turn, with a thread at work and the chat in the middle
+    // of answering a handback. At the next start the chat hears once that the
     // thread was cut off, and nothing sends the thread on: it waits for the
-    // user's Resume. Then: the same chat still coordinates, threads still wired.
+    // user's Resume; and the handback the chat never answered is sent to it
+    // again, once, from its thread. Then: the same chat still coordinates,
+    // threads still wired.
     mark = model.requests.length;
     await say(coord, call('thread_start', { ask: 'Please do this.', title: 'Theta', brief: 'E2E:slow 120000\nWork for a long time.' }));
     await waitFor(() => since(mark, 't8').length > 0, 'the Theta request');
+    // t1 hands back; the chat's answer to it is slow (the summary's E2E:slow line), so DSH dies while its turn runs.
+    await bridge('POST', `/sessions/${coord}/prompt`, { text: call('thread_send', { thread: 't1', text: call('thread_handback', { status: 'done', summary: 'Alpha re-checked the notes.\nE2E:slow 120000' }) }) });
+    await waitFor(() => since(mark, 'coordinator').some((r) => r.fresh.includes('Alpha re-checked the notes.')), 'the chat to take the Alpha handback', 60000);
+    await sleep(500);
     const resumes = () => readText(logFile).split('\n').filter((l) => l.endsWith(` coordinator ${coord} ${coord} resumed`)).length;
     const resumedBefore = resumes();
     let signInsBefore = signIns();
@@ -764,8 +772,18 @@ try {
     await waitFor(async () => existsSync(sock) && (await bridge('GET', '/health')).ok, 'the session bridge after restart', 90000);
     await waitFor(() => resumes() > resumedBefore, 'the plugin to bring the chat up again');
     check('a restart keeps the chat coordinating', project().coordinatorSessionId === coord && project().off === undefined, JSON.stringify(project()).slice(0, 200));
-    saw = await coordinatorSaw(mark, 'SAW-IDLE', 'the Theta note after the restart');
+    saw = await waitFor(() => since(mark, 'coordinator').find((r) => r.fresh.includes('t8 · "Theta"')), 'the Theta note after the restart');
+    await waitFor(() => since(mark, 'coordinator').some((r) => r.fresh.includes('Alpha re-checked the notes.')), 'the Alpha handback again', 30000).catch(() => {});
+    await waitIdle(coord);
     await sleep(1000);
+    const againReqs = since(mark, 'coordinator').filter((r) => r.fresh.includes('Alpha re-checked the notes.'));
+    const againLog = (await bridge('GET', `/sessions/${coord}/events?types=user/message&limit=2000&full=1`)).events
+        .filter((e) => e.text?.startsWith('[Handback from thread t1') && e.text.includes('Alpha re-checked the notes.'));
+    check('the handback the chat was answering when DSH died is sent to it again, once, from its thread, saying why', againReqs.length === 1
+        && againReqs[0].fresh.includes('(DSH closed before you answered this, so the plugin sends it again, once. The user has not seen this.')
+        && againLog.length === 2 && fromSession(againLog[1], t1) && new RegExp(` raise-cut ${coord} turn=\\d+ messages=1\n`).test(readText(logFile))
+        && project().raisedCut !== undefined && project().answering !== 'taken',
+        `${describe(since(mark, 'coordinator'))} | log=${againLog.length} ${JSON.stringify(againLog[1]?.source)}`);
     check('a turn cut off by the crash is told once at the next start, and the thread is not sent on', saw.fresh.includes('[Thread idle without a handback: t8 · "Theta"]')
         && saw.fresh.includes('The turn was cut off because DSH closed while it ran.') && saw.fresh.includes('its card has Resume')
         && since(mark, 'coordinator').filter((r) => r.fresh.includes('t8 · "Theta"')).length === 1
@@ -860,7 +878,8 @@ try {
     const row = answer.ok ? answer.value.projects.find((p) => p.id === coord) : undefined;
     check('the plugin page lists the chat, its settings and where each comes from', row?.coordinator === coord && row.name === CHAT && row.paused === false && row.off === false
         && row.settings.threadModel.value === 'fake:fake-mini' && row.settings.threadModel.source === 'chat setting' && row.settings.threadEffort.source === 'plugin default'
-        && row.access.threadPermission.value === 'workspace-write' && row.threads.open > 0 && Object.keys(answer.value).sort().join() === 'guarded,permissions,projects',
+        && row.access.threadPermission.value === 'workspace-write' && row.threads.open > 0 && Object.keys(answer.value).sort().join() === 'guarded,permissions,problems,projects,store'
+        && answer.value.problems.length === 0 && answer.value.store.length === 0,
         JSON.stringify(answer).slice(0, 600));
 
     // 21b. News: what threads hand back or finish waits for the user, from anywhere in the window, until they open the chat.
@@ -1294,7 +1313,11 @@ try {
             && saw.fresh.includes(`It asked to use bash: the command ${sends}`), saw.fresh.slice(0, 400));
         mark = model.requests.length;
         const allowed = await prompts.answer(first, 'allowed-once');
-        await coordinatorSaw(mark, 'SAW-IDLE', 'the Send idle note');
+        const allowSaw = await coordinatorSaw(mark, 'SAW-IDLE', 'the Send idle note');
+        // Round-1 finding 5: the chat's roster line says how the user answered the thread's prompt, and when.
+        const rosterOf = (req) => (req?.system ?? '').split('\n').find((line) => line.includes(' · "Send" · ')) ?? '';
+        check('the chat\'s roster line says the user allowed the thread\'s command, and when',
+            rosterOf(allowSaw).includes(`· the user allowed its command that ${sends} at `) && / at \d{1,2}:\d\d\s[AP]M$/.test(rosterOf(allowSaw)), rosterOf(allowSaw));
         check('Allow once runs it, once', allowed?.ok === true && hits.filter((h) => h === 'POST /deploy').length === 1 && resultOf(since(mark, sendId)).includes('SINK-RECEIVED'),
             `${JSON.stringify(allowed)} ${hits.join()} ${resultOf(since(mark, sendId))}`);
         mark = model.requests.length;
@@ -1304,6 +1327,8 @@ try {
         const retrySaw = await coordinatorSaw(mark, 'SAW-IDLE', 'the retry\'s idle note');
         check('the same command again, as a retry, asks again, and a Reject sends nothing', again.eventId !== first.eventId && asks() === 2 && posted() === 1,
             `${asks()} ${hits.join()}`);
+        check('after the Reject, the roster line says the user declined it, and that the thread was told to hand back needs_decision',
+            rosterOf(retrySaw).includes(`· the user declined its command that ${sends} at `) && / at \d{1,2}:\d\d\s[AP]M \(it was told to hand back needs_decision\)$/.test(rosterOf(retrySaw)), rosterOf(retrySaw));
         // Behaviour review 5, S3 r4: the thread reads what the user declined and to hand back needs_decision, and its
         // chat hears it with the thread's next note, so its reply says so.
         check('after a Reject, the thread reads what the user declined, and its chat hears it',
@@ -1396,6 +1421,15 @@ try {
         check('B1: the user\'s folder moved into one the thread made still asks before it goes, and a Reject keeps it',
             existsSync(join(ws, 'old', 'legacy', 'notes.txt')) && deleteAsks(tidyId) === 1
             && tidyAsk.request.displayReason?.en === 'This command deletes old (rm). A thread asks you before each command that deletes files it didn\'t create.', JSON.stringify(tidyAsk.request));
+        // Round-1 finding 6: a move out of its folder asks as a delete does and says where it goes; a Reject keeps the file.
+        mark = model.requests.length;
+        await say(coord, call('thread_send', { thread: tidyId, text: call('bash', { command: `cd ${ws} && mv old/legacy/notes.txt /tmp/`, description: 'Move the notes away' }) }));
+        const moveAsk = await prompts.next('the Tidy move prompt', (r) => r.toolName === 'bash' && r.reason?.startsWith('the command moves old/legacy/notes.txt to /tmp/ (mv)'));
+        await prompts.answer(moveAsk, 'rejected');
+        await coordinatorSaw(mark, 'SAW-IDLE', 'the Tidy move idle note');
+        check('a thread\'s move out of its folder asks, saying what goes where, and a Reject keeps the file',
+            existsSync(join(ws, 'old', 'legacy', 'notes.txt'))
+            && moveAsk.request.displayReason?.en === 'This command moves old/legacy/notes.txt to /tmp/ (mv). A thread asks you before each command that deletes files it didn\'t create or moves them out of its folder.', JSON.stringify(moveAsk.request));
         mkdirSync(join(ws, 'packages', 'web', 'src'), { recursive: true });
         writeFileSync(join(ws, 'packages', 'web', 'src', 'main.js'), 'console.log(1);\n');
         const webId = readId;
@@ -1405,11 +1439,13 @@ try {
             await coordinatorSaw(mark, 'SAW-IDLE', 'the working directory idle note');
             mark = model.requests.length;
             await say(coord, call('thread_send', { thread: webId, text: call('bash', { command: 'rm -rf src', description: 'Remove the old sources' }) }));
-            const webAsk = await prompts.next('the Web delete prompt', (r) => r.toolName === 'bash' && r.reason?.startsWith('the command deletes src (rm)'));
+            // Said from the thread's folder (round-1 finding 4), so which src goes is plain.
+            const webAsk = await prompts.next('the Web delete prompt', (r) => r.toolName === 'bash' && r.reason?.startsWith('the command deletes packages/web/src (rm)'));
             await prompts.answer(webAsk, 'rejected');
             await coordinatorSaw(mark, 'SAW-IDLE', 'the Web delete idle note');
-            check('M2: after working_directory, a relative delete is judged where it runs: it asks, and a Reject keeps it',
-                existsSync(join(ws, 'packages', 'web', 'src', 'main.js')) && deleteAsks(webId) === 1, `${deleteAsks(webId)}`);
+            check('M2: after working_directory, a relative delete is judged where it runs: it asks, says the path from the thread\'s folder, and a Reject keeps it',
+                existsSync(join(ws, 'packages', 'web', 'src', 'main.js')) && deleteAsks(webId) === 1
+                && webAsk.request.displayReason?.en?.startsWith('This command deletes packages/web/src (rm). '), `${deleteAsks(webId)} ${JSON.stringify(webAsk.request)}`);
         } else {
             console.log('  (this DSH has no working_directory tool: the M2 check is for DSH 0.2.1)');
         }
@@ -1498,6 +1534,65 @@ try {
     check('DSH\'s own Unarchive on the chat\'s row brings them back', cameBack === true && project().archived === undefined
         && new RegExp(`archive ${coord} via=dsh sessions=\\d+\\n[^]*restore ${coord} via=dsh sessions=\\d+`).test(readText(logFile)),
         readText(logFile).split('\n').filter((l) => /archive|restore/.test(l)).join('\n'));
+
+    // 31. Wrong settings never stop the plugin. Saved while DSH runs, DSH starts the plugin again with them: each
+    // falls back to its default, its page lists them in words, its log names them, and the chat still coordinates.
+    // (DSH keeps what a plugin's logger says in memory and prints none of it, so its own output is not read here.)
+    // Put right, the page has nothing to fix again.
+    const startsBad = starts();
+    writePatch(model.port, { threadEffort: 'high', maxHandbacksPerHour: 0, autoHandback: 'sometimes', trustedHosts: { nas: true } });
+    await waitFor(() => starts() > startsBad && /config-problem autoHandback\n/.test(readText(logFile)), 'the plugin to start again with the wrong settings', 30000);
+    answer = await waitFor(async () => {
+        const got = await webApi(web, 'dsh-plugin-coordinator/list', {});
+        return got.ok && (got.value.problems ?? []).length === 3 ? got : null;
+    }, 'the page to name the wrong settings', 30000).catch(() => null);
+    const badWords = answer?.value.problems ?? [];
+    const named = {
+        'the page: maxHandbacksPerHour': badWords.includes('maxHandbacksPerHour must be a whole number of handbacks from 1 to 1000 (it is 0), so the plugin uses 30 until you fix it.'),
+        'the page: autoHandback': badWords.includes('autoHandback must be "idle" or "off" (it is "sometimes"), so the plugin uses "idle" until you fix it.'),
+        'the page: trustedHosts': badWords.includes('trustedHosts must be a list of host names or addresses (it is {"nas":true}), so the plugin trusts no machine (every send asks) until you fix it.'),
+        'the plugin\'s log': /config-problem maxHandbacksPerHour\n/.test(readText(logFile)) && /config-problem autoHandback\n/.test(readText(logFile)),
+    };
+    const unnamed = Object.keys(named).filter((where) => !named[where]);
+    check('wrong settings don\'t stop the plugin: its page names each one, what it must be and what the plugin uses meanwhile',
+        unnamed.length === 0, `not named in ${unnamed.join(', ')}; the page says ${JSON.stringify(badWords).slice(0, 900)}; the log says ${readText(logFile).split('\n').filter((line) => / config-problem /.test(line)).join(' | ').slice(0, 300)}`);
+    mark = model.requests.length;
+    await say(coord, 'Are threads still on?');
+    check('with wrong settings the chat still coordinates and has its thread tools', since(mark, 'coordinator').length > 0
+        && since(mark, 'coordinator').every((r) => r.tools.includes('thread_start')), describe(since(mark)));
+    writePatch(model.port, { threadEffort: 'high' });
+    answer = await waitFor(async () => {
+        const got = await webApi(web, 'dsh-plugin-coordinator/list', {});
+        return got.ok && Array.isArray(got.value.problems) && got.value.problems.length === 0 ? got : null;
+    }, 'the page with nothing to fix', 30000).catch(() => null);
+    check('put right, the page has nothing to fix', answer !== null, JSON.stringify(answer).slice(0, 300));
+
+    // 32. enabled: false switches it off: the chat keeps its record but is offered no thread tools, the window hears
+    // the plugin is off (so it offers no Coordinate), and a click that comes anyway is answered in words. Set true
+    // again, the chat coordinates as before, with nothing lost.
+    // Switched off, the plugin writes nothing, so its log can't tell it restarted: its answer does.
+    writePatch(model.port, { threadEffort: 'high', enabled: false });
+    answer = await waitFor(async () => {
+        const got = await webApi(web, 'dsh-plugin-coordinator/sessions', {});
+        return got.ok && got.value?.off === true ? got : null;
+    }, 'the plugin to say it is switched off', 30000).catch(() => null);
+    check('enabled: false: the window hears the plugin is switched off, and knows no chat', answer?.value?.off === true && Object.keys(answer.value.sessions ?? {}).length === 0, JSON.stringify(answer).slice(0, 300));
+    const offClick = await webApi(web, 'dsh-plugin-coordinator/coordinate', { target: coord, on: true });
+    check('enabled: false: Coordinate is answered in words, and nothing changes', offClick.ok === false && offClick.error?.code === 'coordinator/refused'
+        && /^The coordinator is switched off: its row in your profile's cordis\.patch\.yml says enabled: false\./.test(offClick.error?.message ?? ''), JSON.stringify(offClick).slice(0, 300));
+    mark = model.requests.length;
+    await say(coord, 'Is the plugin off now?');
+    check('enabled: false: the chat is offered no thread tools', since(mark).length > 0 && since(mark).every((r) => !r.tools.includes('thread_start')), since(mark).map((r) => r.tools.join(',')).join(' | '));
+    const startsOn = starts();
+    writePatch(model.port, { threadEffort: 'high' });
+    await waitFor(async () => {
+        const got = await webApi(web, 'dsh-plugin-coordinator/sessions', {});
+        return starts() > startsOn && got.ok && got.value?.off !== true && got.value?.sessions?.[coord] ? got : null;
+    }, 'the plugin to run again', 30000).catch(() => null);
+    mark = model.requests.length;
+    await say(coord, 'And on again?');
+    check('set true again, the chat coordinates as before, its threads kept', since(mark, 'coordinator').length > 0 && since(mark, 'coordinator').every((r) => r.tools.includes('thread_start'))
+        && Object.keys(project().threads ?? {}).length > 0, describe(since(mark)));
     check('no errors in the coordinator log', !/ error /.test(readText(logFile)), readText(logFile).split('\n').filter((l) => / error /.test(l)).join('\n'));
 } catch (error) {
     failed += 1;
@@ -1513,6 +1608,35 @@ try {
     await model.close();
     if (process.env.KEEP) console.log(`kept ${root}`);
     else rmSync(root, { recursive: true, force: true });
+}
+
+// The window: what DSH draws for the plugin, looked at in a Chromium (window.mjs), on the same DSH build. Its own
+// summary line is relayed in other words ("# window: 32 ok, 0 not ok"), so the last line below, with both counts in
+// it, stays the only one that scripts/e2e.mjs reads.
+if (process.env.WINDOW !== '0') {
+    const windowRun = spawn(process.execPath, [join(here, 'window.mjs')], { stdio: ['ignore', 'pipe', 'inherit'], env: process.env });
+    let rest = '';
+    let counts;
+    const relay = (line) => {
+        const summary = /^(\d+) passed, (\d+) failed$/.exec(line);
+        if (summary) counts = summary;
+        console.log(summary ? `# window: ${summary[1]} ok, ${summary[2]} not ok` : line);
+    };
+    windowRun.stdout.setEncoding('utf8');
+    windowRun.stdout.on('data', (chunk) => {
+        const lines = (rest + chunk).split('\n');
+        rest = lines.pop();
+        for (const line of lines) relay(line);
+    });
+    const exit = await new Promise((resolveExit) => windowRun.on('exit', resolveExit));
+    if (rest) relay(rest);
+    if (counts) {
+        passed += Number(counts[1]);
+        failed += Number(counts[2]);
+    } else {
+        failed += 1;
+        console.log(`not ok - the window test ran to its end (exit ${exit})`);
+    }
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

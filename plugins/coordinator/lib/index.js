@@ -24,7 +24,8 @@ import z from '@deepseek-ai/schemastery';
 import { ProjectManager, COMMAND } from './projects.js';
 import { projectTools } from './tools.js';
 import { coordinatorSessionProjection } from './projection.js';
-import { ProjectsRemote, SERVICE } from './remote.js';
+import { OffRemote, ProjectsRemote, SERVICE } from './remote.js';
+import { DEFAULTS, checkConfig } from './config.js';
 
 export const name = 'coordinator';
 
@@ -38,13 +39,16 @@ export const inject = ['sessionController', 'workspaceRegistry', 'agents', 'tool
  */
 const live = (schema) => (typeof schema.volatile === 'function' ? schema.volatile() : schema);
 
+// Every setting takes any value here: config.js checks them in words, so a wrong one never stops the plugin (DSH
+// would show only "Problem", and every coordinating chat would lose its thread tools). A live text setting that is
+// not text (a bare number in YAML, say) counts as not set, and the plugin's page says so.
 export const Config = z.object({
     /** Master switch. */
-    enabled: z.boolean().default(true),
+    enabled: z.any().default(DEFAULTS.enabled),
     /** Plugin-wide default model for new threads; empty uses the DSH default model. */
-    threadModel: live(z.string()),
+    threadModel: live(z.any()),
     /** Plugin-wide default effort for new threads; empty uses the model's default. */
-    threadEffort: live(z.string()),
+    threadEffort: live(z.any()),
     /**
      * Which threads may use the user's own tools (guardedTools, and the
      * ones other plugins mark as the user's own). A coordinating chat has
@@ -53,23 +57,23 @@ export const Config = z.object({
      * them, and only the prompts' rule and the thread checks stand between
      * them and the model.
      */
-    yourTools: live(z.string()),
+    yourTools: live(z.any()),
     /** Plugin-wide permission new threads start on: a DSH permission preset (read-only, workspace-write, danger-full-access), or "default" for DSH's default. Empty means workspace-write. */
-    threadPermission: live(z.string()),
+    threadPermission: live(z.any()),
     /** "idle": when a thread ends a turn the coordinator started without a handback, nudge it once, and tell the coordinator when it ends that way again. "off": only explicit handbacks. */
-    autoHandback: z.union(['idle', 'off']).default('idle'),
+    autoHandback: z.any().default(DEFAULTS.autoHandback),
     /** Handbacks one thread may send per hour, explicit plus the plugin's notes and nudges; stops runaway loops. */
-    maxHandbacksPerHour: z.number().default(30),
+    maxHandbacksPerHour: z.any().default(DEFAULTS.maxHandbacksPerHour),
     /** New threads one chat may start per hour; stops a chat stuck starting threads in a loop. */
-    maxThreadsPerHour: z.number().default(20),
+    maxThreadsPerHour: z.any().default(DEFAULTS.maxThreadsPerHour),
     /** Seconds a thread may wait on a permission prompt before its chat is told. 0 (the default) tells it at once. */
-    approvalNoticeSeconds: z.number().default(0),
+    approvalNoticeSeconds: z.any().default(DEFAULTS.approvalNoticeSeconds),
     /** Durable state: the coordinating chats and their threads. */
-    storeFile: z.string().default('~/.dsh/coordinator/coordinator.json'),
+    storeFile: z.any().default('~/.dsh/coordinator/coordinator.json'),
     /** Folder for each coordinating chat's shared notes. */
-    memoryDir: z.string().default('~/.dsh/coordinator/memory'),
+    memoryDir: z.any().default('~/.dsh/coordinator/memory'),
     /** Largest memory file the tools will write. */
-    maxMemoryBytes: z.number().default(65536),
+    maxMemoryBytes: z.any().default(DEFAULTS.maxMemoryBytes),
     /**
      * The user's personal and infrastructure tools (MCP server or tool
      * names) that threads use only when the user's own words ask for them:
@@ -82,7 +86,7 @@ export const Config = z.object({
      * too, without being listed (see the README's "Tools other plugins mark
      * as yours").
      */
-    guardedTools: live(z.union([z.array(z.string()), z.dict(z.array(z.string()))]).default([])),
+    guardedTools: live(z.any().default([])),
     /**
      * Machines the user trusts, such as their own NAS: host names or
      * addresses (`nas`, `100.64.0.7`; a user, a port or brackets are left
@@ -92,18 +96,29 @@ export const Config = z.object({
      * sends elsewhere asks about the rest. Live, so an edit doesn't restart
      * the plugin.
      */
-    trustedHosts: live(z.array(z.string()).default([])),
+    trustedHosts: live(z.any().default([])),
     /** Action log, mode 600, never prompt text. Empty turns it off. */
-    logFile: z.string().default('~/.dsh/coordinator/coordinator.log'),
+    logFile: z.any().default('~/.dsh/coordinator/coordinator.log'),
 });
 
-export function apply(ctx, config) {
-    if (!config.enabled) return;
-    for (const key of ['maxHandbacksPerHour', 'maxThreadsPerHour', 'maxMemoryBytes']) {
-        if (!Number.isInteger(config[key]) || config[key] < 1) throw new Error(`coordinator: ${key} must be a positive integer`);
+export function apply(ctx, given) {
+    // A wrong setting falls back to its default and is named on the plugin's page and in its log (and to DSH's logger).
+    const { config, problems } = checkConfig(given);
+    if (!config.enabled) {
+        // Switched off in its settings: no chat coordinates and no thread tool is offered. The window still asks the
+        // plugin, hears it is off, and offers no Coordinate; anything else it asks is answered in words.
+        for (const p of problems) ctx.logger.warn('coordinator: %s', p.message);
+        ctx.logger.info('coordinator: switched off (enabled: false); no chat coordinates until it is true again');
+        ctx.inject(['typertGateway'], (scope) => {
+            scope.provide(SERVICE, new OffRemote(scope, problems));
+        });
+        return;
     }
-    if (!(config.approvalNoticeSeconds >= 0)) throw new Error('coordinator: approvalNoticeSeconds must be 0 or more');
-    const manager = new ProjectManager({ ctx, config, buildTools: projectTools });
+    const manager = new ProjectManager({ ctx, config, buildTools: projectTools, problems });
+    for (const p of problems) {
+        ctx.logger.warn('coordinator: %s', p.message);
+        manager.log(`config-problem ${p.key}`);
+    }
 
     // System notifications for its news (plugins/notifications), while no window is looking: that
     // plugin gates the kinds on its own settings, and is absent when it is off or not installed.

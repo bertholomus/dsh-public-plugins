@@ -28,13 +28,13 @@ import z from '@deepseek-ai/schemastery';
 import { dshHomePath, resolveDshHome } from '@deepseek-ai/dsh-home-paths';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { LIVE_SETTINGS, checkConfig, displayPath, resolved, savedEntry } from './config.js';
-import { capture, promote } from './drafts.js';
+import { capture, discard, promote } from './drafts.js';
 import { Switches, parseSwitches, working } from './page.js';
 import { KEY, canonProjection } from './projection.js';
 import { Recall } from './recall.js';
 import { CanonRemote, SERVICE } from './remote.js';
-import { captureTool } from './tools.js';
-import { Vault } from './vault.js';
+import { CAPTURE_TOOL, captureTool } from './tools.js';
+import { Vault, closedChange } from './vault.js';
 import { JsonStore } from './shared/files.js';
 import { Journal } from './shared/journal.js';
 import { errorText, guard } from './shared/safe.js';
@@ -121,6 +121,16 @@ export function apply(ctx, config) {
             } else if (kind === 'ok' && before?.state === 'error') {
                 events.add({ kind: 'vault', state: 'done', text: 'Reading the vault again', why: `${after.counts.active} active note${after.counts.active === 1 ? '' : 's'}, ${after.counts.drafts} draft${after.counts.drafts === 1 ? '' : 's'}.` });
             }
+            // Folders inside the vault it may not list, once each time the set changes: the set said last is kept
+            // in state.json, so a restart or a fixed setting says nothing new.
+            if (kind === 'ok' || kind === 'changed') {
+                const change = closedChange(store.data.closed, after);
+                if (change) {
+                    store.data.closed = change.kept;
+                    store.change();
+                    if (change.entry) events.add(change.entry);
+                }
+            }
             bump();
         }),
     });
@@ -181,29 +191,72 @@ export function apply(ctx, config) {
         ctx.sessionProjections.register(canonProjection());
         // Before each step: the notes that fit a person's new prompt.
         ctx.on('agent/pre-step', recall.handler);
+        /*
+         * A Read Only session is never offered canon_capture: DSH narrows what one agent is offered
+         * (agent.ctx.tools.restrict), set again whenever the answer can change: an agent starts, its session's
+         * mode changes, Canon offers the tool or takes it back. A call that comes anyway is refused in words (save).
+         */
+        let offered = false;
+        const agents = new Set();
+        const walls = new Map();
+        const wall = (agent, mode) => {
+            if (typeof agent?.ctx?.tools?.restrict !== 'function') return;
+            const hide = offered && (mode ?? stateOf(agent.session, 'sandboxMode')) === 'read-only';
+            const was = walls.get(agent);
+            if ((was?.hide ?? false) === hide) return;
+            let dispose;
+            if (hide) {
+                try {
+                    dispose = agent.ctx.tools.restrict({ deny: [CAPTURE_TOOL] });
+                } catch (error) {
+                    logger?.warn?.(`canon: could not keep canon_capture from a Read Only session: ${errorText(error)}`);
+                    return;
+                }
+            }
+            walls.set(agent, { hide, dispose });
+            try { was?.dispose?.(); } catch { /* DSH lifted it already */ }
+        };
+        const wallAll = () => { for (const agent of agents) wall(agent); };
+        ctx.on('agent/created', guard(logger, 'canon: agent', ({ agent }) => {
+            agents.add(agent);
+            wall(agent);
+        }));
+        ctx.on('agent/disposed', guard(logger, 'canon: agent', ({ agent }) => {
+            agents.delete(agent);
+            try { walls.get(agent)?.dispose?.(); } catch { /* DSH lifted it already */ }
+            walls.delete(agent);
+        }));
+        ctx.on('session/event', guard(logger, 'canon: session mode', (session, event) => {
+            if (event?.type !== 'sandbox/mode') return;
+            const mode = event.mode ?? event.data?.mode ?? event.payload?.mode;
+            for (const agent of agents) if (agent.session === session || agent.session?.id === session?.id) wall(agent, typeof mode === 'string' ? mode : undefined);
+        }));
         ctx.inject(['tools'], (scope) => {
             let offTool;
+            const takeBack = () => {
+                // Walls name the tool: they come down before it goes.
+                offered = false;
+                wallAll();
+                try { offTool(); } catch { /* DSH took it down already */ }
+                offTool = undefined;
+            };
             syncTool = () => {
                 const s = current();
                 const want = isWorking() && Boolean(s.vault) && s.access === 'drafts';
                 if (want && !offTool) {
                     try {
                         offTool = scope.tools.register(captureTool(save));
+                        offered = true;
+                        wallAll();
                     } catch (error) {
                         logger?.warn?.(`canon: could not offer canon_capture: ${errorText(error)}`);
                     }
-                } else if (!want && offTool) {
-                    try { offTool(); } catch { /* DSH took it down already */ }
-                    offTool = undefined;
-                }
+                } else if (!want && offTool) takeBack();
             };
             syncTool();
             return () => {
                 syncTool = () => {};
-                if (offTool) {
-                    try { offTool(); } catch { /* DSH took it down already */ }
-                    offTool = undefined;
-                }
+                if (offTool) takeBack();
             };
         });
         void vault.refresh();
@@ -294,6 +347,16 @@ export function apply(ctx, config) {
                 throw new Error(`Not promoted: ${result.reason}`);
             }
             events.add({ kind: 'promote', state: 'done', path: result.path, text: 'Draft promoted to an active note', why: `${result.from} is now ${result.path}, with status: active. Canon adds it to turns from now on.` });
+            await vault.again();
+            return result;
+        },
+        async discard(path) {
+            const result = await discard({ settings: current(), path });
+            if (!result.ok) {
+                events.add({ kind: 'discard', state: 'refused', text: 'Not discarded', why: `${path}: ${result.reason[0].toUpperCase()}${result.reason.slice(1)}` });
+                throw new Error(`Not discarded: ${result.reason}`);
+            }
+            events.add({ kind: 'discard', state: 'done', path: result.path, text: 'Draft discarded', why: `${result.from} is now ${result.path}, in the vault's trash. Move it back to the drafts folder to keep it.` });
             await vault.again();
             return result;
         },

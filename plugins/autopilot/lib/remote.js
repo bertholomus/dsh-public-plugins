@@ -14,12 +14,14 @@ export const NAMESPACE = 'dsh-plugin-autopilot';
 export const SERVICE = 'dshPluginAutopilotRemote';
 
 export class AutopilotRemote {
-    constructor({ pilot, watch, journal, config, check }) {
+    constructor({ pilot, watch, journal, config, check, decisions }) {
         this.pilot = pilot;
         this.watch = watch;
         this.journal = journal;
         this.config = config;
         this.check = check;
+        /** Whether Decisions runs (its service is up). */
+        this.decisions = typeof decisions === 'function' ? decisions : () => false;
         this.typertRemote = bindTypertRemote(this, SERVICE, { namespace: NAMESPACE });
     }
 
@@ -41,7 +43,7 @@ export class AutopilotRemote {
 
     /** Everything the page shows. */
     async state() {
-        return this.run(() => pageState(this));
+        return this.run(() => pageState({ pilot: this.pilot, watch: this.watch, journal: this.journal, config: this.config, check: this.check, decisions: this.decisions() === true }));
     }
 
     /** The panel icon's count: questions Autopilot waits on, and whether it is off. */

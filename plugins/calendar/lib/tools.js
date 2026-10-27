@@ -19,6 +19,7 @@
  */
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { CLEARABLE, changeInput, given, instantArg, refusalText, scopeArg } from './args.js';
+import { plainFailure } from './config.js';
 import { CalendarError, peopleWords } from './manager.js';
 import { dayIn, toLocal } from './zones.js';
 
@@ -54,7 +55,7 @@ async function guarded(run) {
     try {
         return await run();
     } catch (error) {
-        failed = error instanceof CalendarError ? refusalText(error) : `Failed: ${String(error?.message ?? error).slice(0, 400)}`;
+        failed = error instanceof CalendarError ? refusalText(error) : `Failed: ${plainFailure(error, 400)}`;
     }
     throw new Error(failed);
 }
@@ -176,6 +177,14 @@ function mailHelp(askEmails) {
         + 'Where a calendar\'s server emails guests itself (Microsoft, iCloud and most CalDAV servers, for an event the user organizes), a change that would email them is refused without notify_guests, and says who would get what.';
 }
 
+/** Names in a sentence: "A", "A and B", "A, B and C". */
+const andList = (names) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`);
+
+/** The calendars hidden on the page that a list left out, in a line of its answer (none: nothing). */
+const hiddenLine = (hidden, done) => (Array.isArray(hidden) && hidden.length
+    ? `\nNot ${done}: ${andList(hidden.map((n) => `“${n}”`))}, hidden on the Calendar page; give calendar_ids to include ${hidden.length === 1 ? 'it' : 'them'}.`
+    : '');
+
 /** How a call reads in the chat while it runs: a short title, and its kind for the icon. */
 const present = (title, kind) => ({ card: 'generic', title, kind });
 const quoted = (text, n = 60) => {
@@ -223,43 +232,44 @@ export function calendarTools(manager, { askEmails = true, shown } = {}) {
         tool({
             name: 'calendar_events',
             presentCall: (args) => present(given(args.from) ? `Calendar from ${args.from}${given(args.to) ? ` to ${args.to}` : ''}` : 'Calendar for the week', 'read'),
-            description: 'The user\'s events between two times (default: today and the next 6 days), in time order, from every shown calendar or the ones given. Each event has an id to use with the other calendar tools.',
+            description: 'The user\'s events between two times (default: today and the next 6 days), in time order, from every calendar shown on the Calendar page or the ones given (the answer names the hidden ones it left out). Each event has an id to use with the other calendar tools.',
             parameters: {
                 from: { type: 'string', description: 'Start: a day (2026-10-12), a time (2026-10-12T09:00), today or tomorrow. Default: today.' },
                 to: { type: 'string', description: 'End: a day (its whole day is included), a time, today or tomorrow. Default: 7 days after the start.' },
-                calendar_ids: { type: 'array', items: { type: 'string' }, description: 'Only these calendars (ids from calendar_list_calendars).' },
+                calendar_ids: { type: 'array', items: { type: 'string' }, description: 'Only these calendars, hidden ones too (ids from calendar_list_calendars).' },
                 details: { type: 'boolean', description: 'Also give each event\'s notes.' },
             },
             async execute(args) {
                 const z = zone();
                 const from = given(args.from) ? instantArg(args.from, z, now(), 'from') : instantArg('today', z, now(), 'from');
                 const to = given(args.to) ? instantArg(args.to, z, now(), 'to', { end: true }) : from + 7 * DAY;
-                const { occurrences, more } = manager.events({ from, to, calendars: args.calendar_ids, limit: 150 });
+                const { occurrences, more, hidden } = manager.events({ from, to, calendars: args.calendar_ids, limit: 150 });
                 const span = `${dayWords(dayIn(from, z))} to ${dayWords(dayIn(to - 1, z))}`;
                 const text = occurrences.length === 0
-                    ? `${header()}\nNo events from ${span}.`
-                    : `${header()}\nEvents from ${span}:\n${agenda(occurrences, z, { details: args.details === true })}${more ? '\nThere are more; ask for a shorter span.' : ''}`;
-                return { text, view: { kind: 'events', from, to, zone: z, occurrences: occurrences.slice(0, 60).map(card), more: more || occurrences.length > 60 } };
+                    ? `${header()}\nNo events from ${span}.${hiddenLine(hidden, 'listed')}`
+                    : `${header()}\nEvents from ${span}:\n${agenda(occurrences, z, { details: args.details === true })}${more ? '\nThere are more; ask for a shorter span.' : ''}${hiddenLine(hidden, 'listed')}`;
+                return { text, view: { kind: 'events', from, to, zone: z, occurrences: occurrences.slice(0, 60).map(card), more: more || occurrences.length > 60, ...(hidden?.length ? { hidden } : {}) } };
             },
         }),
         tool({
             name: 'calendar_search',
             presentCall: (args) => present(`Search calendar for ${quoted(args.query, 40)}`, 'search'),
-            description: 'Find events by words in their title, place, notes, calendar or guests (default: a year back to a year ahead), upcoming ones first.',
+            description: 'Find events by words in their title, place, notes, calendar or guests (default: a year back to a year ahead), upcoming ones first, in the calendars shown on the Calendar page (the answer names the hidden ones it left out).',
             parameters: {
                 query: { type: 'string', required: true, description: 'Words to find; every word must match.' },
                 from: { type: 'string', description: 'Only from this day or time.' },
                 to: { type: 'string', description: 'Only up to this day or time.' },
+                calendar_ids: { type: 'array', items: { type: 'string' }, description: 'Only these calendars, hidden ones too (ids from calendar_list_calendars).' },
             },
             async execute(args) {
                 const z = zone();
                 const from = given(args.from) ? instantArg(args.from, z, now(), 'from') : undefined;
                 const to = given(args.to) ? instantArg(args.to, z, now(), 'to', { end: true }) : undefined;
-                const { occurrences, more } = manager.search({ text: args.query, from, to, limit: 40 });
+                const { occurrences, more, hidden } = manager.search({ text: args.query, from, to, calendars: args.calendar_ids, limit: 40 });
                 const text = occurrences.length === 0
-                    ? `${header()}\nNothing matches "${args.query}".`
-                    : `${header()}\nEvents matching "${args.query}":\n${occurrences.map((o) => `${dayWords(o.allDay ? o.startDay : dayIn(o.start, z))} ${line(o, z).slice(2)}`).map((l) => `- ${l}`).join('\n')}${more ? '\nThere are more; add words or a span.' : ''}`;
-                return { text, view: { kind: 'events', zone: z, query: args.query, occurrences: occurrences.slice(0, 40).map(card), more } };
+                    ? `${header()}\nNothing matches "${args.query}".${hiddenLine(hidden, 'searched')}`
+                    : `${header()}\nEvents matching "${args.query}":\n${occurrences.map((o) => `${dayWords(o.allDay ? o.startDay : dayIn(o.start, z))} ${line(o, z).slice(2)}`).map((l) => `- ${l}`).join('\n')}${more ? '\nThere are more; add words or a span.' : ''}${hiddenLine(hidden, 'searched')}`;
+                return { text, view: { kind: 'events', zone: z, query: args.query, occurrences: occurrences.slice(0, 40).map(card), more, ...(hidden?.length ? { hidden } : {}) } };
             },
         }),
         tool({
@@ -277,7 +287,7 @@ export function calendarTools(manager, { askEmails = true, shown } = {}) {
         tool({
             name: 'calendar_free_time',
             presentCall: () => present('Find free time', 'search'),
-            description: 'Free time in the user\'s calendars: open slots of at least a given length within working hours (default 09:00 to 17:00, Monday to Friday) between two times.',
+            description: 'Free time in the user\'s calendars: open slots of at least a given length within working hours (default 09:00 to 17:00, Monday to Friday) between two times. Every calendar counts as busy, the ones hidden on the Calendar page too.',
             parameters: {
                 from: { type: 'string', description: 'Start: a day, a time, today or tomorrow. Default: now.' },
                 to: { type: 'string', description: 'End: a day (included), a time. Default: 7 days after the start.' },

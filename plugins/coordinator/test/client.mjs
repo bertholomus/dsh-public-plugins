@@ -259,39 +259,39 @@ test('browser half: threads add a header menu and Coordinate (in the composer\'s
     };
     client.apply(ctx);
     assert.deepEqual(registered.map((r) => [r.name, r.id ?? r.key ?? null, r.order ?? null]), [
-        ['shell.overlay', 'dsh-plugin-coordinator/project-settings', null],
-        ['sidebar.workspaces.session.menu.item', 'dsh-plugin-coordinator/project-settings-item', 250],
-        ['shell.overlay', 'dsh-plugin-coordinator/rename', null],
-        ['conversation.session.header.actions', 'dsh-plugin-coordinator/threads-menu', -25],
-        ['conversation.session.header.actions', 'dsh-plugin-coordinator/coordinate', -24],
-        ['conversation.input.left', 'dsh-plugin-coordinator/start-coordinating', 30],
-        ['conversation.chat.turnTail', 'dsh-plugin-coordinator/thread-cards', 30],
+        ['shell.overlay', 'dsh-plugin-coordinator:project-settings', null],
+        ['sidebar.workspaces.session.menu.item', 'dsh-plugin-coordinator:project-settings-item', 250],
+        ['shell.overlay', 'dsh-plugin-coordinator:rename', null],
+        ['conversation.session.header.actions', 'dsh-plugin-coordinator:threads-menu', -25],
+        ['conversation.session.header.actions', 'dsh-plugin-coordinator:coordinate', -24],
+        ['conversation.input.left', 'dsh-plugin-coordinator:start-coordinating', 30],
+        ['conversation.chat.turnTail', 'dsh-plugin-coordinator:thread-cards', 30],
         ['conversation.chat.node', 'turn-trigger', null],
-        ['sidebar.session.row.leading', 'dsh-plugin-coordinator/thread-mark', 20],
-        ['sidebar.workspaces.session.row.action', 'dsh-plugin-coordinator/row-place', 900],
-        ['conversation.input.dock', 'dsh-plugin-coordinator/paused-bar', 15],
-        ['conversation.input.dock', 'dsh-plugin-coordinator/ending-bar', 16],
-        ['sidebar.session.row.hover', 'dsh-plugin-coordinator/thread-hover', 20],
-        ['sidebar.workspaces.session.menu.item', 'dsh-plugin-coordinator/full-view-item', 50],
-        ['shell.overlay', 'dsh-plugin-coordinator/news-notice', null],
-        ['shell.overlay', 'dsh-plugin-coordinator/session-list', null],
-        ['sidebar.right.pane.tab', 'dsh-plugin-coordinator/thread-chat', null],
-        ['sidebar.right.pane.tab.title', 'dsh-plugin-coordinator/thread-chat', null],
+        ['sidebar.session.row.leading', 'dsh-plugin-coordinator:thread-mark', 20],
+        ['sidebar.workspaces.session.row.action', 'dsh-plugin-coordinator:row-place', 900],
+        ['conversation.input.dock', 'dsh-plugin-coordinator:paused-bar', 15],
+        ['conversation.input.dock', 'dsh-plugin-coordinator:ending-bar', 16],
+        ['sidebar.session.row.hover', 'dsh-plugin-coordinator:thread-hover', 20],
+        ['sidebar.workspaces.session.menu.item', 'dsh-plugin-coordinator:full-view-item', 50],
+        ['shell.overlay', 'dsh-plugin-coordinator:news-notice', null],
+        ['shell.overlay', 'dsh-plugin-coordinator:session-list', null],
+        ['sidebar.right.pane.tab', 'dsh-plugin-coordinator:thread-chat', null],
+        ['sidebar.right.pane.tab.title', 'dsh-plugin-coordinator:thread-chat', null],
         ['projects.thread.conversation', null, null],
-        ['sidebar.right.pane.tab', 'dsh-plugin-coordinator/threads-pane', null],
-        ['sidebar.right.pane.tab', 'dsh-plugin-coordinator/thread-link', null],
-        ['sidebar.right.pane.tab', 'dsh-plugin-coordinator/thread-changes', null],
-        ['sidebar.right.pane.tab.title', 'dsh-plugin-coordinator/thread-changes', null],
+        ['sidebar.right.pane.tab', 'dsh-plugin-coordinator:threads-pane', null],
+        ['sidebar.right.pane.tab', 'dsh-plugin-coordinator:thread-link', null],
+        ['sidebar.right.pane.tab', 'dsh-plugin-coordinator:thread-changes', null],
+        ['sidebar.right.pane.tab.title', 'dsh-plugin-coordinator:thread-changes', null],
     ]);
     // The thread chat tab hosts the conversation slot it renders.
-    const chatTab = registered.find((r) => r.name === 'sidebar.right.pane.tab' && r.key === 'dsh-plugin-coordinator/thread-chat');
+    const chatTab = registered.find((r) => r.name === 'sidebar.right.pane.tab' && r.key === 'dsh-plugin-coordinator:thread-chat');
     assert.deepEqual(plain(chatTab.children), { 'projects.thread.conversation': { kind: 'single', scope: 'session' } });
     assert.deepEqual(protocols, ['projectthread']);
     assert.deepEqual(types.map((t) => [t.id, t.kind, t.patterns ? [...t.patterns] : null]), [
-        ['dsh-plugin-coordinator/thread-chat', 'projectthread', ['dsh-resource://projectthread/session/**']],
-        ['dsh-plugin-coordinator/threads-pane', 'projectthreads', null],
-        ['dsh-plugin-coordinator/thread-link', 'projectthreadlink', ['dsh-resource://file/session/**/.dsh-thread/*', 'dsh-resource://file/session/*/.t*']],
-        ['dsh-plugin-coordinator/thread-changes', 'projectchanges', ['dsh-resource://projectchanges/session/**']],
+        ['dsh-plugin-coordinator:thread-chat', 'projectthread', ['dsh-resource://projectthread/session/**']],
+        ['dsh-plugin-coordinator:threads-pane', 'projectthreads', null],
+        ['dsh-plugin-coordinator:thread-link', 'projectthreadlink', ['dsh-resource://file/session/**/.dsh-thread/*', 'dsh-resource://file/session/*/.t*']],
+        ['dsh-plugin-coordinator:thread-changes', 'projectchanges', ['dsh-resource://projectchanges/session/**']],
     ]);
     const [chat, pane, link, changes] = types;
     assert.equal(chat.canOpen('dsh-resource://projectthread/session/s%2F1'), true);
@@ -1081,6 +1081,63 @@ test('browser half: Coordinate shows in the header of a plain top-level chat tha
     assert.equal(toastOf(stopped()), undefined);
 });
 
+test('browser half: while the plugin is switched off in its settings (enabled: false) no chat offers Coordinate, in its header or on the new-chat screen', async () => {
+    const { client, react } = loadClient({ primitives: { Tooltip: 'Tooltip', Toast: () => null } });
+    const { CoordinateAction, StartCoordinating, canCoordinate, startState, projectFacts, commandSaid } = client.internals;
+    const state = { byId: { p: { id: 'p', title: 'Pricing', cwd: '/w' }, n: { id: 'n', cwd: '/w', blank: true } }, projectionsBySession: {} };
+    let off = true;
+    const calls = [];
+    // The plugin's endpoints as OffRemote answers them, then as the running plugin does.
+    const link = {
+        async call(method) {
+            calls.push(method);
+            await null;
+            return method === 'sessions' ? { ok: true, value: off ? { sessions: {}, off: true } : { sessions: {} } } : { ok: false, error: { code: 'coordinator/refused', message: 'off' } };
+        },
+    };
+    const projects = { facts: projectFacts(link), said: commandSaid(), refresh() {} };
+    const header = mount(react, () => CoordinateAction({ sessionId: 'p', useSessions: (select) => select(state), projects }));
+    const start = mount(react, () => StartCoordinating({
+        sessionId: 'n', useSession: (select) => select(state.byId.n), useSessions: (select) => select(state), useConversation: (select) => select({ activeTargets: new Set() }), projects,
+    }));
+    // What both views' effect does once the window is up: ask the plugin which sessions it knows.
+    await projects.facts.sessions();
+    await projects.facts.sessions();
+    assert.deepEqual(calls, ['sessions'], 'the window asks the plugin once which sessions it knows');
+    assert.equal(canCoordinate(state, 'p'), false);
+    assert.equal(startState(state, 'n'), undefined);
+    assert.equal(header(), null, 'no Coordinate in the header');
+    assert.equal(start(), null, 'no Coordinate switch on the new-chat screen');
+    // Switched on again: the next window that asks offers it.
+    off = false;
+    const again = projectFacts(link);
+    await again.sessions();
+    assert.equal(canCoordinate(state, 'p'), true);
+    assert.equal(startState(state, 'n'), 'off');
+});
+
+test('browser half: the plugin\'s page names each setting to fix, where to fix it, and says when the plugin is switched off', () => {
+    const { client } = loadClient();
+    const { SettingProblems } = client.internals;
+    assert.equal(SettingProblems({ problems: [] }), null, 'nothing to fix: nothing shown');
+    assert.equal(SettingProblems({}), null);
+    const one = SettingProblems({ problems: ['maxHandbacksPerHour must be a whole number of handbacks from 1 to 1000 (it is 0), so the plugin uses 30 until you fix it.'] });
+    assert.equal(one.props['aria-labelledby'], 'dshp-problems-title');
+    assert.deepEqual(elementsOf(one).filter((e) => e.type === 'h4' || e.type === 'p' || e.type === 'li').map(textIn), [
+        'A setting to fix',
+        'In your profile\'s cordis.patch.yml, in the row "- id: coordinator". The plugin keeps running meanwhile, as each line says.',
+        'maxHandbacksPerHour must be a whole number of handbacks from 1 to 1000 (it is 0), so the plugin uses 30 until you fix it.',
+    ]);
+    assert.equal(elementsOf(SettingProblems({ problems: ['a', 'b'] })).find((e) => e.type === 'h4').children.join(''), '2 settings to fix');
+    const off = SettingProblems({ problems: [], off: true });
+    assert.equal(off.props['data-projects-off'], '');
+    assert.deepEqual(elementsOf(off).filter((e) => e.type === 'h4' || e.type === 'p' || e.type === 'ul').map(textIn), [
+        'Switched off',
+        'Its row in your profile\'s cordis.patch.yml ("- id: coordinator") says enabled: false, so no chat coordinates and no chat is offered the thread tools. Set it to true, or take the line out, to coordinate again.',
+    ]);
+    assert.equal(elementsOf(SettingProblems({ problems: ['x'], off: true })).filter((e) => e.type === 'li').length, 1, 'switched off, a setting to fix is still listed');
+});
+
 test('browser half: on DSH\'s new-chat screen Coordinate sits in the composer\'s row, and what /coordinate typed there said shows as a banner', async () => {
     const Toast = () => null;
     const { client, react } = loadClient({ primitives: { Tooltip: 'Tooltip', Toast } });
@@ -1485,6 +1542,12 @@ test('browser half: thread rows, cards and links read the projection as DSH send
     assert.deepEqual(plain([heldOwn.verb, heldOwn.note, heldOwn.icon]),
         ['Handback held · Progress update', 'Threads are paused, so the chat that started this thread gets this handback when you resume.', 'IconPauseOutlineRegular']);
     assert.equal(cardView(threadValue.cards[0], thread, statuses, state.byId, 's-t3', undefined, [{ thread: 't9', status: 'done' }]).verb, 'Handed back · Progress update');
+    // After its chat stopped coordinating, the thread's own card says what its handback waits for.
+    const offOwn = cardView(threadValue.cards[0], thread, statuses, state.byId, 's-t3', undefined, [{ thread: 't3', status: 'progress' }], 'off');
+    assert.deepEqual(plain([offOwn.verb, offOwn.note]),
+        ['Handback held · Progress update', 'The chat that started this thread stopped coordinating, so it gets this handback when you run /coordinate there again.']);
+    const offCard = cardView({ turn: 2, seq: 12, kind: 'send', thread: 't2' }, coord, statuses, state.byId, 's-c', undefined, [{ thread: 't2', status: 'done' }], 'off');
+    assert.deepEqual(plain([offCard.state.label, offCard.row.line]), ['Done', 'Done · held until you coordinate again']);
     const heldCard = cardView({ turn: 2, seq: 12, kind: 'send', thread: 't2' }, coord, statuses, state.byId, 's-c', undefined, [{ thread: 't2', status: 'blocked' }]);
     assert.deepEqual(plain([heldCard.state.label, heldCard.state.dot, heldCard.row.line, heldCard.row.held]), ['Blocked', 'warning', 'Blocked · held until you resume', true]);
 
@@ -1908,7 +1971,7 @@ test('browser half: a thread opens beside its coordinator, and in full view wher
         sidebarRight: { mounted: { getSnapshot: () => 'c' }, openResource: (address, options) => beside.push([decodeURIComponent(address.split('/').pop()), options.kind]) },
     };
     client.apply(ctx);
-    const { projects } = registered.find((r) => r.id === 'dsh-plugin-coordinator/threads-menu').inject();
+    const { projects } = registered.find((r) => r.id === 'dsh-plugin-coordinator:threads-menu').inject();
     // A thread from a card or a row: the chat that started it as the main chat, the thread beside it.
     projects.openThread('t');
     assert.deepEqual(opened, ['c']);
@@ -1967,7 +2030,7 @@ test('browser half: a thread opened beside its coordinator, or from the Threads 
         },
     };
     client.apply(ctx);
-    const { projects } = registered.find((r) => r.id === 'dsh-plugin-coordinator/threads-menu').inject();
+    const { projects } = registered.find((r) => r.id === 'dsh-plugin-coordinator:threads-menu').inject();
     // The first thread gets a tab; opened again, DSH brings that tab to the front.
     projects.openThread('t1');
     tabs = [{ id: 'a', kind: 'projectthread', contentId: address('t1') }];
@@ -2030,7 +2093,7 @@ test('browser half: with "Open threads beside their coordinator" off, a thread o
         sidebarRight: { mounted: { getSnapshot: () => 'c' }, openResource: (address, options) => beside.push([decodeURIComponent(address.split('/').pop()), options.kind]) },
     };
     client.apply(ctx);
-    const { projects } = registered.find((r) => r.slot.id === 'dsh-plugin-coordinator/threads-menu').slot.inject();
+    const { projects } = registered.find((r) => r.slot.id === 'dsh-plugin-coordinator:threads-menu').slot.inject();
     // A thread from a row or a card's name opens as the main chat, as before the setting.
     projects.openThread('t');
     assert.deepEqual([opened, beside], [['t'], []]);
@@ -2046,7 +2109,7 @@ test('browser half: with "Open threads beside their coordinator" off, a thread o
     await new Promise((resolve) => setTimeout(resolve, 0));
     assert.deepEqual([opened, holds, beside], [[], [], []]);
     // A thread's menu in the session list offers to pair it, even while it is the main chat.
-    const item = registered.find((r) => r.slot.id === 'dsh-plugin-coordinator/full-view-item');
+    const item = registered.find((r) => r.slot.id === 'dsh-plugin-coordinator:full-view-item');
     const menuItem = () => item.component({ sessionId: 't', useMenuOpenState: () => [true, () => {}], useSessions: (select) => select(snapshot), ...item.slot.inject() });
     let shown = menuItem();
     assert.deepEqual(shown.children, ['Open beside its coordinator']);
@@ -2268,7 +2331,7 @@ test('browser half: the plugin\'s messages get a notice that names them, without
 
 test('browser half: one store of what the plugin says about each coordinating chat, shared by the views and read while they watch', async () => {
     const { client } = loadClient();
-    const { projectFacts, pausedText, withHeld } = client.internals;
+    const { projectFacts, pausedText, withHeld, holdOf } = client.internals;
     const calls = [];
     let paused = true;
     let others = [{ id: 'c2', coordinator: 'c2', paused: false }];
@@ -2344,6 +2407,44 @@ test('browser half: one store of what the plugin says about each coordinating ch
     // And sits where that handback puts it: Done, or Waiting on you for a decision or a block.
     assert.deepEqual(plain(withHeld(rows, [{ thread: 't1', status: 'done' }, { thread: 't3', status: 'needs_decision' }]).map((r) => [r.group, r.dot, r.stateLabel])),
         [['done', 'done', 'Done'], ['running', null, null], ['waiting', 'warning', 'Needs a decision']]);
+    // After /coordinate off the plugin holds handbacks too: the row says it was handed back and what it waits for.
+    assert.deepEqual(plain([holdOf(false, false), holdOf(true, false), holdOf(false, true), holdOf(true, true)]), [null, 'paused', 'off', 'both']);
+    assert.deepEqual(plain(withHeld(rows, [{ thread: 't1', status: 'done' }], 'off').map((r) => [r.group, r.stateLabel, r.line, r.held ?? false])),
+        [['done', 'Done', 'Done · held until you coordinate again', true], ['running', null, 'Working…', false], ['idle', null, 'No handback yet', false]]);
+    assert.equal(withHeld(rows, [{ thread: 't3', status: 'blocked' }], 'both')[2].line, 'Blocked · held until you coordinate again and resume');
+    // Nothing is held while the chat coordinates and runs: its rows stay as they are.
+    assert.equal(withHeld(rows, [{ thread: 't1', status: 'done' }], holdOf(false, false)), rows);
+});
+
+test('browser half: switched off, its own tabs in the chat on screen close, and only those (round-1 finding 8)', () => {
+    const { client } = loadClient();
+    const { closeOwnTabs } = client.internals;
+    const closed = [];
+    const tabs = [{ id: 'a', kind: 'projectthread' }, { id: 'b', kind: 'file' }, { id: 'c', kind: 'projectthreads' }, { id: 'd', kind: 'projectthreadlink' }, { id: 'e', kind: 'guide' }];
+    const sidebar = { mounted: { getSnapshot: () => 'chat-1' }, tabsIn: (session) => (session === 'chat-1' ? tabs : []), close: (id) => closed.push(id) };
+    assert.equal(closeOwnTabs(sidebar), 3);
+    assert.deepEqual(closed, ['a', 'c', 'd'], 'its thread chat, Threads pane and thread link; not DSH\'s file or guide tabs');
+    // Nothing on screen, no sidebar, or a close that throws: it carries on.
+    assert.equal(closeOwnTabs({ ...sidebar, mounted: { getSnapshot: () => undefined } }), 0);
+    assert.equal(closeOwnTabs(undefined), 0);
+    const warned = [];
+    const warn = console.warn;
+    console.warn = (line) => warned.push(line);
+    try {
+        assert.equal(closeOwnTabs({ ...sidebar, close: (id) => { if (id === 'a') throw new Error('gone'); } }), 2);
+    } finally {
+        console.warn = warn;
+    }
+    assert.deepEqual(warned, ['[coordinator] could not close its tab: gone']);
+});
+
+test('browser half: Thread settings names each thread by its title, never by the plugin\'s id (round-1 nit 9)', () => {
+    const { client } = loadClient();
+    const { threadNames } = client.internals;
+    // Before, a thread's picker was named "Add subtract to calc.py (t1)" for a screen reader.
+    const names = threadNames([{ id: 't1', title: 'Add subtract to calc.py' }, { id: 't2', title: 'Fix tests' }, { id: 't3', title: 'Fix tests' }, { id: 't4', title: '  ' }, { id: 't5' }]);
+    assert.deepEqual([...names.values()], ['Add subtract to calc.py', 'Fix tests, thread 2', 'Fix tests, thread 3', 'Untitled thread, thread 4', 'Untitled thread, thread 5']);
+    assert.ok([...names.values()].every((name) => !/\bt\d+\b|\(t\d+\)/.test(name)));
 });
 
 test('browser half: news from threads marks their chat\'s row and shows one notice for the newest, until that chat is opened', async () => {
@@ -2653,4 +2754,60 @@ test('browser half: a thread\'s Changes tab lists its files with their diffs, an
     card = CardChanges({ changes: counts, ...changesOpener(noTab, 's-t1', counts) });
     assert.equal(card.props['data-projects-changes'], 'gone');
     assert.deepEqual(plain(changesOpener(withTab, undefined, counts)), {}, 'a card whose thread has no session opens nothing');
+});
+
+test('browser half: its one style sheet goes with the plugin, its motion stops under wp-still and reduced motion, and no rule finds DSH\'s header by :has()', () => {
+    const tags = [];
+    const document = {
+        addEventListener: () => {}, removeEventListener: () => {},
+        querySelector: (selector) => tags.find((tag) => selector === `style[data-plugin-css=${JSON.stringify(tag.dataset.pluginCss)}]`) ?? null,
+        createElement: () => {
+            const tag = { dataset: {}, remove: () => { tags.splice(tags.indexOf(tag), 1); } };
+            return tag;
+        },
+        head: { appendChild: (tag) => { tags.push(tag); } },
+    };
+    const { client } = loadClient({ document });
+    // Added once when DSH loads the window half, as the plugin's own sheet.
+    assert.equal(tags.length, 1);
+    assert.deepEqual(plain(tags[0].dataset), { plugin: 'dsh-plugin-coordinator', pluginCss: 'dsh-plugin-coordinator/client.css' });
+    const css = tags[0].textContent;
+    // Switched off (its context disposed), the sheet goes; on again, it comes back once.
+    const disposers = [];
+    const ctx = { effect: (fn) => { const undo = fn(); if (typeof undo === 'function') disposers.push(undo); }, inject: () => {}, slots: { inject: () => {}, register: () => () => {} } };
+    client.apply(ctx);
+    assert.equal(tags.length, 1, 'applying adds no second sheet');
+    for (const undo of disposers.splice(0)) undo();
+    assert.equal(tags.length, 0, 'switched off, no rule is left');
+    client.apply(ctx);
+    client.apply(ctx);
+    assert.equal(tags.length, 1, 'on again: one sheet');
+    // Motion: every transition and animation the plugin draws stops under body.wp-still and prefers-reduced-motion,
+    // with what DSH draws inside its views, pseudo-elements too.
+    const moving = [...css.matchAll(/([^{}]+)\{[^}]*\b(?:animation|transition):(?!none)[^}]*\}/g)].map((m) => m[1].trim()).filter((s) => !s.startsWith('@'));
+    assert.ok(moving.length >= 8, moving.join(' | '));
+    const still = /body\.wp-still :is\(([^)]*)\),body\.wp-still :is\([^)]*\)::before,body\.wp-still :is\([^)]*\)::after,body\.wp-still :is\([^)]*\) \*,body\.wp-still :is\([^)]*\) \*::before,body\.wp-still :is\([^)]*\) \*::after\{animation:none!important;transition:none!important\}/.exec(css);
+    assert.ok(still, 'a wp-still rule for the views and their pseudo-elements');
+    const roots = still[1].split(',');
+    assert.match(css, /@media \(prefers-reduced-motion:reduce\)\{:is\([^)]*\),:is\([^)]*\)::before,:is\([^)]*\)::after,:is\([^)]*\) \*,:is\([^)]*\) \*::before,:is\([^)]*\) \*::after\{animation:none!important;transition:none!important\}\}/);
+    // Each moving element is one of those views or sits in one: its rule names a root, or a class only drawn inside one.
+    const inside = { 'dshp-mp-chev': 'dshp-mp', 'dshp-t-chev': 'dshp-t-hdr', 'dshp-t-group': 'dshp-t-menu', 'dshp-ch-busy': 'dshp-ch', 'dshp-ch-chev': 'dshp-ch', 'dshp-nt': 'dshp-nt', 'dshp-t-card-meter': 'dshp-t-card', 'dshp-ps-more': 'dshp-ps' };
+    for (const selector of moving) {
+        const cls = /\.(dshp-[\w-]+)/.exec(selector)?.[1];
+        assert.ok(cls && roots.includes(`.${inside[cls] ?? cls}`), `${selector} stops with its view (${cls})`);
+    }
+    // Glass: every ground the plugin blurs itself turns opaque and blurs nothing when the system asks for less transparency.
+    const blurred = [...css.matchAll(/([^{}]+)\{[^}]*backdrop-filter:(?!none)[^}]*\}/g)].map((m) => m[1].trim()).filter((sel) => !sel.startsWith('@'));
+    assert.ok(blurred.length >= 1, 'the bar above the message box has DSH\'s menu glass');
+    const reduced = /@media \(prefers-reduced-transparency:reduce\)\{([^{}]+)\{([^}]*)\}\}/.exec(css);
+    assert.ok(reduced, 'a reduced-transparency rule');
+    for (const selector of blurred) assert.ok(reduced[1].split(',').map((x) => x.trim()).includes(selector), `${selector} thickens under reduced transparency`);
+    assert.match(reduced[2], /backdrop-filter:none/);
+    assert.match(reduced[2], /background:linear-gradient\(var\(--dsw-specific-menu\),var\(--dsw-specific-menu\)\),var\(--dsw-alias-bg-layer-2\)/, 'its menu glass on DSH\'s opaque card ground');
+    // DSH's header is DSH's: no rule reaches its title crumb, and no :has() looks into DSH's elements.
+    assert.doesNotMatch(css, /nav\[aria-label\]/);
+    for (const rule of css.split('}')) {
+        const selector = rule.slice(0, rule.indexOf('{'));
+        if (selector.includes(':has(')) assert.ok(/^\.dshp-/.test(selector.trim()), `a :has() only inside the plugin's own views: ${selector}`);
+    }
 });

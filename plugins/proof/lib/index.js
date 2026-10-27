@@ -26,7 +26,7 @@ import { join } from 'node:path';
 import z from '@deepseek-ai/schemastery';
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
-import { LIVE_SETTINGS, checkConfig, savedEntry } from './config.js';
+import { LIVE_SETTINGS, checkConfig, liveValues, savedEntry } from './config.js';
 import { sessionRows, titleOf } from './ledger.js';
 import { KEY, foldAll, proofProjection, viewOf } from './projection.js';
 import { ProofRemote, SERVICE } from './remote.js';
@@ -63,10 +63,10 @@ export const Config = z.object({
     /** The check model, by its id in DSH's profile: a cheap local one, asked for low effort when it offers that. */
     verifierModel: live(z.any().default('glm-5.3-flash')),
     /**
-     * The longest a check may take, in minutes (1 to 60); it is stopped after that. 15 by default: a check
-     * re-runs a command or two, but a busy shared gateway can take several minutes to answer each request.
+     * The longest a check may take, in minutes (1 to 60); it is stopped after that. 45 by default: a check
+     * re-runs a command or two, but a busy shared gateway can take half an hour to answer (allow 60 then).
      */
-    verifierMinutes: live(z.any().default(15)),
+    verifierMinutes: live(z.any().default(45)),
     /** The most checks that start in an hour (1 to 120); more wait their turn. */
     verifierPerHour: live(z.any().default(12)),
 });
@@ -97,14 +97,15 @@ export function apply(ctx, config) {
     const store = new JsonStore(join(dir, 'checks.json'), { parse: parseChecks, logger });
     const sc = ctx.sessionController;
 
-    // DSH's session list, read at most every two seconds: the page's sessions and the titles.
+    // DSH's session list, read at most every two seconds: the page's sessions and the titles. Each read takes an open
+    // session's claims as they are now (withClaims), so a claim made since the list was read is on the page at once.
     let listed = { at: 0, items: [] };
     const listItems = async () => {
-        if (Date.now() - listed.at < 2000) return listed.items;
-        const result = await sc.list({}, AbortSignal.timeout(20000));
-        const items = withClaims(Array.isArray(result?.items) ? result.items : []);
-        listed = { at: Date.now(), items };
-        return items;
+        if (Date.now() - listed.at >= 2000) {
+            const result = await sc.list({}, AbortSignal.timeout(20000));
+            listed = { at: Date.now(), items: Array.isArray(result?.items) ? result.items : [] };
+        }
+        return withClaims(listed.items);
     };
 
     // A session's claims on DSH's list come from DSH's cache of each session's views, written when the session last
@@ -158,13 +159,15 @@ export function apply(ctx, config) {
         const sessions = ctx.get?.('sessions');
         const withValue = (item, value) => ({ ...item, projections: { ...item.projections, values: { ...item.projections?.values, [KEY]: value } } });
         const out = items.map((item) => {
-            if (!item || typeof item.sessionId !== 'string' || item.projections?.values?.[KEY] !== undefined) return item;
+            if (!item || typeof item.sessionId !== 'string') return item;
             try {
+                // An open session's claims as they are now: DSH's list holds them as of the session's last save.
                 const session = typeof sessions?.get === 'function' ? sessions.get(item.sessionId) : undefined;
                 if (session && typeof ctx.sessionProjections?.snapshot === 'function') {
                     const value = ctx.sessionProjections.snapshot(session, [KEY])?.values?.[KEY];
                     return value === undefined ? item : withValue(item, value);
                 }
+                if (item.projections?.values?.[KEY] !== undefined) return item;
                 const known = folded.get(item.sessionId);
                 if (known && known.updatedAt === item.updatedAt) return known.failed ? item : withValue(item, known.value);
                 if (foldBudget > 0 && !toFold.has(item.sessionId) && foldingId !== item.sessionId) toFold.set(item.sessionId, item.updatedAt);
@@ -301,6 +304,8 @@ export function apply(ctx, config) {
             seen.delete(session.id);
             seen.set(session.id, sig);
             if (seen.size > 2000) seen.delete(seen.keys().next().value);
+            // A session the last list read did not have (a new one): read the list again, so the page lists it.
+            if (!listed.items.some((i) => i?.sessionId === session.id)) listed = { at: 0, items: [] };
             bump();
             verifier.onView(session.id, value);
         }));
@@ -317,8 +322,12 @@ export function apply(ctx, config) {
     }
 
     // Settings saved on Proof's page in Plugins: checked again, and they apply at once.
+    // The live settings as they were before the next save, so its log entry says what each change was.
+    let values = liveValues(settings);
     ctx.on('loader/volatile-update', guard(logger, 'proof: settings', (paths) => {
-        const entry = savedEntry(check, paths);
+        const now = liveValues(settings);
+        const entry = savedEntry(check, paths, { before: values, after: now });
+        values = now;
         if (entry) journal.add(entry);
         verifier.settingsChanged();
         bump();

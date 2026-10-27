@@ -68,6 +68,30 @@ const quoted = (value, looks) => typeof value === 'string' && looks.test(value.t
 const QUOTED_NUMBER = /^[+-]?\d+(?:\.\d+)?$/;
 const QUOTED_SWITCH = /^(?:true|false)$/i;
 
+/** The settings that are true or false. */
+const SWITCHES = Object.freeze(['enabled', 'promote', 'recall']);
+
+/**
+ * What a setting written in quotes would be without them, when that is
+ * right for it: "3" for Notes a turn, at most, is 3; "false" for a switch is
+ * false. Undefined for anything else (another type, a number out of range,
+ * a setting that is not a number or a switch): the page offers to save the
+ * value without quotes only then.
+ * @param {object} settings
+ * @param {string} key
+ * @returns {number | boolean | undefined}
+ */
+export function unquoted(settings, key) {
+    const value = settings?.[key];
+    if (typeof value !== 'string') return undefined;
+    const text = value.trim();
+    if (SWITCHES.includes(key)) return QUOTED_SWITCH.test(text) ? text.toLowerCase() === 'true' : undefined;
+    if (!Object.hasOwn(RANGES, key) || !QUOTED_NUMBER.test(text)) return undefined;
+    const n = Number(text);
+    const [min, max] = RANGES[key];
+    return Number.isInteger(n) && n >= min && n <= max ? n : undefined;
+}
+
 /** Throw unless a setting is true or false; a "true" in quotes is said to be text. */
 function onOff(settings, key) {
     const value = settings?.[key];
@@ -204,7 +228,58 @@ export function changedWords(paths) {
  * undefined when nothing did.
  */
 export function savedEntry(check, paths) {
-    return changedEntry(check, paths, { name: 'Canon', titles: SETTING_TITLES });
+    const entry = changedEntry(check, paths, { name: 'Canon', titles: SETTING_TITLES });
+    // A switch, a number or a choice is said with its new value: “Add notes to turns” off, “What Canon may write” to
+    // “Drafts”; a setting that is wrong, without one (the why says what is wrong with it).
+    const keys = [...new Set((Array.isArray(paths) ? paths : []).map((path) => (Array.isArray(path) ? path[0] : path)).filter((key) => typeof key === 'string'))];
+    const said = (wrong) => keys.map((key) => {
+        const value = wrong.has(key) ? undefined : valueWords(key, check.settings?.[key]);
+        return `“${SETTING_TITLES[key] ?? key}”${value === undefined ? '' : ` ${value}`}`;
+    }).join(', ');
+    if (entry?.state === 'waiting on a setting') {
+        // Every wrong setting, not only the first; a right one saved meanwhile, with its new value.
+        const also = alsoWrong(check);
+        const text = entry.text.startsWith('Settings changed: ') ? `Settings changed: ${said(new Set([check.problem?.key, ...also.map((p) => p.key)]))}; Canon waits until a wrong one is fixed` : entry.text;
+        return { ...entry, text, ...(also.length ? { why: `${entry.why} ${also.length === 1 ? 'Also wrong:' : `${also.length} more are wrong:`} ${also.map((p) => `${p.text}.`).join(' ')}` } : {}) };
+    }
+    if (entry?.state !== 'done' || !entry.text.startsWith('Settings changed: ')) return entry;
+    return { ...entry, text: `Settings changed: ${said(new Set())}` };
+}
+
+/** A setting's value in What happened's words: a switch on or off, a number, a choice's name; undefined for others. */
+function valueWords(key, value) {
+    if (SWITCHES.includes(key) && typeof value === 'boolean') return value ? 'on' : 'off';
+    if (Object.hasOwn(RANGES, key) && Number.isInteger(value)) return `to ${value.toLocaleString('en-US')}`;
+    if (key === 'access' && typeof value === 'string' && Object.hasOwn(ACCESS_CHOICES, value)) return `to “${ACCESS_CHOICES[value]}”`;
+    return undefined;
+}
+
+/**
+ * The wrong settings after the first one a check found, in its order and
+ * words: each one found is set aside (its default in its place) and the
+ * rest checked again. Empty when only one is wrong.
+ * @param {import('./shared/settings.js').SettingsCheck} check
+ * @returns {{ key: string, text: string }[]}
+ */
+export function alsoWrong(check) {
+    const first = check?.problem?.key;
+    if (typeof first !== 'string' || !Object.hasOwn(DEFAULTS, first) || typeof check.checkFn !== 'function') return [];
+    const out = [];
+    const seen = new Set([first]);
+    let rest = { ...check.settings, [first]: DEFAULTS[first] };
+    for (let i = 0; i < Object.keys(DEFAULTS).length; i += 1) {
+        try {
+            check.checkFn(rest);
+            break;
+        } catch (error) {
+            const key = error?.key;
+            if (typeof key !== 'string' || seen.has(key) || !Object.hasOwn(DEFAULTS, key)) break;
+            seen.add(key);
+            out.push({ key, text: String(error.message) });
+            rest = { ...rest, [key]: DEFAULTS[key] };
+        }
+    }
+    return out;
 }
 
 /**

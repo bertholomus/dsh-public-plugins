@@ -1,0 +1,36 @@
+// A window's own buttons, through the accessibility API, for one app only (the pid given):
+//   osascript -l JavaScript window-buttons.jxa <pid> list | close | minimise
+// "close" presses the red close button of its DSH window, "minimise" the yellow one, as a person does.
+// It needs accessibility access for the terminal it runs from; without it, it says so and does nothing.
+ObjC.import('ApplicationServices');
+ObjC.import('Foundation');
+function attr(el, name) {
+    const ref = Ref();
+    const err = $.AXUIElementCopyAttributeValue(el, $(name), ref);
+    return err === 0 ? ref[0] : undefined;
+}
+function str(v) {
+    try { return ObjC.unwrap(ObjC.castRefToObject(v)); } catch (e) { return undefined; }
+}
+function run(argv) {
+    if (!$.AXIsProcessTrusted()) return 'no accessibility access for this terminal';
+    const pid = Number(argv[0]);
+    const action = argv[1] || 'list';
+    const app = $.AXUIElementCreateApplication(pid);
+    const list = attr(app, 'AXWindows');
+    if (!list) return 'no windows';
+    const windows = ObjC.castRefToObject(list);
+    const out = [];
+    let target;
+    for (let i = 0; i < windows.count; i++) {
+        const w = windows.objectAtIndex(i);
+        const title = str(attr(w, 'AXTitle'));
+        out.push({ title, minimised: str(attr(w, 'AXMinimized')) });
+        if (!target && typeof title === 'string' && title.endsWith('DeepSeek Harness')) target = w;
+    }
+    if (action === 'list') return JSON.stringify(out);
+    if (!target) return `no DSH window: ${JSON.stringify(out)}`;
+    const button = attr(target, action === 'minimise' ? 'AXMinimizeButton' : 'AXCloseButton');
+    if (!button) return 'no such button';
+    return `pressed: ${$.AXUIElementPerformAction(ObjC.castRefToObject(button), $('AXPress')) === 0 ? 'ok' : 'refused'}`;
+}

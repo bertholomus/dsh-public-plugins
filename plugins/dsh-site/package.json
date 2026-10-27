@@ -1,11 +1,40 @@
 {
   "name": "dsh-plugin-dsh-site",
-  "version": "0.1.0",
-  "description": "Private-network edge for the running DSH Desktop shell: serve the same GUI to other devices on a tailnet.",
+  "version": "0.2.0",
+  "description": "A private-network front door to your DSH window: devices on your tailnet open the same DSH (sessions, workspaces, tools) that runs on this Mac, behind an address gate and DSH's own cross-site and DNS-rebinding checks.",
+  "icon": "./icon.svg",
   "license": "MIT",
+  "private": true,
   "type": "module",
   "main": "lib/index.js",
-  "files": ["lib", "cordis.patch.yml", "README.md", "verify.sh"],
-  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
-  "peerDependencies": { "@deepseek-ai/schemastery": "^3.18.1" }
+  "exports": {
+    ".": "./lib/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "lib",
+    "locale",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md",
+    "verify.sh"
+  ],
+  "scripts": {
+    "test": "node --test --test-timeout=60000 test/unit/*.test.js",
+    "e2e": "node scripts/e2e.mjs",
+    "check": "node --test --test-timeout=60000 test/unit/*.test.js && node scripts/e2e.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  }
 }

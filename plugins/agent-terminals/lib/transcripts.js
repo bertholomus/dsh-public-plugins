@@ -18,7 +18,7 @@
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs';
 import { askIn } from './shared/words.js';
 
-/** @typedef {{ kind: 'user' | 'reply' | 'call' | 'result' | 'start' | 'end' | 'meta' | 'approval', at: number, text?: string, final?: boolean, callId?: string, tool?: string, summary?: string, id?: string, cwd?: string }} Entry */
+/** @typedef {{ kind: 'user' | 'reply' | 'call' | 'result' | 'start' | 'end' | 'meta' | 'approval', at: number, text?: string, key?: string, final?: boolean, callId?: string, tool?: string, summary?: string, id?: string, cwd?: string }} Entry */
 
 const isRecord = (value) => typeof value === 'object' && value !== null && !Array.isArray(value);
 const timeOf = (value, fallback) => {
@@ -83,8 +83,10 @@ function messageEntries(line, fallbackAt) {
     if (!isRecord(message)) return [];
     const out = [];
     if (line.type === 'user') {
+        // The line's own id, where the CLI gives one: what tells one message from the next with the same words.
+        const key = typeof line.uuid === 'string' && line.uuid ? { key: line.uuid } : {};
         if (typeof message.content === 'string') {
-            if (!COMMAND_ECHO.test(message.content) && !WRAPPED.test(message.content)) out.push({ kind: 'user', at, text: message.content });
+            if (!COMMAND_ECHO.test(message.content) && !WRAPPED.test(message.content)) out.push({ kind: 'user', at, text: message.content, ...key });
             return out;
         }
         if (!Array.isArray(message.content)) return out;
@@ -93,7 +95,7 @@ function messageEntries(line, fallbackAt) {
             if (part.type === 'tool_result' && typeof part.tool_use_id === 'string') out.push({ kind: 'result', at, callId: part.tool_use_id });
         }
         const text = textOf(message.content, ['text']);
-        if (text.trim() && !COMMAND_ECHO.test(text) && !WRAPPED.test(text)) out.push({ kind: 'user', at, text });
+        if (text.trim() && !COMMAND_ECHO.test(text) && !WRAPPED.test(text)) out.push({ kind: 'user', at, text, ...key });
         return out;
     }
     if (line.type === 'assistant') {
@@ -200,12 +202,15 @@ export function foldEntry(fold, entry) {
             if (entry.cwd) next.cwd = entry.cwd;
             return next;
         case 'user': {
-            // The same words twice within a moment are one message logged two ways.
+            // One line read twice (the same line id, or, where a CLI gives none, the same words at the same
+            // moment) is one message. The same words sent again a moment later are a message of their own:
+            // each line proves one message (see proofs).
             const last = fold.users.at(-1);
-            if (last && last.text === entry.text && Math.abs(entry.at - last.at) < 3000) return next;
+            if (last && (entry.key && last.key ? entry.key === last.key : last.text === entry.text && last.at === entry.at)) return next;
+            const user = { at: entry.at, text: entry.text, ...(entry.key ? { key: entry.key } : {}) };
             next.turns += 1;
-            next.user = { at: entry.at, text: entry.text };
-            next.users = [...fold.users, { at: entry.at, text: entry.text }].slice(-KEEP_USERS);
+            next.user = user;
+            next.users = [...fold.users, user].slice(-KEEP_USERS);
             next.reply = undefined;
             next.ended = false;
             next.approval = undefined;
@@ -321,15 +326,82 @@ export const oneLine = (text, max) => {
 
 const squeeze = (text) => String(text ?? '').replace(/\s+/g, ' ').trim();
 
+/** How much earlier than its typing a transcript line may be dated and still prove a message (clocks, rounding). */
+export const PROOF_SLACK_MS = 2000;
+
+/** A user line's identity in the transcript: its own id where the CLI gives one, else its time. */
+export const lineKey = (user) => (typeof user?.key === 'string' && user.key ? user.key : `t${user?.at}`);
+
 /**
- * Whether the agent was told this message at or after `since`: its own
- * transcript holds a user message with the same words (the first 160
- * characters, spaces squeezed, so a CLI that trims or wraps still counts).
+ * Which transcript line proves which message. A message is proven by a
+ * place in a user line of the agent's own transcript that holds its words
+ * (the first 160 characters, spaces squeezed, so a CLI that trims or wraps
+ * still counts), dated at or after it was typed (or up to 2 s before). Each
+ * place proves one message only: the same words sent twice need two lines
+ * (or one line that holds them twice), and a message whose words are inside
+ * an earlier one's line is not proven by that line. The oldest message
+ * goes first; places credited before (`claimed`, from messages already
+ * delivered) stay theirs.
+ * @param {Fold | undefined} fold
+ * @param {Array<{ id: string, text: string, since: number }>} wanted - messages looking for proof.
+ * @param {Array<{ key: string, from: number, to: number } | { at: number, text: string }>} [claimed] - places
+ *   credited already: by line and place, or (as an older state file kept it) by the line's time and the words.
+ * @returns {Map<string, { at: number, key: string, from: number, to: number }>} by message id.
+ */
+export function proofs(fold, wanted, claimed = []) {
+    const users = Array.isArray(fold?.users) ? fold.users : [];
+    const taken = new Map();
+    const free = (key, from, to) => !(taken.get(key) ?? []).some(([a, b]) => from < b && a < to);
+    const take = (key, from, to) => taken.set(key, [...(taken.get(key) ?? []), [from, to]]);
+    // The first free place in a line for these words, or -1.
+    const placeIn = (key, said, want, whole) => {
+        for (let from = said.indexOf(want); from !== -1; from = said.indexOf(want, from + 1)) {
+            if (free(key, from, Math.min(said.length, from + whole.length))) return from;
+        }
+        return -1;
+    };
+    for (const claim of Array.isArray(claimed) ? claimed : []) {
+        if (!isRecord(claim)) continue;
+        if (typeof claim.key === 'string' && Number.isInteger(claim.from) && Number.isInteger(claim.to)) {
+            take(claim.key, claim.from, claim.to);
+            continue;
+        }
+        // An older delivery kept only the time of the line that proved it.
+        const whole = squeeze(claim.text);
+        const want = whole.slice(0, 160);
+        const user = want && Number.isFinite(claim.at) ? users.find((u) => u.at === claim.at && squeeze(u.text).includes(want)) : undefined;
+        if (!user) continue;
+        const said = squeeze(user.text);
+        const from = placeIn(lineKey(user), said, want, whole);
+        if (from !== -1) take(lineKey(user), from, Math.min(said.length, from + whole.length));
+    }
+    const out = new Map();
+    const order = (Array.isArray(wanted) ? wanted : []).filter((item) => isRecord(item) && typeof item.id === 'string').sort((a, b) => (a.since ?? 0) - (b.since ?? 0));
+    for (const item of order) {
+        const whole = squeeze(item.text);
+        const want = whole.slice(0, 160);
+        if (!want) continue;
+        for (const user of users) {
+            if (!(user.at >= (item.since ?? 0) - PROOF_SLACK_MS)) continue;
+            const key = lineKey(user);
+            const said = squeeze(user.text);
+            const from = placeIn(key, said, want, whole);
+            if (from === -1) continue;
+            const to = Math.min(said.length, from + whole.length);
+            take(key, from, to);
+            out.set(item.id, { at: user.at, key, from, to });
+            break;
+        }
+    }
+    return out;
+}
+
+/**
+ * Whether the agent was told this one message at or after `since` (no
+ * other message in view): its transcript's line for it, or undefined.
  */
 export function provenIn(fold, text, since) {
-    const want = squeeze(text).slice(0, 160);
-    if (!want) return undefined;
-    return (fold?.users ?? []).find((user) => user.at >= since - 2000 && squeeze(user.text).includes(want));
+    return proofs(fold, [{ id: 'one', text, since }]).get('one');
 }
 
 // ── Reading a file as it grows ──────────────────────────────────────────

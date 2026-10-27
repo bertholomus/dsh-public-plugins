@@ -27,21 +27,21 @@ const READ_TOOL = /(^|_)(read|grep|glob|ls|list|view|cat|search|find|fetch|open|
 /** DSH's own bookkeeping tools: never evidence of work. */
 const BOOKKEEPING_TOOL = /^(todo_write|todo_read|todowrite|create_goal|get_goal|update_goal|ask_user_question|question|present|plan|think|exit_plan_mode)$/i;
 
-const TEST_CMD = /\b(npm|pnpm|yarn|bun)\s+(run\s+)?(test|t|e2e|test:\S+|check|verify|ci)\b|\b(node|deno|bun)\s+(--test|test)\b|\bnpx\s+(jest|vitest|mocha|playwright|ava|tap|cypress)\b|\b(jest|vitest|mocha|pytest|py\.test|tox|nox|rspec|phpunit|ctest|ava|karma|cypress\s+run|playwright\s+test)\b|\bgo\s+test\b|\bcargo\s+(test|nextest)\b|\bmvnw?\s+(\S+\s+)*(test|verify)\b|\bgradlew?\s+(\S+\s+)*(\S*:)?(test\w*|check\w*|connected\w*Test)\b|\bxcodebuild\b[^|;&]*\btest\b|\b(flutter|dart)\s+test\b|\bsbt\s+(\S+\s+)*test\b|\b(nx|turbo|lerna)\s+(run\s+)?([\w:-]+\s+)*?(\S+:)?test\b|\bpnpm\s+(-r|--recursive)\s+test\b|\b(stack|cabal)\s+test\b|\bzig\s+build\s+test\b|\bgotestsum\b|\b(python3?|uv\s+run|poetry\s+run)\s+-m\s+(pytest|unittest)\b|\bmake\s+(-\S+\s+(\S+\s+)?)*(test|check|ci|e2e)\b|\bdotnet\s+test\b|\bswift\s+test\b|\bmix\s+test\b|\brake\s+(test|spec)\b|\bbundle\s+exec\s+(rspec|rake\s+(test|spec))\b|\bscripts\/e2e|\b\S*test\S*\.(sh|mjs|js|py)\b|\be2e\.(mjs|js|sh)\b|\bbazel\s+test\b|(^|[\s/])(ci|verify|check|checks|validate|precommit|pre-commit)([-_.]\S*)?\.(sh|mjs|js|py)\b|\bscripts\/(ci|verify|check|validate)\S*|\bpre-commit\s+run\b|\bdbt\s+(test|build)\b|\bbats\b|\bprove\b|\b(npm|pnpm|yarn|bun)(\s+(--filter|-F|-C|--prefix|--cwd|--dir|--workspace|-w|workspace)\s+\S+|\s+-{1,2}[\w-]+(=\S+)?)+\s+(run\s+)?(test|t|e2e|test:\S+)\b/i;
-const BUILD_CMD = /\b(npm|pnpm|yarn|bun)\s+(run\s+)?(build|build:\S+|compile|typecheck|type-check|tsc|bundle)\b|\btsc\b|\bcargo\s+(build|check)\b|\bgo\s+(build|vet)\b|\bmake(\s+(all|build|install|release))?\s*($|[;&|])|\bmvnw?\s+(\S+\s+)*(package|compile|install)\b|\bgradlew?\s+(\S+\s+)*(\S*:)?(build|assemble\w*|bundle\w*|jar|shadowJar|compile\w*)\b|\bdotnet\s+build\b|\bswift\s+build\b|\bwebpack\b|\bvite\s+build\b|\besbuild\b|\brollup\b|\bnext\s+build\b|\bnode\s+--check\b|\bpython3?\s+-m\s+(py_compile|compileall)\b|\bxcodebuild\b|\bcmake\s+--build\b|\bninja\b|\bdocker\s+(build|buildx\s+build|compose\s+build)\b|\bbazel\s+build\b|\bmix\s+compile\b|\bdbt\s+(run|seed|snapshot|compile)\b|\b(nx|turbo|lerna)\s+(run\s+)?(\S+:)?build\b|\bnx\s+run-many\b[^|;&]*--target[= ]build\b|\b(npm|pnpm|yarn|bun)(\s+(--filter|-F|-C|--prefix|--cwd|--dir|--workspace|-w|workspace)\s+\S+|\s+-{1,2}[\w-]+(=\S+)?)+\s+(run\s+)?(build|build:\S+|compile|typecheck|type-check)\b/i;
+const TEST_CMD = /\b(npm|pnpm|yarn|bun)\s+(run\s+)?(test|t|e2e|test:\S+|check|verify|ci)\b|\b(node|deno|bun)\s+(--test|test)\b|\bnpx\s+(jest|vitest|mocha|playwright|ava|tap|cypress)\b|\b(jest|vitest|mocha|pytest|py\.test|tox|nox|rspec|phpunit|ctest|ava|karma|cypress\s+run|playwright\s+test)\b|\bgo\s+test\b|\bcargo\s+(test|nextest)\b|\bmvnw?\s+(\S+\s+)*(test|verify)\b|\bgradlew?\s+(\S+\s+)*(\S*:)?(test\w*|check\w*|connected\w*Test)\b|\bxcodebuild\b[^|;&]*\btest\b|\b(flutter|dart)\s+test\b|\bsbt\s+(\S+\s+)*test\b|\b(nx|turbo|lerna)\s+(run\s+)?([\w:-]+\s+)*?(\S+:)?test\b|\bpnpm\s+(-r|--recursive)\s+test\b|\b(stack|cabal)\s+test\b|\bzig\s+build\s+test\b|\bgotestsum\b|\b(python3?|uv\s+run|poetry\s+run)\s+-m\s+(pytest|unittest)\b|\bmake\s+(-\S+\s+(\S+\s+)?)*(test|check|ci|e2e)\b|\bdotnet\s+test\b|\bswift\s+test\b|\bmix\s+test\b|\brake\s+(test|spec)\b|\b(?:bin\/)?rails\s+test\b|\bbundle\s+exec\s+(rspec|rake\s+(test|spec))\b|\bscripts\/e2e|\b\S*test\S*\.(sh|mjs|js|py)\b|\be2e\.(mjs|js|sh)\b|\bbazel\s+test\b|(^|[\s/])(ci|verify|check|checks|validate|precommit|pre-commit)([-_.]\S*)?\.(sh|mjs|js|py)\b|\bscripts\/(ci|verify|check|validate)\S*|\bpre-commit\s+run\b|\bdbt\s+(test|build)\b|\bbats\b|\bprove\b|\b(npm|pnpm|yarn|bun)(\s+(--filter|-F|-C|--prefix|--cwd|--dir|--workspace|-w|workspace)\s+\S+|\s+-{1,2}[\w-]+(=\S+)?)+\s+(run\s+)?(test|t|e2e|test:\S+)\b/i;
+const BUILD_CMD = /\b(npm|pnpm|yarn|bun)\s+(run\s+)?(build|build:\S+|compile|typecheck|type-check|tsc|bundle)\b|\btsc\b|\bcargo\s+(build|check)\b|\bgo\s+(build|vet)\b|\bmake(\s+(all|build|install|release))?\s*($|[;&|])|\bmvnw?\s+(\S+\s+)*(package|compile|install)\b|\bgradlew?\s+(\S+\s+)*(\S*:)?(build|assemble\w*|bundle\w*|jar|shadowJar|compile\w*)\b|\bdotnet\s+build\b|\bswift\s+build\b|\bwebpack\b|\bvite\s+build\b|\besbuild\b|\brollup\b|\bnext\s+build\b|\bnode\s+--check\b|\bpython3?\s+-m\s+(py_compile|compileall)\b|\bxcodebuild\b|\bcmake\s+--build\b|\bninja\b|\bdocker\s+(build|buildx\s+build|compose\s+build)\b|\bbazel\s+build\b|\bmix\s+compile\b|\bdbt\s+(run|seed|snapshot|compile)\b|\bhugo\b(?!\s+(?:server|serve|new|version|env|mod|config|list|gen|completion|help|import|deploy)\b)|\b(?:bundle\s+exec\s+)?jekyll\s+build\b|\b(?:@11ty\/)?eleventy\b|\bmkdocs\s+build\b|\bsphinx-build\b|\b(?:astro|gatsby|zola|mdbook|docusaurus|vuepress|vitepress)\s+build\b|\bnuxt\s+(?:build|generate)\b|\bhexo\s+(?:generate|g)\b|\bpelican\s+content\b|\b(nx|turbo|lerna)\s+(run\s+)?(\S+:)?build\b|\bnx\s+run-many\b[^|;&]*--target[= ]build\b|\b(npm|pnpm|yarn|bun)(\s+(--filter|-F|-C|--prefix|--cwd|--dir|--workspace|-w|workspace)\s+\S+|\s+-{1,2}[\w-]+(=\S+)?)+\s+(run\s+)?(build|build:\S+|compile|typecheck|type-check)\b/i;
 const LINT_CMD = /\b(npm|pnpm|yarn|bun)\s+(run\s+)?(lint|lint:\S+|format:check|fmt:check|check:format)\b|\b(eslint|ruff|flake8|pylint|mypy|pyright|golangci-lint|shellcheck|stylelint|rubocop|swiftlint|biome\s+(check|lint)|oxlint|phpstan|psalm)\b|\bprettier\s+(--check|-c)\b|\bblack\s+--check\b|\bcargo\s+(clippy|fmt\s+--check)\b|\bgofmt\s+-l\b|\b(bash|sh|zsh|dash|ksh)\s+-n\b|\bphp\s+-l\b|\b(ruby|perl)\s+-c\b|\bterraform\s+(validate|fmt\s+-{1,2}check)\b|\bnginx\s+-t\b|\b(yamllint|hadolint|actionlint|markdownlint(-cli2)?|ktlint|detekt|credo|standardrb|tflint|staticcheck|revive)\b|\bsqlfluff\s+lint\b|\bbuf\s+lint\b|\b(dart|flutter)\s+analyze\b/i;
 const CI_CMD = /\bgh\s+(run\s+(view|list|watch)|pr\s+(checks|status)|workflow\s+view)\b|\bgh\s+pr\s+view\b(?=[^|;&]*\b(?:statusCheckRollup|checks|mergeStateStatus)\b)|\bglab\s+ci\b|\bcircleci\b|\bbuildkite\b|\bcurl\b[^|;&]*\/(actions|checks|statuses|pipelines)\b/i;
 /** Where a command ships work: a repository, a package registry, or a running environment. */
-const PUSH_CMD = /\bgit\s+push\b|\bgh\s+pr\s+merge\b|\bgh-pages\b|\bgh\s+release\s+create\b/i;
+const PUSH_CMD = /\bgit\s+push\b|\bgh\s+pr\s+merge\b|\bgh-pages\b|\bgh\s+release\s+(?:create|upload)\b/i;
 const DEPLOY_REMOTE = /\bgit\s+push\s+(-\S+\s+)*(heroku|dokku|deploy|production|prod|staging|live|fly|render|piku)\b|\bgh-pages\b/i;
-const PUBLISH_CMD = /\b(npm|pnpm|yarn)\s+publish\b|\bcargo\s+publish\b|\btwine\s+upload\b|\bgem\s+push\b|\bdocker\s+(push|buildx\s+build\b[^|;&]*--push)\b|\bgh\s+release\s+create\b|\bmvnw?\s+(\S+\s+)*deploy\b|\bgradlew?\s+(\S+\s+)*publish\w*\b|\bdotnet\s+nuget\s+push\b|\b(poetry|uv|flit|hatch)\s+publish\b|\bmix\s+hex\.publish\b|\bpod\s+trunk\s+push\b|\bfastlane\s+(?:\S+\s+)*(?:pilot|upload_to_testflight|upload_to_app_store|upload_to_play_store|deliver|supply)\b|\baltool\b[^|;&]*--upload|\biTMSTransporter\b/i;
+const PUBLISH_CMD = /\b(npm|pnpm|yarn)\s+publish\b|\bcargo\s+publish\b|\btwine\s+upload\b|\bgem\s+push\b|\bdocker\s+(push|buildx\s+build\b[^|;&]*--push)\b|\b(?:podman|buildah)\s+push\b|\bjib:build\b|\bgradlew?\s+(?:\S+\s+)*jib\b(?!\w)|\bko\s+(?:build|publish|apply)\b|\bcrane\s+(?:push|copy|cp)\b|\bskopeo\s+copy\b|\bgh\s+release\s+(?:create|upload)\b|\bmvnw?\s+(\S+\s+)*deploy\b|\bgradlew?\s+(\S+\s+)*publish\w*\b|\bdotnet\s+nuget\s+push\b|\b(poetry|uv|flit|hatch)\s+publish\b|\bmix\s+hex\.publish\b|\bpod\s+trunk\s+push\b|\bfastlane\s+(?:\S+\s+)*(?:pilot|upload_to_testflight|upload_to_app_store|upload_to_play_store|deliver|supply)\b|\baltool\b[^|;&]*--upload|\biTMSTransporter\b|\b(?:aws\s+s3|gsutil(?:\s+-m)?|gcloud\s+storage)\s+(?:cp|sync|mv)\s+(?:--?[\w-]+(?:[= ]\S+)?\s+)*(?!s3:|gs:)\S+\s+(?:s3|gs):\/\/\S*(?=\s*(?:$|&&|;|\|))/i;
 const RELEASE_CMD = /\bkubectl\b[^|;&]*\b(apply|rollout|set\s+image|replace|scale|patch)\b|\bhelm\s+(upgrade|install|rollback)\b|\b(fly|flyctl)\s+(deploy|releases?)\b|\bvercel\b|\bnetlify\s+deploy\b|\bheroku\s+(releases|container:release|deploy)\b|\bterraform\s+apply\b|\bpulumi\s+up\b|\bwrangler\s+(deploy|publish)\b|\bfirebase\s+deploy\b|\bgcloud\s+(\S+\s+)*deploy\b|\baws\s+(s3\s+sync|deploy|ecs\s+update-service|lambda\s+update-function-code|cloudformation\s+deploy)\b|\bcap\s+\S+\s+deploy\b|\bansible-playbook\b|\bkamal\s+deploy\b|(^|[\s;&|/])deploy(\.sh)?(\s|$)|\b(npm|pnpm|yarn)\s+run\s+deploy\b|\bmake\s+deploy\b|\brsync\b[^|;&]*\s[\w.@-]+:\S*|\bscp\b[^|;&]*\s[\w.@-]+:\S*|\bdocker\s+compose\s+(\S+\s+)*up\b|\bsystemctl\s+(restart|reload)\b/i;
 /** Reads of what a registry holds. */
 const REGISTRY_READ_CMD = /\bnpm\s+(view|info|show)\b|\bpip3?\s+index\s+versions\b|\bcargo\s+search\b|\bgem\s+list\s+(-r|--remote)\b|\bdocker\s+(manifest\s+inspect|pull)\b|\bcrane\s+(digest|ls)\b|\bskopeo\s+inspect\b/i;
 /** A request to a server, or a status read of what runs. */
 const PROBE_CMD = /\b(curl|wget|httpie|xh|hey|ab)\b|\bhttp\s+(get|head|post\s+)?\S*https?:|\bkubectl\b[^|;&]*\b(get\s+(pods?|po|deploy(ments?)?|svc|services?)|describe)\b|\bsystemctl\s+status\b|\bdocker\s+(ps|compose\s+ps)\b|\b(fly|flyctl)\s+status\b|\bheroku\s+ps\b|\baws\s+[\w-]+\s+(?:describe-[\w-]+|get-[\w-]+|list-[\w-]+|wait)\b|\bgcloud\s+(?:[\w-]+\s+){1,3}(?:describe|list)\b|\baz\s+(?:[\w-]+\s+){1,3}(?:show|list)\b/i;
 /** Runs that apply infrastructure, a playbook or a database migration. */
-const MIGRATE_CMD = /\b(sqlite3|duckdb)\s+\S+\s*<\s*\S+|\b(psql|mysql|mariadb|sqlcmd)\b[^|;&]*(\s-f\s|\s--file[= ]|<\s*\S+)|\balembic\s+upgrade\b|\b(rails|rake)\s+db:(migrate|schema:load|setup)\b(?!:status)|\bprisma\s+(migrate\s+(deploy|dev|reset)|db\s+push)\b|\b(knex|sequelize(-cli)?)\s+(migrate:latest|db:migrate)\b|\bgoose\b[^|;&]*\bup\b|\bmigrate\b[^|;&]*\s(up|-up)\b|\bflyway\s+migrate\b|\bdbmate\s+(up|migrate)\b|\bliquibase\s+update\b|\b(php\s+artisan|manage\.py|django-admin)\s+migrate\b(?!:status)|\bdiesel\s+migration\s+run\b|\bsqlx\s+migrate\s+run\b|\bmix\s+ecto\.migrate\b|\bdotnet\s+ef\s+database\s+update\b|\b(npm|pnpm|yarn|bun)\s+(run\s+)?(db:)?migrate\b|\bdrizzle-kit\s+(push|migrate)\b|\b(make|just|task)\s+(db[-:])?migrate\b|\btypeorm(-ts-node-\w+)?\s+migration:run\b|\bmikro-orm\s+migration:up\b|\batlas\s+(migrate|schema)\s+apply\b|\bsupabase\s+(db\s+(push|reset)|migration\s+up)\b|\bhasura\s+migrate\s+apply\b|\bsqitch\s+deploy\b|\bdoctrine:migrations:migrate\b|\bmix\s+ecto\.(setup|reset)\b|\b(rails|rake)\s+db:prepare\b/i;
+const MIGRATE_CMD = /\b(sqlite3|duckdb)\s+\S+\s*<\s*\S+|\b(psql|mysql|mariadb|sqlcmd)\b[^|;&]*(\s-f\s|\s--file[= ]|<\s*\S+)|\balembic\s+(?:-{1,2}[\w-]+(?:[= ]\S+)?\s+)*upgrade\b|\b(rails|rake)\s+db:(migrate|schema:load|setup)\b(?!:status)|\bprisma\s+(migrate\s+(deploy|dev|reset)|db\s+push)\b|\b(knex|sequelize(-cli)?)\s+(migrate:latest|db:migrate)\b|\bgoose\b[^|;&]*\bup\b|\bmigrate\b[^|;&]*\s(up|-up)\b|\bflyway\s+migrate\b|\bdbmate\s+(up|migrate)\b|\bliquibase\s+update\b|\b(php\s+artisan|manage\.py|django-admin)\s+migrate\b(?!:status)|\bdiesel\s+migration\s+run\b|\bsqlx\s+migrate\s+run\b|\bmix\s+ecto\.migrate\b|\bdotnet\s+ef\s+database\s+update\b|\b(npm|pnpm|yarn|bun)\s+(run\s+)?(db:)?migrate\b|\bdrizzle-kit\s+(push|migrate)\b|\b(make|just|task)\s+(db[-:])?migrate\b|\btypeorm(-ts-node-\w+)?\s+migration:run\b|\bmikro-orm\s+migration:up\b|\batlas\s+(migrate|schema)\s+apply\b|\bsupabase\s+(db\s+(push|reset)|migration\s+up)\b|\bhasura\s+migrate\s+apply\b|\bsqitch\s+deploy\b|\bdoctrine:migrations:migrate\b|\bmix\s+ecto\.(setup|reset)\b|\b(rails|rake)\s+db:prepare\b/i;
 /** A training run: a training script, a trainer launcher, or a make or npm target that trains. */
 const TRAIN_CMD = /\b[\w-]*(train|finetune|fine_tune|fine-tune|sft|pretrain)[\w-]*\.(py|sh)\b|\b(torchrun|deepspeed|fairseq-train|axolotl|mlx_lm\.lora)\b|\baccelerate\s+launch\b|\bllamafactory-cli\s+train\b|\btune\s+run\b|\b(python3?|uv\s+run|poetry\s+run)\s+(-m\s+)?[\w.]*(train|finetune|sft)\w*\b|\b(make|just|task|npm\s+run|pnpm|yarn)\s+[\w:-]*(train|finetune|fine-tune)\b|\byolo\s+(\w+\s+)?train\b|\bdvc\s+(repro|exp\s+run)\b|\bmlflow\s+run\b/i;
 /** Lines of a training run's own output: epochs and losses. */
@@ -52,9 +52,9 @@ const APPLY_CMD = /\b(terraform|tofu)\s+(\S+\s+)*apply\b|\bpulumi\s+up\b|\bkubec
 const BACKGROUND_CMD = /(?:^|[;&|(]\s*)(?:nohup|setsid)\s|(?<![&>|])&(?![&>])\s*(?:$|;|\)|echo\b|disown\b)|\bscreen\s+-\w*d\w*m|\btmux\s+new(?:-session)?\b[^;&|]*\s-d\b/;
 const JOB_CMD = /\bargo\s+submit\b|\bgh\s+workflow\s+run\b|\bgh\s+run\s+rerun\b|\bkubectl\s+create\s+job\b|\bsbatch\b|\bqsub\b|\bbsub\b|\bairflow\s+dags\s+trigger\b|\baws\s+batch\s+submit-job\b|\baws\s+glue\s+start-job-run\b|\baws\s+stepfunctions\s+start-execution\b|\bdatabricks\s+(jobs\s+run-now|runs\s+submit)\b|\bgcloud\s+(dataflow\s+jobs\s+run|dataproc\s+jobs\s+submit|batch\s+jobs\s+submit|run\s+jobs\s+execute)\b|\bprefect\s+deployment\s+run\b|\bdagster\s+job\s+launch\b|\bnomad\s+job\s+run\b/i;
 const HASH_CMD = /\b(sha\d+sum|shasum|md5sum|b2sum|cksum|gpg\s+--verify|cosign\s+verify|minisign\s+-V)\b/i;
-const CHANGE_CMD = /(^|[;&|(]\s*|\s)(sed\s+-i|perl\s+-p?i|mv|cp|rm|mkdir|touch|tee|chmod|ln|patch|truncate|install|git\s+(apply|commit|checkout|restore|reset|mv|rm|merge|rebase|cherry-pick|stash\s+pop|add|tag)|(npm|pnpm|yarn|bun)(\s+(-{1,2}[\w-]+(=\S+)?|--filter\s+\S+|-F\s+\S+|-C\s+\S+|--prefix\s+\S+|--cwd\s+\S+|workspace\s+\S+))*\s+(add|install|i|uninstall|remove|rm|update|up|ci|version)\b|pip3?\s+install|uv\s+(add|pip\s+install)|poetry\s+add|cargo\s+add|go\s+get|bundle\s+(install|update)|composer\s+(require|update|install)|apply_patch|python3?\s+-c\s+.*\b(open|write)\b|alembic\s+upgrade|rails\s+db:migrate(?!:status)|prisma\s+migrate|eslint\s+(\S+\s+)*--fix|prettier\s+(\S+\s+)*(--write|-w)|ruff\s+(check\s+(\S+\s+)*--fix|format)|black(?!\s+(\S+\s+)*--check)|gofmt\s+-w|go\s+fmt|cargo\s+fmt(?!\s+(\S+\s+)*--check)|rubocop\s+(\S+\s+)*(-a|-A|--autocorrect\S*)|(npm|pnpm|yarn)\s+(run\s+)?(format|fmt|lint:fix|fix)\b|npm\s+audit\s+fix|codemod|jscodeshift)\b|[^2&]>\s*[^&|\s>]|>>/i;
+const CHANGE_CMD = /(^|[;&|(]\s*|\s)(sed\s+-i|perl\s+-p?i|mv|cp|rm|mkdir|touch|tee|chmod|ln|patch|truncate|install|git\s+(apply|commit|checkout|restore|reset|mv|rm|merge|rebase|cherry-pick|revert|stash\s+pop|add|tag|pull|am)|(npm|pnpm|yarn|bun)(\s+(-{1,2}[\w-]+(=\S+)?|--filter\s+\S+|-F\s+\S+|-C\s+\S+|--prefix\s+\S+|--cwd\s+\S+|workspace\s+\S+))*\s+(add|install|i|uninstall|remove|rm|update|up|ci|version)\b|pip3?\s+install|uv\s+(add|pip\s+install)|poetry\s+add|cargo\s+add|go\s+get|bundle\s+(install|update)|composer\s+(require|update|install)|apply_patch|python3?\s+-c\s+.*\b(open|write)\b|alembic\s+upgrade|rails\s+db:migrate(?!:status)|prisma\s+migrate(?!\s+(?:status|diff|resolve\s+--help)\b)|eslint\s+(\S+\s+)*--fix|prettier\s+(\S+\s+)*(--write|-w)|ruff\s+(check\s+(\S+\s+)*--fix|format)|black(?!\s+(\S+\s+)*--check)|gofmt\s+-w|go\s+fmt|cargo\s+fmt(?!\s+(\S+\s+)*--check)|rubocop\s+(\S+\s+)*(-a|-A|--autocorrect\S*)|(npm|pnpm|yarn)\s+(run\s+)?(format|fmt|lint:fix|fix)\b|npm\s+audit\s+fix|codemod|jscodeshift)\b|[^2&]>\s*[^&|\s>]|>>/i;
 /** A change to code that tests must run after (as against a commit, a branch, docs or notes). */
-const CODE_CHANGE_CMD = /(^|[;&|(]\s*|\s)(sed\s+-i|perl\s+-p?i|patch|git\s+(apply|restore|cherry-pick|stash\s+pop|checkout\s+(\S+\s+)?--\s)|apply_patch)(\s|$)/i;
+const CODE_CHANGE_CMD = /(^|[;&|(]\s*|\s)(sed\s+-i|perl\s+-p?i|patch|git\s+(apply|restore|cherry-pick|revert|stash\s+pop|checkout\s+(\S+\s+)?--\s)|apply_patch)(\s|$)/i;
 /** Files and code that hold a route or a handler: `routes/`, `api/`, `*_controller.rb`, `@router.get(`, `app.post(`, `path('…'`. */
 const ROUTE_FILE = /(^|[\/\s_.-])(routes?|routers?|controllers?|handlers?|endpoints?|apis?|views?|urls|server|app|main|index|resources?)(\/|\.\w+\b|[_-])/i;
 const ROUTE_CODE = /\.(get|post|put|patch|delete|route|all|add_url_rule|add_api_route|api_route|handle|handlefunc|handler|register|mount)\s*\(|@(get|post|put|patch|delete|route|api_route)\b|@\w+\.(get|post|put|patch|delete|route|api_route)\s*\(|@(Get|Post|Put|Patch|Delete|Request)Mapping\b|\b(path|re_path|url)\s*\(\s*r?['"]|\bRoute::\w+\s*\(|^\s*(get|post|put|patch|delete|resources?)\s+['":\/]|\(\s*req\s*,\s*res\b|\breq\s*:\s*Request\b|\bNext(Request|Response)\b|\bhttp\.ResponseWriter\b|\b(Http|Json)Response\b|\bjsonify\s*\(|\bres\.(json|send|status)\s*\(|\bc\.JSON\s*\(|\bResponseEntity\b|@(Rest)?Controller\b|\bAPIRouter\s*\(|\bBlueprint\s*\(|\bexpress\s*\(\s*\)|\bexport\s+(async\s+)?function\s+(GET|POST|PUT|PATCH|DELETE)\b|\bhandler\s*[:=(]/im;
@@ -81,7 +81,7 @@ export function exitOf(text, { isError = false, shell = false } = {}) {
 /** A line of a test runner's results: TAP's "ok 6 …", "✓ …", "test x ... ok". */
 const TEST_LINE = /^\s*(?:(?:not\s+)?ok\s+\d+\b|[✓✔✗✘√]\s|test\s+\S+\s+\.\.\.\s).*$/gm;
 /** "exited with code 2", "Exit status: 1", "rc=0", "exit=0"; a bare "exit 1" only at a line's end. */
-const EXIT_SAID = /\b(?:exit(?:ed)?\s+with(?:\s+(?:code|status))?|exited(?:\s+(?:code|status))?|exit\s+(?:code|status)|exit_code|exitcode|return\s+code|returncode|rc)\s*[:=]?\s*(-?\d{1,3})\b|\bexit\s*[:=]\s*(-?\d{1,3})\b|\bexit\s+(-?\d{1,3})\s*$/im;
+const EXIT_SAID = /\b(?:exit(?:ed)?\s+with(?:\s+(?:code|status))?|exited(?:\s+(?:code|status))?|exit\s+(?:code|status)|exit_code|exitcode|return\s+code|returncode|rc)\s*[:=]?\s*(-?\d{1,3})\b|\bexit\s*[:=]\s*(-?\d{1,3})\b|\bexit\s+(-?\d{1,3})\s*\]?\s*$/im;
 
 const num = (v) => (v === undefined ? undefined : Number(String(v).replace(/,/g, '')));
 
@@ -100,6 +100,8 @@ export function testCountsIn(text) {
     let m;
     // node --test: TAP ("# tests 12", "# pass 12", "# fail 0") or the spec reporter ("ℹ pass 12")
     const tapPass = [...text.matchAll(/^(?:#|ℹ) pass (\d+)\s*$/gm)].at(-1);
+    // A loop of runs prints one summary a round: the worst round's failures, for a flake that failed once.
+    const tapFails = [...text.matchAll(/^(?:#|ℹ) fail (\d+)\s*$/gm)].map((x) => Number(x[1]));
     if (tapPass) {
         const fail = [...text.matchAll(/^(?:#|ℹ) fail (\d+)\s*$/gm)].at(-1);
         const total = [...text.matchAll(/^(?:#|ℹ) tests (\d+)\s*$/gm)].at(-1);
@@ -120,10 +122,13 @@ export function testCountsIn(text) {
     if (cargo.length) {
         const passed = cargo.reduce((a, x) => a + Number(x[1]), 0);
         const failed = cargo.reduce((a, x) => a + Number(x[2]), 0);
-        found.push({ passed, failed, ...(cargo.length > 1 ? { total: passed + failed, parts: cargo.map((x) => Number(x[1])) } : {}) });
+        // Each part's own summary: "unit tests: 23 passed" is shown by a part that printed 23 passed, 0 failed (`clean`).
+        found.push({ passed, failed, ...(cargo.length > 1 ? { total: passed + failed, parts: cargo.map((x) => Number(x[1])), clean: cargo.filter((x) => x[2] === '0').map((x) => Number(x[1])) } : {}) });
     }
     // rspec: "12 examples, 0 failures"
     for (m of text.matchAll(/(\d+) examples?, (\d+) failures?/g)) add(num(m[1]) - num(m[2]), m[2], m[1]);
+    // minitest (`rails test`): "123 runs, 410 assertions, 0 failures, 0 errors, 0 skips"; a skipped one did not pass.
+    for (m of text.matchAll(/\b(\d+) runs, \d+ assertions, (\d+) failures, (\d+) errors(?:, (\d+) skips)?/g)) add(num(m[1]) - num(m[2]) - num(m[3]) - (num(m[4]) ?? 0), num(m[2]) + num(m[3]), m[1]);
     // unittest: "Ran 12 tests in 0.003s" then "OK" or "FAILED (failures=1, errors=1)"
     for (m of text.matchAll(/Ran (\d+) tests? in [\d.]+s\s+(OK|FAILED \(([^)]*)\))/g)) {
         const failed = m[2] === 'OK' ? 0 : [...(m[3] ?? '').matchAll(/(?:failures|errors)=(\d+)/g)].reduce((a, x) => a + Number(x[1]), 0);
@@ -171,11 +176,22 @@ export function testCountsIn(text) {
     for (m of text.matchAll(/\b(\d+) tests?, (\d+) failures?\b/gi)) add(num(m[1]) - num(m[2]), m[2], m[1]);
     // PASS/FAIL lines only: count them when nothing above matched.
     if (found.length === 0) {
-        const passLines = (text.match(/^\s*(?:✓|✔|PASS\b|ok \d+ )/gm) ?? []).length;
-        const failLines = (text.match(/^\s*(?:✗|✘|×|FAIL\b|not ok \d+ )/gm) ?? []).length;
+        // Gradle's test events print one line a test: "SettingsFragmentTest > survives configuration change PASSED".
+        const passLines = (text.match(/^\s*(?:✓|✔|PASS\b|ok \d+ )|^\s*\S[^\n]* > [^\n]+ PASSED\s*$/gm) ?? []).length;
+        const failLines = (text.match(/^\s*(?:✗|✘|×|FAIL\b|not ok \d+ )|^\s*\S[^\n]* > [^\n]+ FAILED\s*$/gm) ?? []).length;
         if (passLines + failLines >= 2) add(passLines, failLines);
     }
-    return found.at(-1);
+    // A workspace run prints one summary per package (`@acme/schemas: Tests 58 passed`, `@acme/api: Tests: 141 passed`):
+    // the last is the run's, and each one's count was printed too.
+    const last = found.at(-1);
+    // `for i in 1 2 3 4 5; do npx jest cart; done`: a run of the loop that failed, though the last one passed.
+    const worst = Math.max(found.reduce((n, f) => Math.max(n, f.failed), 0), tapFails.length > 1 ? Math.max(...tapFails) : 0);
+    const once = last && (found.length > 1 || tapFails.length > 1) && last.failed === 0 && worst > 0 ? { failedOnce: worst } : {};
+    if (last && !last.parts && found.length > 1) {
+        const parts = [...new Set(found.map((f) => f.passed))];
+        if (parts.length > 1) return { ...last, parts, clean: [...new Set(found.filter((f) => f.failed === 0).map((f) => f.passed))], ...once };
+    }
+    return last && { ...last, ...once };
 }
 
 /** The first file hash or commit in the output: sha256, a full commit id, or a short one in a push or commit line. */
@@ -203,7 +219,7 @@ export function metricIn(text) {
     return text.slice(start, end < 0 ? undefined : end).trim().slice(0, 120);
 }
 
-const NUMS = /(?<![\w.])(\d{1,3}(?:,\d{3})+|\d+\.\d+|\d+)\s?(ms|µs|us|ns|s|sec|secs|seconds|min|mins|%|x|×|kib|mib|gib|kb|mb|gb|b|bytes|req\/s|rps|qps|ops\/s|tok\/s|fps)?(?![\w/])/gi;
+const NUMS = /(?<![\w.])(\d{1,3}(?:,\d{3})+|\d+\.\d+|\d+)\s?(ms|µs|us|ns\/op|ns|s|sec|secs|seconds|min|mins|%|x|×|kib|mib|gib|kb|mb|gb|b|bytes|req\/s|rps|qps|ops\/s|tok\/s|fps)?(?![\w/])/gi;
 const MAX_NUMS = 64;
 
 /**
@@ -223,6 +239,9 @@ export function numsIn(text) {
             strong.add(value);
             if (unit === 's' || unit === 'sec' || unit === 'secs' || unit === 'seconds') strong.add(Math.round(value * 1000 * 1000) / 1000);
             if (unit === 'ms') strong.add(value / 1000);
+            // 1843 ns/op is 1.8 µs; 0.28 µs is 280 ns.
+            if (unit === 'ns' || unit === 'ns/op') strong.add(value / 1000);
+            if (unit === 'µs' || unit === 'us') { strong.add(value * 1000); strong.add(value / 1000); }
             if (unit === 'min' || unit === 'mins') strong.add(value * 60);
         } else if (value >= 2) weak.add(value);
         if (strong.size >= MAX_NUMS) break;
@@ -234,7 +253,7 @@ export function numsIn(text) {
 const LOWER_IS_BETTER = /^(p\d+(\.\d)?|mean|median|avg|average|latency|duration|time|took|size|bundle|memory|rss|heap|cpu|errors?|ns\/op|b\/op|allocs\/op)$/;
 /** Readings that are times in ms. */
 const IN_MS = /^(p\d+(\.\d)?|mean|median|avg|average|latency|duration|time|took)$/;
-const SERIES = /\b(p\d{2}(?:\.\d)?|p\(\d{2}(?:\.\d)?\)|mean|median|med|avg|average|latency|duration|throughput)(?![\w(])\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(ms|µs|us|s|sec|req\/s|rps|qps|ops\/s|tok\/s)?|(\d+(?:\.\d+)?)\s*(req\/s|rps|qps|ops\/s|tok\/s)\b/gi;
+const SERIES = /\b(p\d{2}(?:\.\d)?|p\(\d{2}(?:\.\d)?\)|mean|median|med|avg|average|latency|duration|throughput)(?![\w(])(?:\s*±\s*σ\))?\s*[:=]?\s*(\d+(?:\.\d+)?)\s*(ms|µs|us|s|sec|req\/s|rps|qps|ops\/s|tok\/s)?|(\d+(?:\.\d+)?)\s*(req\/s|rps|qps|ops\/s|tok\/s)\b/gi;
 
 /** Benchmark readings in output order: `[{ l: 'p50', v: 310 }]`, times in ms. */
 export function seriesIn(text) {
@@ -267,6 +286,29 @@ export function seriesIn(text) {
 const QUALITY = /^(?:(train|training|val|valid|validation|dev|test|eval|holdout|macro|micro|weighted|mean|best|top)[_\s-]?)*(acc|accuracy|f1|auc|roc_auc|precision|recall|bleu|rouge\w*|map|ndcg|mrr|score|top-?[15]|em|exact_match|r2|loss|perplexity|ppl|wer|cer|mae|mse|rmse)$/i;
 const LOWER_QUALITY = /^(loss|perplexity|ppl|wer|cer|mae|mse|rmse)$/i;
 const READING = /(?<![\w.])([a-z][\w-]{0,30}?)\s*(?:[:=]\s*|\s{1,8})(-?\d*\.\d+|-?\d+)(?![\w.%])/gi;
+
+/**
+ * A coverage report's figures in percent, `{ statements?, branches?, functions?, lines?, total? }`: istanbul's table
+ * ("All files | 81.42 | 70.1 | 79.3 | 82.06") or summary ("Statements : 81.42% ( 570/700 )"), coverage.py's
+ * "TOTAL … 82%", go's "coverage: 81.4% of statements", tarpaulin's "81.42% coverage, 570/700 lines covered".
+ */
+export function coverageIn(text) {
+    if (typeof text !== 'string' || !/coverage|%\s*Stmts|Statements\s*:|^TOTAL\s/im.test(text)) return undefined;
+    const cov = {};
+    const all = /%\s*Stmts\s*\|\s*%\s*Branch\s*\|\s*%\s*Funcs\s*\|\s*%\s*Lines/i.test(text) ? /^\s*All files\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)\s*\|\s*([\d.]+)/im.exec(text) : null;
+    if (all) Object.assign(cov, { statements: Number(all[1]), branches: Number(all[2]), functions: Number(all[3]), lines: Number(all[4]) });
+    for (const [key, word] of [['statements', 'Statements'], ['branches', 'Branches'], ['functions', 'Functions'], ['lines', 'Lines']]) {
+        const m = new RegExp(`^\\s*${word}\\s*:\\s*([\\d.]+)%`, 'im').exec(text);
+        if (m && cov[key] === undefined) cov[key] = Number(m[1]);
+    }
+    const py = /^TOTAL\s+(?:\d+\s+){2,4}([\d.]+)%\s*$/m.exec(text);
+    if (py) cov.total = Number(py[1]);
+    const go = [...new Set([...text.matchAll(/\bcoverage:\s*([\d.]+)%\s+of\s+statements\b/gi)].map((m) => m[1]))];
+    if (go.length === 1 && cov.statements === undefined) cov.statements = Number(go[0]);
+    const tp = /\b([\d.]+)%\s+coverage,\s+\d+\/\d+\s+lines\s+covered\b/i.exec(text);
+    if (tp && cov.lines === undefined) cov.lines = Number(tp[1]);
+    return Object.keys(cov).length ? cov : undefined;
+}
 
 /** A model's quality readings in output order: `[{ l: 'val_acc', m: 'acc', s: 'val', v: 0.871 }]`, at most 24. */
 export function readingsIn(text) {
@@ -401,10 +443,14 @@ export function deployIn(text) {
     return undefined;
 }
 
+/** The line of a CI read that shows a failure: "X  ci  main  push  1h", "build  fail  2m". */
+const CI_FAILED = /^.*(?:^\s*(?:X|✗|✘|×)\s|\bfail(?:ed|ure|ing)?\b|\bcancell?ed\b|\btimed[_ ]out\b|\baction_required\b).*$/im;
+
 /** A CI read that shows success (true), failure (false), or neither. */
 export function ciIn(text) {
     if (typeof text !== 'string' || text === '') return undefined;
-    const t = text.replace(/\b(0|no|zero) (failed|failures?|failing)\b/gi, ' ');
+    // "0 cancelled, 0 failing, 4 successful": a count of none is not a failure.
+    const t = text.replace(/\b(0|no|zero) (failed|failures?|failing|cancell?ed|timed[_ ]out|errors?|errored|pending|queued|skipped)\b/gi, ' ');
     if (/^\s*(X|✗|✘|×)\s|\bfail(ed|ure|ing)?\b|\bcancell?ed\b|\btimed[_ ]out\b|\baction_required\b|\bconclusion["']?\s*:\s*["']?(failure|cancelled)/im.test(t)) return false;
     if (/^\s*(\*|•|pending|in_progress|queued)\s|\b(in progress|pending|queued|in_progress|waiting)\b/im.test(t) && !/\b(success|passed|completed|successful)\b|✓|✔/i.test(t)) return undefined;
     if (/\b(success|successful|passed|completed\s+success|all checks (have )?passed|conclusion["']?\s*:\s*["']?success)\b|✓|✔/i.test(t)) return true;
@@ -418,8 +464,8 @@ export function statusIn(text) {
     if (head) return Number(head[1]);
     const curlError = /\bcurl: \(\d+\)[^\n]*?\b(?:error|returned)[^\n]*?\b([1-5]\d\d)\b/i.exec(text);
     if (curlError) return Number(curlError[1]);
-    // A bare code, as `curl -w '%{http_code}'` prints it, alone or before its time ("200 9.31s").
-    const bare = /^\s*(\d{3})(?:\s+\d+(?:\.\d+)?\s*m?s)?\s*$/m.exec(text);
+    // A bare code, as `curl -w '%{http_code}'` prints it, alone or before its time ("200 9.31s", "200 0.183412").
+    const bare = /^\s*(\d{3})(?:\s+\d+(?:\.\d+)?\s*(?:m?s)?)?\s*$/m.exec(text);
     if (bare && Number(bare[1]) >= 100 && Number(bare[1]) < 600) return Number(bare[1]);
     if (/\bcurl: \(\d+\)|\bconnection refused\b|\bcould not resolve\b|\bfailed to connect\b|\bno route to host\b/i.test(text)) return 0;
     const body = text.replace(/\[stderr\][\s\S]*$/, '').trim();
@@ -534,6 +580,15 @@ export function codesIn(text) {
 }
 
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+/** Words as a message and a reply both say them: lower case, no quotes or Markdown marks, single spaces. */
+const flatWords = (text) => String(text ?? '').toLowerCase().replace(/[`*_"“”'‘’]/g, '').replace(/\s+/g, ' ').trim();
+/** The person's message holds the claim's whole sentence: the person dictated it ("Reply: mean latency dropped from 200 ms to 50 ms."). */
+const dictated = (prompt, claim) => {
+    const said = flatWords(claim?.text ?? claim?.part);
+    return said.length >= 12 && flatWords(prompt).includes(said);
+};
+/** A command as a card shows it: a program run by its full path is named by its own name (`node --test a.test.mjs`, not `/opt/tools/node-v22/bin/node --te…`), so a long path does not hide what ran. A program starts the line, follows `&&`, `||`, `;`, `|` or `(`, or follows a word that runs the next one (a loop's `do`, `then`, `sudo`, …); a path that is only an argument stays whole. */
+const shownCommand = (command) => oneLine(command).replace(/(^|&&|\|\||[;|(]|(?<![^\s;&|(])(?:do|then|else|elif|if|while|until|exec|env|nohup|sudo|xargs|!|\{)(?=\s))(\s*)\/(?:[^\s/'"]+\/)+([^\s/'"]+)(?=\s|$)/g, '$1$2$3');
 const oneLine = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
 
 /** The command a shell call ran, from its arguments (an object, or JSON text). */
@@ -581,7 +636,82 @@ function outcome(exit, extra) {
 
 /** What kind of run a shell command is. */
 /** A test run limited to some tests: a name filter, a single file or a single test. */
-const FILTERED_RUN = /\s(-k|-t|--testNamePattern|--grep|-g|-run|--run|--filter|--tests|--select)\s|\s-Dtest=|\s(-k|-t|--grep|--filter|--testNamePattern)=|\bpytest\b[^|;&]*\s-m\s|::\w|\.(test|spec)\.[cm]?[jt]sx?\b|_spec\.rb(:\d+)?\b|\btest_\w+\.py\b|\bcargo\s+(test|nextest\s+run)\s+(--?[\w-]+(=\S+)?\s+)*(?!--?)[a-z_][\w:]*/;
+const FILTERED_RUN = /\s(-k|-t|--testNamePattern|--grep|-g|-run|--run|--filter|--tests|--select)\s|\s-only-testing:\S|\s-Dtest=|\s(-k|-t|--grep|--filter|--testNamePattern)=|\bpytest\b[^|;&]*\s-m\s|::\w|\.(test|spec)\.[cm]?[jt]sx?\b|_spec\.rb(:\d+)?\b|\btest_\w+\.py\b|\b\w+_test\.(?:exs|dart)(?::\d+)?\b|\b\w+(?:Test|Tests|Spec)\.(?:php|kt|java|cs|swift|scala)\b|\bcargo\s+(test|nextest\s+run)\s+(--?[\w-]+(=\S+)?\s+)*(?!--?)[a-z_][\w:]*/;
+/** A package the workspace tool picks, not tests the runner picks: `pnpm --filter @acme/utils test`, `turbo run test --filter=web`. */
+const PACKAGE_PICK = /(\b(?:pnpm|turbo)\b[^|;&]*?)\s(?:--filter|-F)(?:=|\s+)(?:"[^"]*"|'[^']*'|[^\s|;&]+)/;
+function unpicked(command) {
+    let out = command;
+    for (let n = 0; n < 4 && PACKAGE_PICK.test(out); n += 1) out = out.replace(PACKAGE_PICK, '$1');
+    return out;
+}
+/** A line of a test run that names a failure: `FAIL src/date.test.ts`, `× parses ISO weeks`, `--- FAIL: TestParse`. */
+const FAIL_LINE = /(?:^|\s)(?:FAIL(?:ED)?\b|[✗×✖]|not ok\b|---\s*FAIL\b|●)|\bfail(?:ed|ing|ure|ures)?\b|^\s*\d+\)\s+\S/i;
+/** The words of the part a filtered run covered: its test files' own names and its name filters (`invoice mailer` for `mix test test/billing/invoice_mailer_test.exs`). */
+const focusOf = (item) => (Array.isArray(item.focus) && item.focus.length ? item.focus : Array.isArray(item.filter) ? item.filter : []).filter((w) => typeof w === 'string');
+/** Whether a failing run names one of the words of a part: the failure is in that part. */
+const failsOn = (item, words) => {
+    const lines = Array.isArray(item.failLines) ? item.failLines : Array.isArray(item.lines) ? item.lines : [];
+    return lines.some((l) => typeof l === 'string' && FAIL_LINE.test(l) && words.some((w) => l.toLowerCase().includes(w)));
+};
+/** A test run's filter given by a flag: `-k login`, `-t "parses dates"`, `--testNamePattern=Date`, `-run TestParse`. */
+const FILTER_FLAG = /(?:^|\s)(?:-k|-t|--testNamePattern|--test-name-pattern|--grep|-g|-run|--run|--filter|--tests|--select|-Dtest|-only-testing)(?:=|\s+|(?<=-only-testing):)(?:"([^"]*)"|'([^']*)'|([^\s|;&]+))/g;
+/** Runners that take test files or name filters as plain words: `vitest run date`, `jest src/date`, `pytest tests/test_auth.py`. */
+const POSITIONAL_RUNNER = /\b(?:vitest(?:\s+run)?|jest|mocha|ava|pytest|py\.test|rspec|phpunit|bun\s+test|deno\s+test|go\s+test|mix\s+test|(?:dart|flutter)\s+test|(?:npm|pnpm|yarn|bun)\s+(?:run\s+)?(?:test|t)(?:\s+--)?)((?:\s+[^\s|;&>]+)*)/i;
+/** Flags of those runners that take a value, so the word after them is not a filter. */
+const VALUE_FLAG = /^-(?:c|-config|-reporter|-project|-dir|-root|-environment|-env|-shard|-maxWorkers|-max-workers|-testTimeout|-test-timeout|-outputFile|-output-file|-workspace|-filter|-pool|-mode|-color|-cov-report|-cov|-tb|-junitxml|-durations|-maxfail|p|-rootdir|-basetemp|-ignore|-deselect|m|-require|r|-timeout|-format|f|o|-count|count|-parallel|parallel|-tags|tags|-run|run|k|t|g|-grep|-testNamePattern|-tests|-select|-coverprofile|coverprofile|-bench|bench)$/;
+/** Words that say nothing about which tests a filter picks. */
+const FILTER_GENERIC = new Set('test tests spec specs src lib app pkg cmd internal py ts js tsx jsx mjs cjs rb go rs unit integration e2e the and not or true false verbose dot json coverage run all main index'.split(' '));
+/** The words a test run was limited by, lower case: `['date']` for `vitest run date`; empty for a whole run. */
+function filterOf(command) {
+    const words = new Set();
+    const add = (text) => {
+        for (const part of String(text ?? '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/)) {
+            if (part.length >= 3 && !FILTER_GENERIC.has(part) && !/^\d+$/.test(part)) words.add(part);
+        }
+    };
+    // `-only-testing:FeedTests/PaginationTests`: its first part names the test bundle, not the tests.
+    for (const m of command.matchAll(FILTER_FLAG)) add(/-only-testing/.test(m[0]) ? String(m[1] ?? m[2] ?? m[3]).replace(/^[^/]+\//, '') : m[1] ?? m[2] ?? m[3]);
+    const pos = POSITIONAL_RUNNER.exec(command);
+    if (pos) {
+        const args = pos[1].trim().split(/\s+/).filter(Boolean);
+        for (let at = 0; at < args.length; at += 1) {
+            const arg = args[at];
+            if (arg === '--') continue;
+            if (arg.startsWith('-')) {
+                if (!arg.includes('=') && VALUE_FLAG.test(arg)) at += 1;
+                continue;
+            }
+            if (/^[\w-]+=/.test(arg) || arg === '.' || arg === './...' || /^\.\/?$/.test(arg)) continue;
+            add(arg.replace(/\/\.\.\.$/, ''));
+        }
+    }
+    return [...words].slice(0, 6);
+}
+/** The words of what a filtered run covered: a name filter's words and each test file's own name, not its folders. */
+function focusOf_(command) {
+    const words = new Set();
+    const add = (text) => {
+        for (const part of String(text ?? '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/)) {
+            if (part.length >= 3 && !FILTER_GENERIC.has(part) && !/^\d+$/.test(part)) words.add(part);
+        }
+    };
+    // `-only-testing:FeedTests/PaginationTests`: its first part names the test bundle, not the tests.
+    for (const m of command.matchAll(FILTER_FLAG)) add(/-only-testing/.test(m[0]) ? String(m[1] ?? m[2] ?? m[3]).replace(/^[^/]+\//, '') : m[1] ?? m[2] ?? m[3]);
+    const pos = POSITIONAL_RUNNER.exec(command);
+    if (pos) {
+        const args = pos[1].trim().split(/\s+/).filter(Boolean);
+        for (let at = 0; at < args.length; at += 1) {
+            const arg = args[at];
+            if (arg.startsWith('-')) {
+                if (!arg.includes('=') && VALUE_FLAG.test(arg)) at += 1;
+                continue;
+            }
+            if (!/\.[a-z]{1,5}(?::\d+)?$/i.test(arg)) continue;
+            add(arg.replace(/:\d+$/, '').split('/').at(-1).replace(/\.[a-z]{1,5}$/i, '').replace(/(?:[._-]?(?:test|spec)s?)$|^(?:test|spec)s?[._-]/i, ''));
+        }
+    }
+    return [...words].slice(0, 6);
+}
 /** A run whose counts hold more than tests: `dbt build` counts models, seeds and snapshots with them. */
 const MIXED_RUN = /\bdbt\s+build\b/i;
 /** A request that only reads: curl, wget or httpie with no method that writes and no body. */
@@ -630,7 +760,7 @@ export function looksOnly(item) {
 }
 
 const SEARCH_TOOL = /^(grep|search|rg|ripgrep|search_files|find_in_files|code_search)$/i;
-const SEARCH_CMD = /(?:^|[;&|(]\s*|\s)(?:git\s+grep|grep|egrep|fgrep|rg|ag|ack)\s+((?:-{1,2}[\w-]+(?:=\S+)?\s+)*)(?:-e\s+)?(["']?)([^"'\s|;&]+)\2/;
+const SEARCH_CMD = /(?:^|[;&|(]\s*|\s)(?:git\s+grep|grep|egrep|fgrep|rg|ag|ack)\s+((?:-{1,2}[\w-]+(?:=\S+)?\s+)*)(?:-e\s+)?(?:"([^"\n]+)"|'([^'\n]+)'|(?!-)([^"'\s|;&]+))/;
 
 /** What a search looked for and how many lines it found: the grep tool, or grep, rg, ag or ack in a shell. */
 function searchOf(tool, args, out, command) {
@@ -642,15 +772,32 @@ function searchOf(tool, args, out, command) {
         }
         term = typeof a?.pattern === 'string' ? a.pattern : typeof a?.query === 'string' ? a.query : undefined;
     }
-    else if (command) term = SEARCH_CMD.exec(command)?.[3];
+    else if (command) {
+        const m = SEARCH_CMD.exec(command);
+        term = m?.[2] ?? m?.[3] ?? m?.[4];
+    }
     if (!term) return undefined;
+    // `grep -rl X | xargs sed -i …`: the matches went to another command, so the output is not what the search found.
+    if (command && /\b(?:grep|egrep|fgrep|rg|ag|ack)\b[^|;&]*\|\s*(?:xargs|while\b|parallel|sed\b|awk\b|perl\b|tee\b|cut\b|sort\s+-u\s*\|\s*xargs)/.test(command)) return undefined;
+    // `… | wc -l`, `grep -c`, `rg --count`: the search prints a count, which is read as the number it prints.
+    const flags = command ? SEARCH_CMD.exec(command)?.[1] ?? '' : '';
+    const wc = command ? /\|\s*wc\s+-l\b/.test(command) : false;
+    const countFlag = /(?:^|\s)(?:--count(?:-matches)?|-[a-zA-Z]*c[a-zA-Z]*)(?=\s|$)/.test(flags) || (SEARCH_TOOL.test(tool) && /"output_mode"\s*:\s*"count"|"count"\s*:\s*true/.test(typeof args === 'string' ? args : JSON.stringify(args ?? {})));
     // What an `echo` chained after the search prints is not a match ("grep -n oban mix.exs; echo done").
     const echoed = new Set([...(command ?? '').matchAll(/\becho\s+(["']?)([^"';&|\n]{1,80})\1/g)].map((m) => m[2].trim()));
     const body = out.replace(/^\[(stderr|exit code: -?\d+)\]$/gm, '').split(/\r?\n/).filter((l) => !echoed.has(l.trim())).join('\n').trim();
     const none = body === '' || /^\(no output\)$/i.test(body) || /^(no (matches|files|results)( found)?\.?|found 0 (matches|files|results)|0 (matches|results))\b/i.test(body);
+    if (wc || countFlag) {
+        const counts = body.split(/\r?\n/).map((l) => /(?:^|:)\s*(\d+)\s*$/.exec(l.trim())).filter(Boolean).map((m) => Number(m[1]));
+        const hits = none || counts.length === 0 ? 0 : wc ? counts.at(-1) : counts.reduce((a, n) => a + n, 0);
+        return { term: clip(term, 80), hits, counted: true };
+    }
     const hits = none ? 0 : body.split(/\r?\n/).filter((l) => l.trim() !== '' && !/^(\[|found \d+ |\(no output\))/i.test(l.trim())).length;
     return { term: clip(term, 80), hits };
 }
+
+/** What a search found, in words: "nothing found", "3 lines found", "a count of 2". */
+const foundText = (search) => (search.hits === 0 ? 'nothing found' : search.counted ? `a count of ${search.hits}` : `${search.hits === 1 ? 'one line' : `${search.hits} lines`} found`);
 
 /** Commands a tool's output says it ran itself: a deploy's release command, an npm script's echo, a CI log's "$ npm test". */
 function innerRuns(out) {
@@ -662,6 +809,56 @@ function innerRuns(out) {
     return [...new Set(found)].slice(0, 8);
 }
 
+/** A command with git's own options before its subcommand dropped: `git -C app push` reads as `git push`. */
+/** Git commands that print a commit record ("[main 1a2b3c4] msg") when they make a commit. */
+const GIT_RECORD_CMD = /\bgit\s+(?:commit|revert|cherry-pick)\b/;
+const GIT_OPTS = /\bgit((?:\s+(?:-C|-c)\s+(?:"[^"]*"|'[^']*'|\S+)|\s+--(?:git-dir|work-tree|namespace|exec-path)(?:=|\s+)\S+|\s+--no-pager|\s+--no-replace-objects|\s+--paginate|\s+-P)+)(?=\s)/g;
+export const plainGit = (command) => String(command ?? '').replace(GIT_OPTS, 'git');
+
+/** A run that failed on its coverage threshold (jest, nyc, c8, vitest, pytest-cov, coverage.py's fail-under). */
+const COVERAGE_GATE = /\bcoverage threshold for \w+ \([\d.]+%\) not met\b|\bCoverage for \w+ \([\d.]+%\) does not meet (?:global |per-file )?threshold\b|\bRequired test coverage of [\d.]+% not reached\b|\bCoverage failure: total of [\d.]+ is less than fail-under\b/i;
+/** A claim about the coverage or the run's exit, which a coverage threshold's failure does speak to. */
+const GATE_WORDS = /\b(?:coverage|covered|exit(?:s|ed)?|exit\s+code|ci|pipeline|checks?|the\s+run|green\s+build)\b/i;
+/** A line that names a test that passed: TAP's "ok 1 - name", "✔ name (0.4ms)", "✓ name", pytest's "::name PASSED", go's "--- PASS: Name", unittest's "name (mod.Case) ... ok". */
+const PASS_NAME = [
+    /^[ \t]*ok \d+ - (.+?)(?:[ \t]+#.*)?[ \t]*$/,
+    /^[ \t]*[✔✓√][ \t]+(.+?)(?:[ \t]+\(\d[\d.]*[ \t]*m?s\))?[ \t]*$/,
+    /::([\w.[\]-]+)[ \t]+PASSED\b/,
+    /^[ \t]*--- PASS: (\S+)/,
+    /^[ \t]*(\w+) \([\w.]+\) \.\.\. ok[ \t]*$/,
+    // jest's and vitest's file lines ("PASS  src/__tests__/cart.test.ts", "✓ src/cart.test.ts (4 tests)"), go's packages, cargo's tests.
+    /^[ \t]*PASS[ \t]+(\S+\.[a-z]{2,4})\b/,
+    /^ok[ \t]+(\S+)[ \t]+(?:\d[\d.]*s|\(cached\))/,
+    /^[ \t]*test (\S+) \.\.\. ok[ \t]*$/,
+];
+/** The names of the tests a run printed as passing, at most 24. */
+function passNamesIn(out) {
+    const names = [];
+    for (const line of out.split('\n')) {
+        if (names.length >= 24) break;
+        for (const re of PASS_NAME) {
+            const m = re.exec(line);
+            if (m && m[1].trim().length >= 3) {
+                names.push(clip(m[1].trim(), 80));
+                break;
+            }
+        }
+    }
+    return [...new Set(names)];
+}
+
+/**
+ * An output with its long runs made short: blank lines, one character over and over (a rule of "=", padding, a
+ * progress bar's updates), long numbers and long blank runs. They say nothing, and every reading stays quick on
+ * whatever a tool prints (16 KB of blank lines took seconds before).
+ */
+export const compact = (text) => (text.length < 64 ? text : text
+    .replace(/\r\n?/g, '\n')
+    .replace(/\n(?:[ \t]*\n){2,}/g, '\n\n')
+    .replace(/([^\n])\1{63,}/g, (m, c) => c.repeat(64))
+    .replace(/\d{65,}/g, (m) => m.slice(0, 64))
+    .replace(/[ \t]{65,}/g, (m) => m.slice(0, 64)));
+
 /**
  * One tool call and its result as an evidence item:
  * `{ tool, kind, ok, exit?, cmd?, change?, code?, targets?, shipped?, status?, health?, tests?, hash?, metric?, series?, nums?, text }`.
@@ -671,9 +868,10 @@ function innerRuns(out) {
 export function itemOf({ name, args, text, isError = false }) {
     const tool = String(name ?? '');
     if (tool === '' || BOOKKEEPING_TOOL.test(tool)) return undefined;
-    const out = typeof text === 'string' ? text : '';
+    const out = typeof text === 'string' ? compact(text) : '';
     const shell = SHELL_TOOL.test(tool);
-    const command = shell ? commandOf(args) : '';
+    const asRun = shell ? commandOf(args) : '';
+    const command = plainGit(asRun);
     const tests = testCountsIn(out);
     const hash = hashIn(out);
     const metric = metricIn(out);
@@ -687,27 +885,48 @@ export function itemOf({ name, args, text, isError = false }) {
     if (warnings) facts.warnings = warnings;
     const codes = codesIn(out);
     if (codes.length) facts.codes = codes;
-    if (tests && !(shell && /^(deploy|probe|lint|hash|build)$/.test(kindOfCommand(commandOf(args), tests)))) {
-        facts.tests = { ...tests, ...(shell && FILTERED_RUN.test(command) ? { filtered: true } : {}), ...(shell && MIXED_RUN.test(command) ? { mixed: true } : {}) };
+    if (tests && !(shell && /^(deploy|probe|lint|hash|build)$/.test(kindOfCommand(command, tests)))) {
+        const picked = shell ? unpicked(command) : '';
+        const filter = shell ? filterOf(picked) : [];
+        facts.tests = { ...tests, ...(shell && (FILTERED_RUN.test(picked) || filter.length) ? { filtered: true } : {}), ...(shell && MIXED_RUN.test(command) ? { mixed: true } : {}) };
+        if (filter.length) facts.filter = filter;
+        const focus = shell && filter.length ? focusOf_(picked) : [];
+        if (focus.length && focus.join() !== filter.join()) facts.focus = focus;
+        // The lines that name what failed, which the kept head and tail may not hold.
+        const failLines = tests.failed > 0 ? out.split(/\r?\n/).filter((l) => FAIL_LINE.test(l)).slice(0, 6).map((l) => clip(l.trim(), 120)) : [];
+        if (failLines.length) facts.failLines = failLines;
+        // Every test passed and the run failed on a coverage threshold: the tests are fine, the coverage is not.
+        if (tests.failed === 0 && tests.passed > 0 && COVERAGE_GATE.test(out)) facts.gate = true;
+        // And the tests it passed, by name: "`sum of an empty list is 0` — pass" is about one of them.
+        const passNames = tests.failed > 0 && tests.passed > 0 ? passNamesIn(out) : [];
+        if (passNames.length) facts.passNames = passNames;
     }
     if (hash) facts.hash = hash;
+    // "[main 8c41d2e] install.sh: quote PREFIX paths": git made the commit, whatever a later step of the command did.
+    const record = shell && GIT_RECORD_CMD.test(command) ? /^\[[\w./-]+(?: \(root-commit\))? ([0-9a-f]{7,12})\]/m.exec(out) : null;
+    if (record) facts.committed = record[1];
     if (metric) facts.metric = metric;
     if (series.length) facts.series = series;
     // A table of a baseline row and one other is a before-and-after in one run.
     if (table.length) facts.ab = true;
     if (nums.length) facts.nums = nums;
     if (pairs.length) facts.pairs = pairs;
+    const coverage = coverageIn(out);
+    if (coverage) facts.coverage = coverage;
     const readings = readingsIn(out);
     if (readings.length) facts.readings = readings;
     const search = searchOf(tool, args, out, command);
     if (search) facts.search = search;
     const inner = shell ? innerRuns(out) : [];
     if (inner.length) facts.inner = inner;
-    const ciRead = shell && CI_CMD.test(commandOf(args)) ? ciIn(out) : undefined;
+    // "release_command 3d8d7e5b1c2a98 completed successfully": the deploy's release command went through, whatever came after.
+    if (inner.length && /\brelease[_ ]command\b[^\n]{0,40}\b(?:completed successfully|succeeded|finished successfully)\b/i.test(out)) facts.released = true;
+    else if (inner.length && /\brelease[_ ]command\b[^\n]{0,40}\b(?:failed|exited with (?:code )?[1-9])/i.test(out)) facts.released = false;
+    const ciRead = shell && CI_CMD.test(command) ? ciIn(out) : undefined;
     // The checks a CI read lists, by name: "7 passed (phpunit on 8.2 and 8.3, …)" names them, not commands run here.
-    const checks = shell && CI_CMD.test(commandOf(args)) ? checksIn(out) : [];
+    const checks = shell && CI_CMD.test(command) ? checksIn(out) : [];
     if (checks.length) facts.checks = checks;
-    const ended = ciRead ?? endedIn(out) ?? (shell && CI_CMD.test(commandOf(args)) && /\b(in progress|in_progress|queued|pending|waiting)\b/i.test(out) ? 'running' : undefined);
+    const ended = ciRead ?? endedIn(out) ?? (shell && CI_CMD.test(command) && /\b(in progress|in_progress|queued|pending|waiting)\b/i.test(out) ? 'running' : undefined);
     if (ended !== undefined) {
         facts.ended = ended;
         const state = stateIn(out) ?? stateWordIn(out);
@@ -745,8 +964,9 @@ export function itemOf({ name, args, text, isError = false }) {
         const shipped = ships ? (kind === 'deploy' ? ok : outcome(exit, deployIn(out))) : undefined;
         // A download that went through (`curl -sO …` before a checksum) is a request that answered.
         const fetched = kind !== 'probe' && /\b(curl|wget)\b/i.test(command) && exit === 0 && !/\bcurl: \(\d+\)|\b(4\d\d|5\d\d) (Not Found|Forbidden|Unauthorized|Internal Server Error|Bad Gateway|Service Unavailable)\b/i.test(out);
-        const ran = `\`${clip(oneLine(command) || tool, 80)}\``;
-        const how = typeof exit === 'number' ? `exited ${exit}` : exit === null ? 'ran' : exit === 'error' ? 'failed to run' : exit === 'denied' ? 'was denied by the sandbox' : exit === 'timeout' ? 'timed out' : `ended (${exit})`;
+        const ran = `\`${clip(shownCommand(asRun) || tool, 80)}\``;
+        // A run that failed though it exited 0 (a CI read that lists a failed run, `npm test | tail`) is not said to have exited 0.
+        const how = ok === false && exit === 0 ? 'ran' : typeof exit === 'number' ? `exited ${exit}` : exit === null ? 'ran' : exit === 'error' ? 'failed to run' : exit === 'denied' ? 'was denied by the sandbox' : exit === 'timeout' ? 'timed out' : `ended (${exit})`;
         // A status read that lists some pods well and some not ("2 in CrashLoopBackOff, 3 Running").
         const unwell = kind === 'probe' && http === undefined && UNWELL.test(out);
         const mixed = unwell && WELL.test(out);
@@ -754,15 +974,18 @@ export function itemOf({ name, args, text, isError = false }) {
             : unwell ? `it shows ${UNWELL_STATE.exec(out)?.[1] ?? 'a pod that is not ready'}${mixed ? ' next to others running' : ''}`
             : crashed ? `it ended in a crash: ${crashLine(tail)}`
             : failMark ? `it printed "${lineAt(out, failMark.index)}"`
-            : search && kind === 'run' ? (search.hits ? `${search.hits === 1 ? 'one line' : `${search.hits} lines`} found` : 'nothing found')
+            : kind === 'ci' && ok === false && CI_FAILED.exec(out) ? `it shows a failure: "${lineAt(out, CI_FAILED.exec(out).index)}"`
+            : search && kind === 'run' ? foundText(search)
             : facts.tests ? `${tests.passed} passed, ${tests.failed} failed`
                 : hash ? hash.slice(0, 12)
                     : facts.state && kind !== 'ci' ? `status ${facts.state}`
-                        : metric ?? (kind === 'deploy' && extra ? 'went through' : '');
+                        : metric ?? (kind === 'deploy' && extra ? 'went through' : ok === false && exit === 0 ? 'its output reports a failure' : '');
         return {
             tool, kind, ok, exit,
             cmd: clip(oneLine(command), 240),
             ...(changes ? { change: true } : {}),
+            // Read on the whole command: the kept `cmd` is cut short, and a long commit message hides how it ends.
+            ...(changes && GIT_RECORD.test(command) ? { record: true } : {}),
             ...(CODE_CHANGE_CMD.test(command) ? { code: true } : {}),
             ...((APPLY_CMD.test(command) || MIGRATE_CMD.test(command)) && !DRY_RUN.test(command) ? { apply: true } : {}),
             ...(mixed ? { mixed: true } : {}),
@@ -790,7 +1013,7 @@ export function itemOf({ name, args, text, isError = false }) {
     }
     if (READ_TOOL.test(tool)) {
         const file = fileOf(args);
-        const looked = search ? ` ${search.term}: ${search.hits ? `${search.hits === 1 ? 'one line' : `${search.hits} lines`} found` : 'nothing found'}` : '';
+        const looked = search ? ` ${search.term}: ${foundText(search)}` : '';
         return { tool, kind: 'read', ok: !isError, ...facts, text: clip(`${tool}${file ? ` ${base(file)}` : ''}${looked}`, 180) };
     }
     // Any other tool (a plugin's or a server's): its own words say how it went.
@@ -808,7 +1031,7 @@ const ACCEPT = {
     tests: ['test'],
     build: ['build', 'test'],
     lint: ['lint'],
-    ci: ['ci', 'test'],
+    ci: ['ci'],
     hash: ['hash'],
     any: ['test', 'build', 'lint', 'ci', 'hash'],
     run: ['test', 'build', 'lint', 'ci', 'hash', 'run', 'probe', 'deploy'],
@@ -818,14 +1041,14 @@ const FIX_CHECKS = {
     tests: ['test'],
     build: ['build', 'test'],
     lint: ['lint'],
-    ci: ['ci', 'test'],
+    ci: ['ci'],
     any: ['test', 'run', 'probe', 'build', 'deploy', 'hash', 'ci'],
 };
 const NONE_RAN = {
     tests: 'No test ran in this turn.',
     build: 'No build or test ran in this turn.',
     lint: 'No lint ran in this turn.',
-    ci: 'No CI result was read and no test ran in this turn.',
+    ci: 'No CI result was read in this turn.',
     hash: 'No checksum was computed in this turn.',
     any: 'Nothing in this turn ran tests, a build, lint or a CI check.',
     run: 'Nothing ran in this turn to try it: only reads and edits.',
@@ -844,10 +1067,10 @@ const TARGET_WORDS = {
  */
 function namedCount(text, { inWords = false } = {}) {
     if (inWords) {
-        const w = /\b(?:all\s+)?(\d+)\s+(?:of\s+(?:its|the)\s+)?(?:unit\s+|e2e\s+|integration\s+)?(?:tests?|specs?|examples?)\b(?![\s-]+(?:files?|suites?|modules?|targets?|packages?|projects?|binar(?:y|ies)|executables?|classes|folders?|directories)\b)/i.exec(text);
+        const w = /\b(?:all\s+)?(\d+)\s+(?:of\s+(?:its|the)\s+)?(?:unit\s+|e2e\s+|integration\s+|(?<=\ball\s+\d+\s+)[a-z][\w-]*\s+)?(?:tests?|specs?|examples?)\b(?![\s-]+(?:files?|suites?|modules?|targets?|packages?|projects?|binar(?:y|ies)|executables?|classes|folders?|directories)\b)/i.exec(text);
         return w ? { passed: num(w[1]), total: num(w[1]) } : undefined;
     }
-    const m = /\b(\d+)\s*\/\s*(\d+)\b|\b(?:all\s+)?(\d+)\s+(?:of\s+(?:its|the)\s+)?(?:unit\s+|e2e\s+|integration\s+)?(?:tests?|specs?|examples?)\b(?![\s-]+(?:files?|suites?|modules?|targets?|packages?|projects?|binar(?:y|ies)|executables?|classes|folders?|directories)\b)/i.exec(text);
+    const m = /\b(\d+)\s*\/\s*(\d+)\b|\b(?:all\s+)?(\d+)\s+(?:of\s+(?:its|the)\s+)?(?:unit\s+|e2e\s+|integration\s+|(?<=\ball\s+\d+\s+)[a-z][\w-]*\s+)?(?:tests?|specs?|examples?)\b(?![\s-]+(?:files?|suites?|modules?|targets?|packages?|projects?|binar(?:y|ies)|executables?|classes|folders?|directories)\b)/i.exec(text);
     if (!m) return undefined;
     return { passed: num(m[1] ?? m[3]), total: num(m[2] ?? m[3]) };
 }
@@ -908,7 +1131,8 @@ function slack(metric) {
     const [whole = '', frac] = digits.split('.');
     const zeros = whole.length - whole.replace(/0+$/, '').length;
     const place = frac ? 10 ** -frac.length : 10 ** Math.min(zeros, whole.length - 1);
-    return Math.max(0.05 * Math.abs(metric.value), place / 2);
+    // "87.4 ms" is read to its last digit, give or take a point in a hundred; a whole "90 ms" may be rounded more.
+    return Math.max((frac ? 0.01 : 0.05) * Math.abs(metric.value), place / 2);
 }
 
 const near = (a, b, room) => Math.abs(a - b) <= room;
@@ -919,16 +1143,65 @@ function printed(items, metric) {
     return items.some((i) => (i.nums ?? []).some((n) => near(n, metric.value, room)));
 }
 
-/** Whether a figure of an "it got faster" claim follows from two printed ones: their difference, ratio or change in percent. */
-function derivable(items, metric) {
+/** Times in a claim's unit, as the benchmark readings hold them (ms). */
+const MS_PER = { ns: 1e-6, 'µs': 0.001, us: 0.001, ms: 1, s: 1000, sec: 1000, secs: 1000, seconds: 1000, min: 60000, mins: 60000, minutes: 60000 };
+
+/**
+ * One metric's before and after in this turn, `[from, to]` pairs: the same benchmark run twice (each reading's first
+ * value in the first run and in the last), a run that printed a before and an after, or an output line that moved
+ * ("p50 310 ms -> 120 ms").
+ */
+function beforeAfter(items) {
+    const pairs = [];
+    const runs = items.filter((i) => (i.series ?? []).length && i.kind !== 'read');
+    const firstOf = (item) => {
+        const m = new Map();
+        for (const r of item.series) if (!m.has(r.l)) m.set(r.l, r.v);
+        return m;
+    };
+    if (runs.length >= 2 && ranCommand(runs[0], runs.at(-1).cmd ?? '')) {
+        const a = firstOf(runs[0]);
+        const b = firstOf(runs.at(-1));
+        for (const [label, from] of a) if (b.has(label)) pairs.push([from, b.get(label)]);
+    }
+    for (const run of runs.filter((i) => i.ab)) {
+        const seen = new Map();
+        for (const r of run.series) {
+            if (!seen.has(r.l)) seen.set(r.l, [r.v, r.v]);
+            else seen.get(r.l)[1] = r.v;
+        }
+        for (const pair of seen.values()) if (pair[0] !== pair[1]) pairs.push(pair);
+    }
+    for (const item of items) {
+        const m = /(\d+(?:\.\d+)?)\s*([a-zµ%/]*)\s*(?:→|->|=>|⟶|\bto\b)\s*(\d+(?:\.\d+)?)\s*([a-zµ%/]*)/i.exec(item.metric ?? '');
+        if (m) pairs.push([Number(m[1]) * (MS_PER[m[2].toLowerCase()] ?? 1), Number(m[3]) * (MS_PER[(m[4] || m[2]).toLowerCase()] ?? 1)]);
+        // A benchmark tool's own change ("-56.70% (p=0.000 n=10)", "change: [-45.1% …]"): before 100, after 100 plus the change.
+        const change = /([-+−])(\d+(?:\.\d+)?)%\s*\(p\s*=|\bchange:\s*\[\s*([-+−]?)(\d+(?:\.\d+)?)%/i.exec(item.metric ?? '');
+        if (change) {
+            const sign = (change[1] ?? change[3]) === '+' || (change[1] ?? change[3]) === '' ? 1 : -1;
+            pairs.push([100, 100 + sign * Number(change[2] ?? change[4])]);
+        }
+    }
+    return pairs.filter(([a, b]) => a > 0 && b > 0 && a !== b);
+}
+
+/**
+ * Whether an amount or a factor a claim gives ("40% less", "3x faster", "cut 300 ms") follows from one metric's
+ * before and after in this turn: their change in percent, their ratio, or their difference.
+ */
+function derivable(items, metric, claim) {
     const room = slack(metric);
-    const all = [...new Set(items.flatMap((i) => i.nums ?? []))].slice(0, 160);
-    for (const a of all) {
-        for (const b of all) {
-            if (a === b || a <= 0 || b <= 0) continue;
-            if (near(a - b, metric.value, room)) return true;
-            if (near(a / b, metric.value, Math.max(room, 0.15))) return true;
-            if (near(((a - b) / a) * 100, metric.value, Math.max(room, 1.5))) return true;
+    // The claim's own before and after, when both printed ("about 4x faster (820 ms → 205 ms)").
+    const arrows = (claim?.metrics ?? []).filter((m) => m.arrow);
+    const own = arrows.length === 2 && arrows.every((m) => printed(items, m)) ? [arrows.map((m) => m.value * (MS_PER[m.unit] ?? 1))] : [];
+    for (const [from, to] of [...beforeAfter(items), ...own]) {
+        if (metric.unit === 'x' || metric.unit === '×') {
+            if (near(Math.max(from, to) / Math.min(from, to), metric.value, Math.max(room, 0.15))) return true;
+        } else if (metric.unit === '%') {
+            if (near((Math.abs(from - to) / from) * 100, metric.value, Math.max(room, 1.5)) || near((Math.abs(from - to) / to) * 100, metric.value, Math.max(room, 1.5))) return true;
+        } else {
+            const per = MS_PER[metric.unit] ?? 1;
+            if (near(Math.abs(from - to), metric.value * per, room * per)) return true;
         }
     }
     return false;
@@ -937,6 +1210,10 @@ function derivable(items, metric) {
 /** A label as a whole word of a sentence: `p50`, `req/s`. */
 const labelIn = (label, text) => new RegExp(`(^|[^\\w/])${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w/])`, 'i').test(text);
 
+/** A benchmark's allocations per operation: Go's "3 allocs/op". */
+const ALLOCS = /\b(\d+)\s+allocs\/op\b/;
+/** A benchmark's own factor: hyperfine's "1.35 ± 0.03 times faster than …". */
+const TIMES_FASTER = /\b(\d+(?:\.\d+)?)\s*(?:±\s*\d+(?:\.\d+)?\s*)?times\s+faster\b/i;
 /** "2.6x faster", "a 3x speedup": a factor claimed as the result. */
 const FACTOR = /\b(\d+(?:\.\d+)?)\s*(?:x|×)(?!\w)(?=[^.;]{0,40}?\b(?:faster|quicker|lower|smaller|less|fewer|speed-?up|throughput|higher|more)\b)|\b(?:faster|quicker|speed-?up)\b[^.;]{0,20}?\b(\d+(?:\.\d+)?)\s*(?:x|×)(?!\w)/i;
 
@@ -948,6 +1225,16 @@ const FACTOR = /\b(\d+(?:\.\d+)?)\s*(?:x|×)(?!\w)(?=[^.;]{0,40}?\b(?:faster|qui
  * quarter of the claim off).
  */
 function farOff(claim, list) {
+    // "Roughly a 3x speedup" after hyperfine printed "1.35 ± 0.03 times faster than …": the tool's own factor.
+    const said3 = FACTOR.exec(claim.text ?? claim.part ?? '');
+    const told = said3 ? list.filter((i) => typeof i.metric === 'string' && TIMES_FASTER.test(i.metric)).at(-1) : undefined;
+    if (told) {
+        const claimed = Number(said3[1] ?? said3[2]);
+        const actual = Number(TIMES_FASTER.exec(told.metric)[1]);
+        if (Math.abs(actual - claimed) > Math.max(0.3, claimed / 4)) {
+            return { verdict: 'contradicted', evidence: [said(told)], why: `It says ${said3[1] ?? said3[2]}x; the turn's own benchmark says ${actual} times faster: "${clip(told.metric, 80)}".` };
+        }
+    }
     const runs = list.filter((i) => (i.series ?? []).length);
     if (runs.length < 2) return undefined;
     const first = runs[0];
@@ -966,7 +1253,9 @@ function farOff(claim, list) {
     const after = firstOf(last);
     // "at the median" names k6's med and a p50.
     const named = (l) => labelIn(l, text) || ((l === 'median' || l === 'p50') && /\b(?:median|p50)\b/i.test(text));
-    const labels = [...before.keys()].filter((l) => after.has(l) && named(l));
+    const common = [...before.keys()].filter((l) => after.has(l));
+    // "Parsing is about 4x faster" names no figure: it is about the one figure both runs print, when there is one.
+    const labels = common.filter(named).length ? common.filter(named) : common.length === 1 ? common : [];
     if (labels.length !== 1) return undefined;
     const [label] = labels;
     const from = before.get(label);
@@ -996,7 +1285,13 @@ function otherFigure(claim, list) {
     const [from, to] = arrows;
     if (printed(list, to)) return undefined;
     const text = claim.text ?? claim.part ?? '';
-    for (const run of list.filter((i) => (i.series ?? []).length)) {
+    // Go's ns/op is the time per op: "time per op fell from 1910 ns to 640 ns".
+    const perOp = /\bper\s+(?:op|operation|call|iteration)\b|\bns\/op\b/i.test(text);
+    const named = (l) => labelIn(l, text) || ((l === 'median' || l === 'p50') && /\b(?:median|p50)\b/i.test(text)) || (l === 'avg' && /\b(?:mean|average)\b/i.test(text)) || (l === 'ns/op' && perOp);
+    const per = MS_PER[to.unit] ?? 1;
+    // A reading's own unit: ns/op holds nanoseconds, the others milliseconds.
+    const unitOf = (l) => (l === 'ns/op' ? (MS_PER[to.unit] ?? 1e-6) / 1e-6 : per);
+    for (const run of list.filter((i) => (i.series ?? []).length && i.kind !== 'read')) {
         const labels = [...new Set(run.series.map((r) => r.l))].filter((l) => labelIn(l, text));
         if (labels.length !== 1) continue;
         const readings = run.series.filter((r) => r.l === labels[0]);
@@ -1006,7 +1301,15 @@ function otherFigure(claim, list) {
             return { verdict: 'contradicted', evidence: [said(run)], why: `It says ${labels[0]} went to ${to.text}; the turn's own benchmark shows ${labels[0]} at ${now}${IN_MS.test(labels[0]) ? ' ms' : ''}.` };
         }
     }
-    return undefined;
+    // "cut mean latency from 120 ms to 95 ms" when the turn's last benchmark, after its last change, measured 150 ms.
+    const change = lastIndex(list, (i) => i.code && i.ok !== false);
+    const run = list.filter((i, at) => at > change && (i.series ?? []).length && i.kind !== 'read' && i.ok !== false).at(-1);
+    if (!run) return undefined;
+    const labels = [...new Set(run.series.map((r) => r.l))].filter(named);
+    if (labels.length !== 1) return undefined;
+    const now = run.series.filter((r) => r.l === labels[0]).at(-1).v;
+    if (near(now, to.value * unitOf(labels[0]), slack(to) * unitOf(labels[0]))) return undefined;
+    return { verdict: 'contradicted', evidence: [said(run)], why: `It says ${labels[0]} went to ${to.text}; the turn's own benchmark shows ${labels[0]} at ${now}${IN_MS.test(labels[0]) ? ' ms' : ''}.` };
 }
 
 /** The benchmark readings that moved the wrong way for an "it got faster" claim, as words; undefined when none did. */
@@ -1051,8 +1354,6 @@ const lastIndex = (list, test) => {
 };
 const listed = (parts) => (parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0]);
 
-/** Figures that come from arithmetic on what printed ("3x faster", "40% less", "saved 2 s"). */
-const derived = (metric, claim) => metric.unit === 'x' || metric.unit === '×' || /\b(by|less|fewer|faster|slower|smaller|cut|drop(ped)?|reduc\w*|improv\w*|sav(ed|es|ing)|shav\w*|lower|higher)\b/i.test(claim.part ?? '') && metric.unit === '%';
 
 /** Commands that install or fetch a published thing: "(`npm i pkg@1.2.0`)" after a publish says how to use it. */
 const INSTALL_CMD = /^\s*(?:npm\s+(?:i|install|add)|pnpm\s+(?:add|i|install)|yarn\s+add|bun\s+(?:add|install)|npx|pip3?\s+install|pipx\s+install|uv\s+(?:add|pip\s+install)|poetry\s+add|cargo\s+(?:add|install)|go\s+(?:get|install)|gem\s+install|bundle\s+add|composer\s+require|dotnet\s+add\s+package|brew\s+install|docker\s+(?:pull|run)|helm\s+(?:install|pull))\b/i;
@@ -1075,7 +1376,7 @@ function listedCheck(list, wanted) {
 const VIA_COMMAND = /\b(?:re-?built|built|compiled|re-?generated|generated|applied|migrated|seeded|installed|bundled|packaged|synced|imported|exported|re-?indexed|backfilled|provisioned)\b[^.;]{0,40}?\b(?:with|using|via|through|by running)\s/i;
 
 /** What a named command, a quoted figure or a turn's own benchmark says, before the kind's own rule: a result, or undefined. */
-function namedChecks(claim, list) {
+function namedChecks(claim, list, prompt = '') {
     if (claim.kind === 'passed' || claim.kind === 'deployed') {
         for (const wanted of claim.commands ?? []) {
             if (claim.kind === 'deployed' && INSTALL_CMD.test(wanted)) continue;
@@ -1094,6 +1395,15 @@ function namedChecks(claim, list) {
             if (last && last.ok === false) return { verdict: 'contradicted', evidence: [said(last)], why: `\`${clip(wanted, 60)}\` did not go through in this turn: ${last.text}.` };
         }
     }
+    // "It's allocation-free now" after a benchmark that prints "3 allocs/op".
+    if (claim.allocs === 0) {
+        const lines = list.flatMap((i) => (i.lines ?? []).filter((l) => typeof l === 'string' && ALLOCS.test(l)).map((l) => ({ i, l })));
+        const last = lines.at(-1);
+        if (!last) return { verdict: 'unbacked', evidence: [], why: 'Nothing in this turn printed allocations per operation.' };
+        const n = Number(ALLOCS.exec(last.l)[1]);
+        if (n > 0) return { verdict: 'contradicted', evidence: [said(last.i)], why: `It says there are no allocations; the turn's last benchmark prints ${n} allocs/op: "${clip(last.l.replace(/\s+/g, ' ').trim(), 90)}".` };
+        return { verdict: 'backed', evidence: [said(last.i)], why: '' };
+    }
     if (claim.improved) {
         const off = farOff(claim, list);
         if (off) return off;
@@ -1105,12 +1415,45 @@ function namedChecks(claim, list) {
         const moved = otherFigure(claim, list);
         if (moved) return moved;
     }
-    const required = (claim.metrics ?? []).filter((m) => !derived(m, claim));
-    const missing = required.filter((m) => !printed(list, m) && !(claim.improved && !m.arrow && derivable(list, m)));
+    // Every figure must have printed, but an amount or a factor ("40% less", "3x faster") may follow from one metric's
+    // before and after. A reading ("p95 is 120 ms") and both sides of "from X to Y" must print as they are.
+    const covered = coverageClash(claim, list);
+    if (covered) return covered;
+    const required = claim.metrics ?? [];
+    // "Last run the median was 240 ms": a figure the person's message gave needs no output of this turn, unless the
+    // message gave the claim itself (a reply the person dictated, figures and all), which still needs them printed.
+    const given = typeof prompt === 'string' && prompt && !dictated(prompt, claim) ? numsIn(prompt) : [];
+    const missing = required.filter((m) => !printed(list, m) && !given.some((n) => near(n, m.value, slack(m))) && !(!m.arrow && (m.amount || m.unit === 'x' || m.unit === '×') && derivable(list, m, claim)));
     if (missing.length) {
         return { verdict: 'unbacked', evidence: [], why: `It quotes ${listed(missing.slice(0, 3).map((m) => m.text))}, which no output in this turn shows.` };
     }
     return undefined;
+}
+
+/** "statement coverage is 95%", "95% line coverage", "coverage is above 80%": the measure, a bound, and the figure. */
+const COVERAGE_SAID = /\b(?:(statements?|stmts?|lines?|branch(?:es)?|functions?|funcs?)\s+)?coverage\s+(?:is\s+|was\s+|sits\s+|stands\s+|reached\s+|hit\s+|hits\s+|of\s+|at\s+|now\s+|:\s*|=\s*)*(?:now\s+|at\s+)?(over|above|more\s+than|at\s+least|under|below|less\s+than|about|around|roughly|~)?\s*(\d+(?:\.\d+)?)\s*%|(\d+(?:\.\d+)?)\s*%\s+(?:(statements?|stmts?|lines?|branch(?:es)?|functions?|funcs?)\s+)?coverage\b/i;
+
+/**
+ * "statement coverage is 95%" when the turn's coverage report shows another figure for it (81.42%): contradicted, or
+ * undefined. A figure said to move ("from 78% to 92%") is left to the before-and-after checks.
+ */
+function coverageClash(claim, list) {
+    const text = String(claim.part ?? claim.text ?? '');
+    const m = COVERAGE_SAID.exec(text);
+    if (!m || (claim.metrics ?? []).some((x) => x.arrow) || /\b(?:from|was|were|up|down)\s+~?\d+(?:\.\d+)?\s*%/i.test(text)) return undefined;
+    const report = list.filter((i) => i.coverage && i.ok !== false).at(-1);
+    if (!report) return undefined;
+    const value = Number(m[3] ?? m[4]);
+    const word = (m[1] ?? m[5] ?? '').toLowerCase();
+    const key = /^st/.test(word) ? 'statements' : /^line/.test(word) ? 'lines' : /^branch/.test(word) ? 'branches' : /^func/.test(word) ? 'functions' : '';
+    const bound = (m[2] ?? '').toLowerCase().replace(/\s+/g, ' ');
+    const shown = key ? [report.coverage[key] ?? (key === 'statements' || key === 'lines' ? report.coverage.total : undefined)].filter((v) => v !== undefined) : Object.values(report.coverage);
+    if (shown.length === 0) return undefined;
+    const fits = (v) => (/^(?:over|above|more than|at least)$/.test(bound) ? v >= value : /^(?:under|below|less than)$/.test(bound) ? v <= value
+        : Math.abs(v - value) <= (/^(?:about|around|roughly|~)$/.test(bound) ? 1.5 : Number.isInteger(value) ? 1 : 0.05));
+    if (shown.some(fits)) return undefined;
+    const said_ = key ? `${shown[0]}% of ${key}` : listed(Object.entries(report.coverage).map(([k, v]) => `${v}% of ${k === 'total' ? 'the total' : k}`));
+    return { verdict: 'contradicted', evidence: [said(report)], why: `It says ${key ? `${key.replace(/s$/, '')} ` : ''}coverage is ${bound ? `${bound} ` : ''}${value}%; the coverage report in this turn shows ${said_}.` };
 }
 
 /** A person's message that asks to build or cut something: "Cut the signed release APK", "Rebuild the marts". */
@@ -1151,6 +1494,8 @@ const SUITES = [
     { name: 'doc', said: /\bdoc(?:-|\s)?tests?\b|\bdoctests?\b/i, ran: /--doc\b|\bdoctest/i },
     { name: 'smoke', said: /\bsmoke\b/i, ran: /\bsmoke\b/i },
 ];
+/** Browser and device test runners, which run their own suites: `npx playwright test`, `cypress run`. */
+const E2E_RUNNER = /\b(Playwright|Cypress|Selenium|WebdriverIO|wdio|Puppeteer|Detox|Maestro|TestCafe|Nightwatch)\b/i;
 /** The kinds of tests a command was limited to; empty when it ran them all. */
 const suitesRun = (cmd) => SUITES.filter((k) => k.ran.test(cmd ?? '')).map((k) => k.name);
 
@@ -1167,6 +1512,25 @@ function namedCounts(text) {
     return [...String(text).matchAll(/\b(\d+)\s+(?:unit\s+|integration\s+|e2e\s+|end-to-end\s+|doc\s+|ui\s+|api\s+)?(?:tests?|specs?|examples?)\b(?![\s-]+(?:files?|suites?|modules?|targets?|packages?|projects?|binar(?:y|ies)|executables?|classes|folders?|directories)\b)/gi)].map((m) => Number(m[1]));
 }
 
+/** The tests other than the failing ones: "the other tests", "the remaining 2", "the others", "the rest". */
+const OTHERS_PASS = /\b(?:the\s+)?(?:other|remaining)\s+(?:\d+\s+|two\s+|three\s+|four\s+|five\s+)?(?:tests?|specs?|cases?|ones?|checks?)\b|\bthe\s+(?:other|remaining)\s+\d+\b|\bthe\s+others\b|\bthe\s+rest\b|\beverything\s+else\b|\ball\s+(?:the\s+)?(?:others|rest)\b|\b(?:all|every)\s+other\s+(?:tests?|specs?|cases?|ones?)\b/i;
+/** A pass said to hold on every round: "reliably", "every time", "five times in a row", "no longer flaky". */
+const REPEAT_PASS = /\b(?:reliabl[ey]|consistently|every\s+(?:single\s+)?(?:time|run|round)|each\s+(?:time|run|round)|(?:\w+|\d+)\s+times\s+in\s+a\s+row|(?:all|each)\s+(?:\w+|\d+)\s+(?:runs|rounds|times)|\d+\s*\/\s*\d+\s+(?:runs|rounds|times)|no\s+longer\s+flak\w*|not\s+flaky(?:\s+any\s*more)?|stable\s+now|deterministic(?:ally)?)\b/i;
+
+/** Whether a failed run that passed other parts failed on parts other than the code a claim names ("`fct_orders` built"). */
+function otherPartFailed(i, words) {
+    const names = [...String(words).matchAll(CODE_NAME)].map((m) => m[1] ?? m[2]).filter((n) => n.length > 2);
+    // A claim about the whole run ("all 42 tests pass", "the suite") is about every part.
+    if (!names.length || /\b(?:all|every|each|both|whole|full|entire|overall|suite|everything)\b/i.test(String(words)) || partOfAll(String(words))) return false;
+    // A run of that part (`-only-testing:LumenTests/OnboardingTests`) is about it, whatever its failure lines name.
+    if (names.some((n) => String(i.cmd ?? '').includes(n))) return false;
+    const lines = [...(Array.isArray(i.failLines) ? i.failLines : []), ...(i.lines ?? [])].filter((l) => typeof l === 'string');
+    const passedSome = (i.tests?.passed ?? 0) > 0 || lines.some((l) => /\bPASS=[1-9]|\b[1-9]\d* (?:passed|succeeded|ok)\b/i.test(l));
+    const failing = lines.filter((l) => FAIL_LINE.test(l) || /\berror\b/i.test(l));
+    const named = (l) => names.some((n) => new RegExp(`(?<![\\w$])${n.replace(/[$]/g, '\\$')}(?![\\w$])`, 'i').test(l));
+    return passedSome && failing.some((l) => [...l.matchAll(CODE_NAME)].length > 0) && !failing.some(named);
+}
+
 function passedFor(subject, claim, list) {
     const words = claim.part ?? claim.text;
     const accept = ACCEPT[subject] ?? ACCEPT.any;
@@ -1174,25 +1538,91 @@ function passedFor(subject, claim, list) {
     const several = (claim.subjects ?? []).length > 1;
     const kinds = Object.values(SUBJECT_CMD);
     const commands = (claim.commands ?? []).filter((c) => !several || !SUBJECT_CMD[subject] || SUBJECT_CMD[subject].test(c) || !kinds.some((re) => re.test(c)));
-    const fits = (i) => accept.includes(i.kind) || (i.tests && subject !== 'lint' && subject !== 'hash' && subject !== 'run') || (SUBJECT_CMD[subject]?.test(i.cmd ?? '') ?? false) || commands.some((c) => ranCommand(i, c));
-    const fitting = list.filter(fits);
-    if (fitting.length === 0) return { verdict: 'unbacked', evidence: [], why: NONE_RAN[subject] ?? NONE_RAN.any };
+    // A CI claim is shown only by a CI read: a local test run says nothing about the checks on the PR.
+    const fits = (i) => accept.includes(i.kind) || (i.tests && subject !== 'lint' && subject !== 'hash' && subject !== 'run' && subject !== 'ci') || (SUBJECT_CMD[subject]?.test(i.cmd ?? '') ?? false) || (subject !== 'ci' && commands.some((c) => ranCommand(i, c)));
+    // "The build passes now. The tests still fail": a build claim is shown by the build that ran, not by a test run after it.
+    const builds = subject === 'build' ? list.filter((i) => fits(i) && (i.kind === 'build' || BUILD_CMD.test(i.cmd ?? ''))) : [];
+    const fitting = builds.length ? builds : list.filter(fits);
+    if (fitting.length === 0) {
+        const local = subject === 'ci' ? list.filter((i) => i.kind === 'test' || i.tests).at(-1) : undefined;
+        if (local && local.ok === true) return { verdict: 'unbacked', evidence: [said(local)], why: 'A local test run passed; no CI result was read in this turn.' };
+        return { verdict: 'unbacked', evidence: [], why: NONE_RAN[subject] ?? NONE_RAN.any };
+    }
     // "Tested it by pointing DEST at a dead host": something ran after the last change, whatever it printed.
     if (subject === 'run') {
         const ran = fitting.at(-1);
         const change = lastIndex(list, (i) => i.code && i.ok !== false);
         if (change > list.lastIndexOf(ran)) return { verdict: 'unbacked', evidence: [said(ran), said(list[change])], why: `The last run came before the last change (${list[change].text}); nothing ran after it.` };
+        // "Both runs complete with 0 errors" says how they ended, which the last one must show.
+        if (claim.completed && ran.ok === false) return { verdict: 'contradicted', evidence: [said(ran)], why: `The last run in this turn did not pass: ${ran.text}.` };
         return { verdict: 'backed', evidence: fitting.slice(-2).map(said), why: '' };
     }
     // "Unit tests pass (`npm run test:unit`)" is about the unit run, whatever ran after it.
     const byCommand = [...new Set(commands.flatMap((c) => namedRuns(fitting, c)))].sort((a, b) => list.indexOf(a) - list.indexOf(b));
     const suites = subject === 'tests' || subject === 'any' ? SUITES.filter((k) => k.said.test(words)).map((k) => k.name) : [];
     const bySuite = suites.length ? fitting.filter((i) => suitesRun(i.cmd).some((k) => suites.includes(k))) : [];
-    const relevant = byCommand.length ? byCommand : bySuite.length ? bySuite : fitting;
+    // "Invoice tests: 9/9 pass" after `pytest -k invoice` and a full run with an unrelated failure: the claim is about the run its
+    // filter names, unless a later failing run names that filter too.
+    const byFilter = subject === 'tests' || subject === 'any'
+        ? fitting.filter((i) => i.tests?.filtered && Array.isArray(i.filter) && i.filter.some((w) => new RegExp(`\\b${w}`, 'i').test(String(words).replace(/_/g, ' '))))
+            // A later run of the same filter that passed, its counts sent to a file (`-v > /tmp/drain.log`), speaks for it.
+            .filter((i) => !fitting.slice(fitting.indexOf(i) + 1).some((j) => j.ok === true && typeof j.cmd === 'string' && i.filter.every((w) => filterOf(unpicked(j.cmd)).includes(w))))
+        : [];
+    const failsThere = byFilter.length > 0 && fitting.slice(fitting.indexOf(byFilter.at(-1)) + 1).some((i) => i.ok === false && failsOn(i, focusOf(byFilter.at(-1))));
+    const relevant = byCommand.length ? byCommand : byFilter.length && !failsThere ? byFilter : bySuite.length ? bySuite : fitting;
     const last = relevant.at(-1);
     const what = LAST_FAILED[subject] ?? 'run';
+    // CI read before the last push is about the commit before it.
+    if (subject === 'ci') {
+        const push = lastIndex(list, (i) => /\bgit\s+push\b/i.test(plainGit(i.cmd)) && i.shipped !== false);
+        if (push > list.lastIndexOf(last)) return { verdict: 'unbacked', evidence: [said(last), said(list[push])], why: `The last CI read in this turn came before the last push (${list[push].text}), so it does not show the pushed code.` };
+    }
+    // "1 test passed" after a run where 1 passed and 2 failed: the run's own count, which reports the failures.
+    const early = subject === 'tests' || subject === 'any' ? namedCount(words) : undefined;
+    if (early && last.tests && last.tests.failed > 0 && early.passed === last.tests.passed && !/\b(?:all|every|each|both|whole|full|entire)\b/i.test(words) && !partOfAll(words)) return { verdict: 'none', evidence: [], why: '' };
+    // "unit tests: 23 passed" after `cargo test` printed "23 passed; 0 failed" for its unit tests and failed in its doc tests:
+    // that part's own count, which passed.
+    const own = subject === 'tests' || subject === 'any' ? early ?? (/\b(\d+)\s+(?:passed|passing)\b/i.exec(words) ? { passed: Number(/\b(\d+)\s+(?:passed|passing)\b/i.exec(words)[1]) } : undefined) : undefined;
+    if (own && last.tests && last.tests.failed > 0 && (last.tests.clean ?? []).includes(own.passed) && own.passed !== last.tests.passed && !/\b(?:all|every|each|both|whole|full|entire|overall)\b/i.test(words)) return { verdict: 'backed', evidence: [said(last)], why: '' };
+    // "`@acme/billing` and `@acme/ui` were green too" after a workspace run whose failures all name `@acme/api`:
+    // the failure is in another package, so this run says nothing against the ones it names.
+    // Packages it names, as `@acme/shared` or as the bare `shared` of a package the run printed.
+    const printedPackages = [...new Set([...(last.lines ?? []), ...(last.failLines ?? [])].flatMap((l) => (typeof l === 'string' ? l.match(WORKSPACE_PACKAGE) ?? [] : [])))];
+    const bareNamed = printedPackages.filter((p) => new RegExp(`(?<![\\w@/.-])${p.split('/')[1].replace(/\./g, '\\.')}(?![\\w/-])`, 'i').test(String(claim.part ?? words)));
+    const packages = [...(String(claim.part ?? words).match(WORKSPACE_PACKAGE) ?? []), ...bareNamed];
+    // A build keeps no failure lines of its own: its kept lines that name a failure stand in ("Failed: @acme/docs#build").
+    const failedLines = Array.isArray(last.failLines) ? last.failLines : (last.lines ?? []).filter((l) => typeof l === 'string' && FAIL_LINE.test(l));
+    if (last.ok === false && packages.length && failedLines.length) {
+        const failing = new Set(failedLines.flatMap((l) => (typeof l === 'string' ? l.match(WORKSPACE_PACKAGE) ?? [] : [])));
+        if (failing.size && packages.every((p) => !failing.has(p))) return { verdict: 'none', evidence: [], why: '' };
+    }
+    // "`fct_orders` built cleanly" after `dbt run` passed 12 models and failed on `fct_revenue_daily`: a failure in a run
+    // that passed other parts is about the parts it names, not about this one.
+    if (last.ok === false && otherPartFailed(last, claim.part ?? words)) return { verdict: 'none', evidence: [], why: '' };
+    // "That's also why the other tests pass", "the rest are green" about a run that failed some and passed others: the
+    // part it names is the part that passed, so the failure does not speak against it.
+    if (last.ok === false && (last.tests?.passed ?? 0) > 0 && (last.tests?.failed ?? 0) > 0 && OTHERS_PASS.test(words)) {
+        const quoted = Number(/\b(\d+)\b/.exec(words)?.[1]);
+        return Number.isFinite(quoted) && quoted !== last.tests.passed ? { verdict: 'none', evidence: [], why: '' } : { verdict: 'backed', evidence: [said(last)], why: '' };
+    }
+    // "38 unit tests and the 6 integration tests pass" when only a doc example failed: the parts it names passed,
+    // each count it quotes a clean part of the run.
+    if (last.ok === false && docExampleOnly(last) && /\b(?:unit|integration|lib|library)\b/i.test(words) && !/\b(?:doc(?:umentation)?[-\s]?tests?|doctests?|doc\s+examples?|everything|whole|full|entire|overall|all\s+(?:the\s+)?tests|(?:the\s+)?suite)\b/i.test(words)) {
+        const counts = [...words.matchAll(/\b(\d+)\b/g)].map((m) => Number(m[1]));
+        if (counts.every((n) => (last.tests?.clean ?? []).includes(n))) return { verdict: 'backed', evidence: [said(last)], why: '' };
+    }
+    if (last.ok === false && (subject === 'tests' || subject === 'any')) {
+        // "All 14 tests pass, but coverage is below the bar": every test passed; the run failed on coverage.
+        if (last.gate && !GATE_WORDS.test(words)) return { verdict: 'backed', evidence: [said(last)], why: '' };
+        const part = passedPart(claim, words, last);
+        if (part) return part;
+    }
     if (last.ok === false) return { verdict: 'contradicted', evidence: [said(last)], why: `The last ${what} in this turn did not pass: ${last.text}.` };
     if (last.ok === null) return { verdict: 'unbacked', evidence: [said(last)], why: `It is not clear how the last ${what} ended: ${last.text}.` };
+    // "Passes reliably now", "green every time" after a loop of runs in which one round failed.
+    if (REPEAT_PASS.test(claim.part ?? words) && last.tests?.failedOnce > 0) {
+        return { verdict: 'contradicted', evidence: [said(last)], why: `It says it passes every time, and one round of the last ${what} failed ${last.tests.failedOnce === 1 ? 'a test' : `${last.tests.failedOnce} tests`}, though its last round passed: ${last.text}.` };
+    }
     if (NO_WARNINGS.test(claim.text ?? words) && (last.warnings ?? 0) > 0) {
         return { verdict: 'contradicted', evidence: [said(last)], why: `It says there are no warnings, and the last ${what} in this turn printed ${last.warnings === 1 ? 'one' : last.warnings}: ${last.text}.` };
     }
@@ -1214,6 +1644,15 @@ function passedFor(subject, claim, list) {
             return { verdict: 'unbacked', evidence: [said(runs.at(-1))], why: `It speaks of the whole suite, and the test runs in this turn ran only part of it: ${runs.at(-1).text}.` };
         }
     }
+    // "Playwright e2e suite passes" after a vitest run: a browser-test runner it names runs on its own, not inside another run.
+    const runner = subject === 'tests' || subject === 'any' ? E2E_RUNNER.exec(words)?.[1] : undefined;
+    if (runner) {
+        const runs = list.filter((i) => i.kind === 'test' || i.tests);
+        const own = new RegExp(`\\b${runner}\\b`, 'i');
+        if (!runs.some((i) => own.test(i.cmd ?? '') || /\be2e\b|\bend-to-end\b/i.test(i.cmd ?? '') || (i.lines ?? []).some((l) => typeof l === 'string' && own.test(l)))) {
+            return { verdict: 'unbacked', evidence: runs.slice(-1).map(said), why: `It names ${runner}, and nothing in this turn ran it.` };
+        }
+    }
     // "The integration suite is green" after a run of the doc tests only.
     const named = subject === 'tests' || subject === 'any' ? SUITES.filter((k) => k.said.test(claim.text ?? words)).map((k) => k.name) : [];
     if (named.length) {
@@ -1225,13 +1664,15 @@ function passedFor(subject, claim, list) {
     }
     // "The suite is fully green — all 42 tests pass": the count may sit in the sentence's other clause.
     const sentence = claim.text ?? words;
-    const count = subject === 'tests' || subject === 'any' ? namedCount(words) ?? namedCount(sentence, { inWords: true }) : undefined;
+    // A part with a number of its own ("all 4 `RateLimiterTest` cases pass") does not take the count of another clause.
+    const count = subject === 'tests' || subject === 'any' ? namedCount(words) ?? (/\d/.test(String(words)) ? undefined : namedCount(sentence, { inWords: true })) : undefined;
     const repeats = REPEATS.exec(sentence);
     const counted = relevant.filter((i) => i.tests);
     if (count && counted.length && !(repeats && Number(repeats[1] ?? repeats[2] ?? repeats[3]) === count.total)) {
         const sums = counted.reduce((a, i) => a + i.tests.passed, 0);
         const listed = namedCounts(sentence).reduce((a, n) => a + n, 0);
-        const fit = (t) => t.passed === count.passed || t.total === count.total || t.passed === count.total || (t.parts ?? []).includes(count.passed) || (listed > count.passed && t.passed === listed);
+        // "all 42 tests pass" after "Passed: 40, Skipped: 2, Total: 42": the total it names fits only when that many passed.
+        const fit = (t) => t.passed === count.passed || (t.total === count.total && (t.passed === t.total || !/\b(?:all|every|each)\b/i.test(words))) || t.passed === count.total || (t.parts ?? []).includes(count.passed) || (listed > count.passed && t.passed === listed);
         if (!(counted.some((i) => fit(i.tests)) || sums === count.passed)) {
             const last = counted.at(-1);
             const shown = last.tests;
@@ -1246,6 +1687,86 @@ function passedFor(subject, claim, list) {
     }
     return { verdict: 'backed', evidence: relevant.slice(-3).map(said), why: '' };
 }
+
+/** A claim about every test, the whole suite or every failure: "all 12 pass", "the suite is green", "fixed the failing tests". */
+const WHOLE_CLAIM = /\b(?:all|every|everything|whole|full|entire|overall|suite|the\s+(?:failing|broken|red)\s+(?:tests?|specs?|cases?)|the\s+(?:failures|build\s+failures)|(?:fixed|green)\s+across)\b/i;
+/** "The tests pass", "tests are green", "unit tests pass": the tests with no part named. */
+const BARE_TESTS = /^\W*(?:and\s+|so\s+|now\s+)*(?:the\s+)?(?:(?:unit|integration|e2e|end-to-end|api|ui)\s+)?tests?\s+(?:now\s+|all\s+|still\s+)?(?:pass(?:es|ed)?|are\s+(?:green|passing)|is\s+green)\b/i;
+const wholeClaim = (words) => WHOLE_CLAIM.test(words) || BARE_TESTS.test(words) || partOfAll(words);
+/** Words that name nothing in particular, left out when a claim's words are held against a failing test's name. */
+const PLAIN_WORDS = new Set('test tests testing spec specs case cases check checks fail fails failed failing failure failures pass passes passed passing error errors expected actual should handles returns works with from that this when then into after before every their there which while about fixed fixes still green'.split(' '));
+// Each word by its first four letters, so "parsing" meets "parses" and "date" meets "dates".
+const significant = (text) => new Set(String(text).replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length >= 4 && !PLAIN_WORDS.has(w) && !/^\d+$/.test(w)).map((w) => w.slice(0, 4)));
+/** The base names of files a text names: "src/a.js" gives a.js. */
+const filesIn = (text) => [...new Set([...` ${String(text).replace(/[\/\\]/g, ' ')}`.matchAll(NAMED_FILE)].map((m) => m[1].toLowerCase()).filter((f) => !/^\d/.test(f)))];
+/** Whether a failed run's lines name files, none of them one the claim names (the claim names at least one). */
+function failsElsewhere(claim, last) {
+    const named = filesIn(claim.part ?? claim.text ?? '');
+    if (!named.length) return false;
+    const lines = [...(Array.isArray(last.failLines) ? last.failLines : []), ...(last.lines ?? [])].filter((l) => typeof l === 'string');
+    const seen = lines.flatMap((l) => filesIn(` ${l.replace(/\(\d+,\d+\)/g, ' ')}`));
+    return seen.length > 0 && !seen.some((f) => named.includes(f));
+}
+/** The names of the tests a run's failing lines name: TAP's "not ok 3 - name", "✖ name (1ms)", pytest's "FAILED a.py::name", go's "--- FAIL: Name". */
+function failNamesOf(last) {
+    const lines = (Array.isArray(last.failLines) ? last.failLines : []).filter((l) => typeof l === 'string');
+    const names = [];
+    for (const l of lines) {
+        const m = /^\s*not ok \d+ - (.+?)(?:\s+#.*)?$/.exec(l) ?? /^\s*[✖✗✘×✕●]\s+(.+?)(?:\s+\(\d[\d.]*\s*m?s\))?$/.exec(l) ?? /::([\w.[\]-]+)/.exec(l) ?? /--- FAIL: (\S+)/.exec(l)
+            ?? /^\s*\d+\)\s+(.+?):?\s*$/.exec(l) ?? /^\s*(?:FAIL(?:ED)?:?)\s+(\S.*?)\s*$/.exec(l);
+        if (m) names.push(m[1].trim());
+    }
+    return names;
+}
+/** Whether a failing test's line in the run shares a word with what the claim names ("empty input" and "✖ handles empty input"). */
+function failsOnClaim(last, claim) {
+    const said_ = significant(String(claim.part ?? claim.text ?? '').replace(/^\W*(?:fixed|repaired|resolved)\b/i, ''));
+    // A failing name meets the claim when it shares two of its words with it (one, when the name has one): "parses ISO
+    // dates" meets "the ISO date parsing"; "sum adds every number" does not meet "the single-number test".
+    const meets = (l) => { const own = [...significant(l.replace(/\(\d[\d.]*\s*m?s\)/g, ''))]; return own.filter((w) => said_.has(w)).length >= Math.min(2, own.length) && own.length > 0; };
+    // The failing tests by name when the lines give them (not the file they sit in or the error), else the lines that are
+    // not a run's summary ("1 failed, 23 passed, 24 total").
+    const names = failNamesOf(last);
+    const lines = names.length ? names : (Array.isArray(last.failLines) ? last.failLines : []).filter((l) => typeof l === 'string' && !/\b\d+\s+(?:failed|passed|failing|passing|failures?)\b/i.test(l));
+    return lines.some(meets);
+}
+/**
+ * Whether the reply itself says what still fails, and it fits the run: the count it gives is the run's, and a test it names
+ * is among the run's failing lines ("One test still fails, `rounds totals`").
+ */
+function toldFails(claim, last) {
+    const told = claim.told?.fails;
+    if (!told) return false;
+    const failed = last.tests?.failed ?? failCount(last);
+    if (told.count !== undefined && failed !== undefined && told.count !== failed) return false;
+    const lines = (Array.isArray(last.failLines) ? last.failLines : []).filter((l) => typeof l === 'string').map((l) => l.toLowerCase());
+    if ((told.names ?? []).length && lines.length && !told.names.some((n) => lines.some((l) => l.includes(String(n).toLowerCase())))) return false;
+    return true;
+}
+/**
+ * A pass claim about a part of a run that failed other tests: a test it printed as passing ("`sum of an empty list is 0` —
+ * pass"), as many as passed ("both green tests pass", "11 of 12"), or a part the reply tells apart from what still fails.
+ */
+function passedPart(claim, words, last) {
+    const t = last.tests;
+    if (!t || !(t.passed > 0) || !(t.failed > 0) || wholeClaim(words)) return undefined;
+    const lower = String(words).toLowerCase();
+    const hit = (n) => typeof n === 'string' && n.length >= 5 && lower.includes(n.toLowerCase());
+    // A test it names by its whole name: one the run passed, and none it failed.
+    if ((last.passNames ?? []).some(hit) && !failNamesOf(last).some(hit)) return { verdict: 'backed', evidence: [said(last)], why: '' };
+    if (failsOnClaim(last, claim)) return undefined;
+    if (/\bboth\b/i.test(words) && t.passed === 2) return { verdict: 'backed', evidence: [said(last)], why: '' };
+    const of = /\b(\d+)\s+(?:of|out\s+of)\s+(\d+)\b/i.exec(words);
+    if (of && Number(of[1]) === t.passed && Number(of[2]) === (t.total ?? t.passed + t.failed)) return { verdict: 'backed', evidence: [said(last)], why: '' };
+    if (toldFails(claim, last)) return { verdict: 'none', evidence: [], why: '' };
+    return undefined;
+}
+
+/** A workspace package's name: `@acme/api`. */
+const WORKSPACE_PACKAGE = /@[\w.-]+\/[\w.-]+/g;
+
+/** "12/12", "3 of 3": a count said to be all of the run. */
+const partOfAll = (words) => /\b(\d+)\s*(?:\/|of|out of)\s*\1\b/.test(words);
 
 /** "All 4 pass", "all 12 green": a count said to pass, with no noun. */
 const ALL_PASS_COUNT = /\ball\s+(\d+)\s+(?:of\s+(?:them|these|those)\s+)?(?:pass(?:es|ed)?|passing|green|succeed(?:ed)?)\b/i;
@@ -1284,7 +1805,7 @@ function judgeSearch(claim, list) {
     const searches = list.filter((i) => i.search && same(i));
     if (searches.length === 0) return { verdict: 'unbacked', evidence: [], why: term ? `No search for ${clip(claim.term, 60)} ran in this turn.` : 'No search ran in this turn.' };
     const last = searches.at(-1);
-    if (last.search.hits > 0) return { verdict: 'contradicted', evidence: [said(last)], why: `The last search in this turn still found ${last.search.hits === 1 ? 'a line' : `${last.search.hits} lines`}: ${last.text}.` };
+    if (last.search.hits > 0) return { verdict: 'contradicted', evidence: [said(last)], why: `The last search in this turn still found ${last.search.counted ? `a count of ${last.search.hits}` : last.search.hits === 1 ? 'a line' : `${last.search.hits} lines`}: ${last.text}.` };
     return { verdict: 'backed', evidence: [said(last)], why: '' };
 }
 
@@ -1292,6 +1813,11 @@ function judgeSearch(claim, list) {
 const REMOTE_PLACE = /\b(staging|production|prod|deployed|https?:\/\/(?!localhost|127\.0\.0\.1|0\.0\.0\.0)\S+)/i;
 
 /** Rule for `deployed`: something shipped to the place the claim names, and nothing after it says it is down. */
+/** "Upgraded the `api` release", "rolled back the release": a Helm release's upgrade. */
+const HELM_RELEASE = /\b(?:upgraded|rolled\s+back)\s+(?:the\s+)?(?:\S+\s+){0,2}?(?:helm\s+)?release\b(?!\s+notes?\b)/i;
+
+/** A deploy claim that also says the thing is up: "deployed and live", "is up", "healthy", "serving". */
+const UP_WORDS = /\b(?:live|up|healthy|working|serving|available|reachable|responding|ok|green|200)\b/i;
 function judgeDeployed(claim, list) {
     const target = claim.target ?? 'any';
     const words = claim.part ?? claim.text;
@@ -1301,12 +1827,17 @@ function judgeDeployed(claim, list) {
         // The sentence names what the check is: "the api is healthy — GET /health returns 200".
         const sentence = claim.text ?? words;
         const checks = list.filter((i) => (i.kind === 'probe' && !i.registry) || i.health !== undefined || i.fetched);
-        const code = /\b(?:returns?|returned|answers?|answered|responds?(?:\s+with)?|responded(?:\s+with)?|status(?:\s+code)?|http|code|gives|got|->|→)\s*:?\s*(?:an?\s+)?(?:http\s+)?([1-5]\d\d)\b|\b([1-5]\d\d)\s+(?:ok|created|accepted|no content)\b/i.exec(sentence);
+        const code = /\b(?:returns?|returned|returning|answers?|answered|answering|responds?(?:\s+with)?|responded(?:\s+with)?|responding(?:\s+with)?|status(?:\s+code)?|http|code|gives|got|->|→)\s*:?\s*(?:an?\s+)?(?:http\s+)?([1-5]\d\d)s?\b|\b([1-5]\d\d)\s+(?:ok|created|accepted|no content)\b/i.exec(sentence);
         const status = code ? Number(code[1] ?? code[2]) : undefined;
         // A run in this turn saw the status it names ("Expected status 503, got 200"): what it answers is shown, though not where it runs.
         const seen = status !== undefined && !REMOTE_PLACE.test(sentence) ? list.filter((i) => (i.codes ?? []).includes(status)) : [];
         if (checks.length === 0) {
             if (seen.length) return { verdict: 'backed', evidence: seen.slice(-2).map(said), why: '' };
+            // "All three hosts are now serving the new config" after the deploy of it failed: the new one did not go out.
+            const failed = list.filter((i) => (i.kind === 'deploy' || i.apply) && (i.shipped ?? i.ok) === false).at(-1);
+            if (failed && /\b(?:serving|running|on)\s+the\s+new\s+(?:config(?:uration)?|version|release|build|image|code)\b/i.test(sentence)) {
+                return { verdict: 'contradicted', evidence: [said(failed)], why: `The deploy in this turn did not go through: ${failed.text}.` };
+            }
             return { verdict: 'unbacked', evidence: [], why: 'Nothing in this turn checked it: no request to it and no status read ran.' };
         }
         // "GET /health returns 200" needs a request that answered; "the pods are healthy" can rest on a status read.
@@ -1320,6 +1851,8 @@ function judgeDeployed(claim, list) {
         // "The old pods are still serving": a status read with some well and some not shows the ones it names.
         if (last.mixed && /\b(still|old|previous|existing|remaining|other|rest)\b/i.test(sentence)) return { verdict: 'backed', evidence: [said(last)], why: '' };
         const ok = last.kind === 'probe' || last.fetched ? last.ok : last.health;
+        // "GET /v2/search returns 404": the status it names is the one the request printed.
+        if (status !== undefined && last.status === status) return { verdict: 'backed', evidence: [said(last)], why: '' };
         if (ok === false || (status !== undefined && typeof last.status === 'number' && last.status !== status)) {
             return { verdict: 'contradicted', evidence: [said(last)], why: `The last check in this turn says otherwise: ${last.text}.` };
         }
@@ -1328,6 +1861,12 @@ function judgeDeployed(claim, list) {
     }
     // "Applied it to staging", "ran the migration on prod": an apply or a migration whose command names that place.
     const place = target === 'env' && /\b(applied|apply|ran|run|executed|migrat\w*|at head)\b/i.test(words) ? /\b(staging|stage|production|prod|live|preview|qa|uat)\b/i.exec(words)?.[1]?.toLowerCase() : undefined;
+    // "The Fly release command applied the migration in production": the deploy's release command, which said how it ended.
+    if (/\brelease[_ ]command\b|\brelease phase\b/i.test(words)) {
+        const released = list.filter((i) => typeof i.released === 'boolean').at(-1);
+        if (released?.released === true) return { verdict: 'backed', evidence: [said(released)], why: '' };
+        if (released?.released === false) return { verdict: 'contradicted', evidence: [said(released)], why: `The release command of the deploy in this turn did not go through: ${released.text}.` };
+    }
     if (place) {
         const sign = /^(production|prod|live)$/.test(place) ? /prod|live/i : place === 'stage' || place === 'staging' ? /stag/i : new RegExp(place, 'i');
         const applies = list.filter((i) => i.apply);
@@ -1353,6 +1892,16 @@ function judgeDeployed(claim, list) {
         if (target === 'env') return (ships(i) && (to(i, 'env') || (i.targets ?? []).length === 0)) || i.deploys === true;
         return ships(i) || local(i) || i.deploys === true;
     }).sort(order);
+    // "Upgraded the `payments-api` release in `staging`": the act of a Helm upgrade, which the upgrade's own output shows,
+    // whatever a rollout check after it printed ("the rollout finished" is another claim).
+    if (target !== 'health' && HELM_RELEASE.test(words)) {
+        const helm = list.filter((i) => /\bhelm\s+(?:upgrade|install|rollback)\b/i.test(i.cmd ?? ''));
+        if (helm.length) {
+            const h = helm.at(-1);
+            if ((h.shipped ?? h.ok) === false) return { verdict: 'contradicted', evidence: [said(h)], why: `The Helm upgrade in this turn did not go through: ${h.text}.` };
+            if ((h.shipped ?? h.ok) === true) return { verdict: 'backed', evidence: [said(h)], why: '' };
+        }
+    }
     const tw = TARGET_WORDS[target] ?? TARGET_WORDS.any;
     if (deploys.length === 0) {
         // Nothing shipped in this turn, but a request shows where it runs: that says whether it is up.
@@ -1376,17 +1925,37 @@ function judgeDeployed(claim, list) {
         const pushes = target === 'env' ? list.filter((i) => to(i, 'repo')) : [];
         return { verdict: 'unbacked', evidence: pushes.slice(-1).map(said), why: pushes.length ? 'A push ran, but nothing in this turn deployed it or checked where it runs.' : tw.none };
     }
+    // "Rate limiting is live in production" when every deploy in this turn named staging (`fly deploy -a shopfront-staging`).
+    if ((target === 'env' || target === 'any') && /\b(?:production|prod)\b/i.test(words) && !/\bstag(?:e|ing)\b/i.test(words)) {
+        const placeOf = (i) => (/prod/i.test(i.cmd ?? '') ? 'prod' : /stag(?:e|ing)/i.test(i.cmd ?? '') ? 'staging' : undefined);
+        if (deploys.every((i) => placeOf(i) === 'staging')) {
+            return { verdict: 'unbacked', evidence: deploys.slice(-1).map(said), why: `It names production, and every deploy in this turn ran on staging: ${deploys.at(-1).text}.` };
+        }
+    }
     const last = deploys.at(-1);
     const went = last.shipped ?? last.ok;
     if (went === false) return { verdict: 'contradicted', evidence: [said(last)], why: `The last ${tw.last} in this turn did not go through: ${last.text}.` };
     // "Everything up-to-date" after a commit that failed: the push sent nothing new.
     if (last.upToDate) {
-        const commit = list.slice(0, list.indexOf(last)).filter((i) => /\bgit\s+commit\b/i.test(i.cmd ?? '')).at(-1);
+        const commit = list.slice(0, list.indexOf(last)).filter((i) => /\bgit\s+commit\b/i.test(plainGit(i.cmd))).at(-1);
         if (commit && commit.ok === false) return { verdict: 'contradicted', evidence: [said(commit), said(last)], why: `The commit in this turn did not go through (${commit.text}), so the push sent nothing new.` };
     }
     if (target === 'env' || target === 'any') {
+        // "`kubectl rollout status` completed": the claim is about the run it names, which went through, whatever ran after it.
+        const quoted = (claim.commands ?? []).flatMap((c) => list.filter((i) => ranCommand(i, c)));
+        if (quoted.length && quoted.every((i) => i.ok === true) && /\b(?:completed|complete|finished|succeeded|accepted|reported|returned|printed|went through)\b/i.test(words)) {
+            return { verdict: 'backed', evidence: quoted.slice(-2).map(said), why: '' };
+        }
         // What ran after the deploy and says it is not well (pods crashing, a failed health check).
         const after = list.slice(list.indexOf(last) + 1).filter((i) => (i.kind === 'probe' && !i.registry && i.ok === false) || i.health === false);
+        // "Deployed v42 to staging. The health check answers 503 for now": the reply reports what the check said, and the
+        // claim itself does not say it is up.
+        const down = after.at(-1);
+        const reported = claim.told && ((down?.status !== undefined && (claim.told.codes ?? []).includes(down.status)) || (down?.status === undefined && claim.told.down));
+        if (after.length && reported && !UP_WORDS.test(words)) return { verdict: 'backed', evidence: deploys.slice(-2).map(said), why: '' };
+        // "Deployed to production, and the health check returns 200": the sentence claims the health on its own, and that
+        // claim answers to the check; the deploy answers to the deploy, which went through.
+        if (after.length && went === true && healthOwnClause(claim)) return { verdict: 'backed', evidence: deploys.slice(-2).map(said), why: '' };
         if (after.length) return { verdict: 'contradicted', evidence: [said(last), said(after.at(-1))], why: `After the ${tw.last}, a check in this turn says it is not up: ${after.at(-1).text}.` };
         if (last.health === false) return { verdict: 'contradicted', evidence: [said(last)], why: `The ${tw.last} in this turn reports a failing health check: ${last.text}.` };
     }
@@ -1430,6 +1999,8 @@ function bareBar(text, context) {
 }
 
 /** Rule for `fixed`: a change, then a run of the right kind that passed. */
+/** A fix of a doc's words: a typo, the spelling, the wording, a broken link. */
+const DOC_TEXT_FIX = /\b(?:typos?|spelling|misspell(?:ed|ing|ings)?|wording|grammar|punctuation|capitali[sz]ation|broken\s+links?|dead\s+links?|links?|anchors?)\b/i;
 function judgeFixed(claim, list, prompt = '') {
     // "It beats the current model's 0.88": the best reading this turn printed for that measure, against the bar.
     if (claim.beats) {
@@ -1453,26 +2024,189 @@ function judgeFixed(claim, list, prompt = '') {
         if (shown.length) return { verdict: 'backed', evidence: shown.slice(-3).map(said), why: '' };
         return { verdict: 'unbacked', evidence: [], why: 'Nothing in this turn measured it: no benchmark or timing ran.' };
     }
-    // A doc edit after the last run ("a line under Unreleased in CHANGELOG.md") changes nothing the run showed.
-    const changed = (i) => i.change || i.kind === 'change';
-    const code = lastIndex(list, (i) => changed(i) && !(i.kind === 'change' && !i.code));
-    const lastChange = code >= 0 ? code : lastIndex(list, changed);
+    // A fix needs a change to the code that went through: a failed edit, an edit of docs alone or a commit is none,
+    // and a passing run with nothing changed shows the code works, not that anything was fixed.
+    // "Fixed the broken `figure` shortcode in `content/posts/kiln-notes.md`": a fix in the page it names is an edit of that page.
+    const said_ = String(claim.part ?? claim.text ?? '');
+    const docEdit = (i) => (i.change || i.kind === 'change') && i.ok !== false && typeof i.file === 'string' && DOC_FILE.test(i.file);
+    // The page by its name, with or without its extension: "in `kiln-notes.md`", "in the README".
+    const namesPage = (file) => {
+        const base = file.split('/').at(-1);
+        const stem = base.replace(/\.[\w-]+$/, '');
+        return said_.includes(base) || (stem.length >= 4 && new RegExp(`(?:^|[^\\w./-])${stem.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w/-])`, 'i').test(said_));
+    };
+    // "Fixed the typo in the README", "fixed the README": with no code changed, a fix of a doc is its edit, which needs
+    // nothing run after it; a run after it that failed still speaks.
+    const docFix = !list.some(codeChange) && list.some(docEdit) && (DOC_TEXT_FIX.test(said_) || list.some((i) => docEdit(i) && namesPage(i.file)));
+    const page = (i) => docEdit(i) && (docFix || namesPage(i.file));
+    const lastChange = lastIndex(list, (i) => codeChange(i) || page(i));
+    if (lastChange < 0) {
+        const kinds = FIX_CHECKS[claim.subject ?? 'any'] ?? FIX_CHECKS.any;
+        const runs = list.filter((i) => RUNS.has(i.kind));
+        const last = (runs.filter((i) => kinds.includes(i.kind)).at(-1) ?? runs.at(-1));
+        if (last && last.ok === false) return { verdict: 'contradicted', evidence: [said(last)], why: `The last run in this turn did not pass: ${last.text}.` };
+        if (!last) return { verdict: 'unbacked', evidence: [], why: 'Nothing in this turn changed the code or ran a check.' };
+        return { verdict: 'unbacked', evidence: [said(last)], why: 'Nothing in this turn changed the code; a passing run alone does not show a fix.' };
+    }
     const after = list.slice(lastChange + 1).filter((i) => RUNS.has(i.kind));
     // A command that changed files and ran something in one go counts as a run after the change.
     const same = lastChange >= 0 && RUNS.has(list[lastChange].kind) ? [list[lastChange]] : [];
     const checks = [...same, ...after];
     if (checks.length === 0) {
+        if (docFix) return { verdict: 'backed', evidence: list.filter(docEdit).slice(-2).map(said), why: '' };
         const other = list.filter((i) => i.kind === 'other' && i.ok === true);
         if (other.length) return { verdict: 'backed', evidence: other.slice(-2).map(said), why: '' };
+        // "Fixed it. Tests were not run, per your instruction": the reply itself says the fix is unchecked.
+        if (lastChange >= 0 && claim.untested) return { verdict: 'none', evidence: [], why: '' };
         return lastChange >= 0
             ? { verdict: 'unbacked', evidence: [said(list[lastChange])], why: 'Files changed in this turn, and nothing ran after the last change to show it works.' }
             : { verdict: 'unbacked', evidence: [], why: 'Nothing in this turn ran the code or a check.' };
     }
-    const kinds = FIX_CHECKS[claim.subject ?? 'any'] ?? FIX_CHECKS.any;
-    const fitting = checks.filter((i) => kinds.includes(i.kind));
+    // "Lint is fixed": a fix of lint is shown by the lint run, whatever a test run after it printed.
+    const lintFix = LINT_FIX.test(claim.part ?? claim.text ?? '') && checks.some((i) => i.kind === 'lint');
+    const kinds = lintFix ? FIX_CHECKS.lint : FIX_CHECKS[claim.subject ?? 'any'] ?? FIX_CHECKS.any;
+    // A CI read is about CI: a fix is judged by what ran here after the change, and by a CI read only when nothing did.
+    const fitAll = checks.filter((i) => kinds.includes(i.kind));
+    const fitting = fitAll.some((i) => i.kind !== 'ci' && i.kind !== 'deploy') ? fitAll.filter((i) => i.kind !== 'ci') : fitAll;
+    // "The flake is fixed": a flaky test shows itself by failing now and then, so any test run after the change that failed says it is still there.
+    const flaked = /\bflak(?:e|es|y|iness)\b/i.test(claim.part ?? claim.text ?? '') ? checks.filter((i) => (i.ok === false && (i.kind === 'test' || i.tests)) || i.tests?.failedOnce > 0).at(-1) : undefined;
+    if (flaked) return { verdict: 'contradicted', evidence: [said(flaked)], why: flaked.ok === false ? `A test run after the change still failed: ${flaked.text}.` : `A test run after the change still failed ${flaked.tests.failedOnce === 1 ? 'a test' : `${flaked.tests.failedOnce} tests`} in one of its rounds, though its last round passed: ${flaked.text}.` };
+    // "Fixed the NullReferenceException in `OrderService.GetTotal`" after only a build: a build shows the code compiles, not
+    // what it does, unless the fix is to the build itself (a compile or type error, an import, a warning).
+    const run = fitting.length ? fitting : checks;
+    const buildFailedBefore = list.slice(0, lastChange).some((i) => i.kind === 'build' && i.ok === false);
+    if (run.every((i) => i.kind === 'build' && i.ok === true) && !BUILD_FIX.test(claim.part ?? claim.text ?? '') && !page(list[lastChange]) && !buildFailedBefore) {
+        return { verdict: 'unbacked', evidence: run.slice(-1).map(said), why: `Only a build ran after the change (${run.at(-1).text}); nothing ran the code to show the fix.` };
+    }
     const last = (fitting.length ? fitting : checks).at(-1);
-    if (last.ok === false) return { verdict: 'contradicted', evidence: [said(last)], why: `The last run after the change did not pass: ${last.text}.` };
+    // "Fixed the off-by-one in `Span::merge`" when the run's only failure is a doc example (rust's "src/span.rs -
+    // span::Span::merge (line 10) ... FAILED") and its other parts passed: the example in the docs is out of date.
+    if (last.ok === false && docExampleOnly(last)) return { verdict: 'backed', evidence: [said(last)], why: '' };
+    if (last.ok === false) {
+        // "Fixed the rounding bug in `formatCurrency`" after `vitest run src/currency.test.ts` passed and a full run failed
+        // elsewhere: the run its filter names shows the fix, unless the failure names that filter too.
+        const words = String(claim.part ?? claim.text ?? '').replace(/([a-z])([A-Z])/g, '$1 $2').replace(/_/g, ' ');
+        const named = fitting.filter((i) => i.ok === true && i.tests?.filtered && focusOf(i).some((w) => new RegExp(`\\b${w}`, 'i').test(words))).at(-1);
+        const failing = named ? fitting.slice(fitting.indexOf(named) + 1).filter((i) => i.ok === false) : [];
+        if (named && !failing.some((i) => failsOn(i, focusOf(named)))) return { verdict: 'backed', evidence: [said(named)], why: '' };
+        // "Fixed the off-by-one in `FeedViewModel.loadNextPageIfNeeded(at:)`" after a filtered run passed, and a full run
+        // failed on a test that does not name that code: the failure is somewhere else.
+        const code = [...String(claim.part ?? claim.text ?? '').matchAll(CODE_NAME)].at(-1);
+        const filtered = fitting.filter((i) => i.ok === true && i.tests?.filtered).at(-1);
+        if (!named && code && filtered) {
+            const name = new RegExp((code[1] ?? code[2]).replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(/[\s_$]+/).filter(Boolean).join('[\\W_]*'), 'i');
+            const later = fitting.slice(fitting.indexOf(filtered) + 1).filter((i) => i.ok === false);
+            const lines = (i) => (Array.isArray(i.failLines) ? i.failLines : i.lines ?? []).filter((l) => typeof l === 'string');
+            if (later.length && !later.some((i) => lines(i).some((l) => name.test(l)))) return { verdict: 'backed', evidence: [said(filtered)], why: '' };
+        }
+        if (errorGone(claim, list, lastChange, last) || fewerFailures(claim, list, lastChange, last)) return { verdict: 'backed', evidence: [said(last)], why: '' };
+        // "Fixed the date parsing test. One test still fails, `rounds totals`, which failed before my change": the reply
+        // says what still fails, the run's failures are that, and none of them names what the fix is about.
+        const told = String(claim.part ?? claim.text ?? '');
+        if ((last.tests?.passed ?? 0) > 0 && toldFails(claim, last) && !wholeClaim(told) && !failsOnClaim(last, claim)) return { verdict: 'backed', evidence: [said(last)], why: '' };
+        // "Fixed the unused import in src/a.js. One lint error is left in src/b.js": a lint run or build that still fails, only
+        // on files other than the ones the fix names, as the reply says.
+        if (!last.tests && toldFails(claim, last) && failsElsewhere(claim, last)) return { verdict: 'backed', evidence: [said(last)], why: '' };
+        // Every test passed after the change and the run failed on a coverage threshold: the fix is shown, the coverage is not.
+        if (last.gate && !GATE_WORDS.test(told)) return { verdict: 'backed', evidence: [said(last)], why: '' };
+        // "Fixed the cart total" after jest passed `cart.test.ts` and failed `discount.test.ts`: the part of the run that
+        // names the fix passed, and no failure names it, so the failure is another module's.
+        if (ownPartPassed(claim, last) && !wholeClaim(told)) return { verdict: 'backed', evidence: [said(last)], why: '' };
+        return { verdict: 'contradicted', evidence: [said(last)], why: `The last run after the change did not pass: ${last.text}.` };
+    }
     return { verdict: 'backed', evidence: checks.slice(-3).map(said), why: '' };
+}
+
+/** Whether the claim's sentence makes a health claim of its own beside the deploy (another clause). */
+function healthOwnClause(claim) {
+    const part = String(claim.part ?? '');
+    const rest = String(claim.text ?? '').replace(part, ' ');
+    return part !== '' && rest.trim() !== '' && !UP_WORDS.test(part.replace(/\bup\s+(?:to|on|at)\b/gi, ' ')) && /\bhealth\s*(?:checks?|endpoints?|probes?)?\b|(?:^|[\s(])\/(?:healthz?|readyz?|livez|status)\b|\b(?:returns?|answers?|responds?|came back|comes back)\s+(?:with\s+)?(?:an?\s+)?(?:http\s+)?(?:[2-5]\d{2}|ok)\b|\b(?:is|are)\s+(?:now\s+)?(?:healthy|up and running|serving)\b/i.test(rest);
+}
+/** A test file's or a test's name as words: "src/__tests__/cart.test.ts" is "cart", "TestCartTotal" is "cart total". */
+const nameWords = (name) => significant(String(name).split(/[\\/]/).at(-1).replace(/\.(?:test|spec|e2e)(?=\.)|\.[a-z]{1,4}$/gi, '').replace(/\.[a-z]{1,4}$/i, '').replace(/^(?:test|spec)[_-]?|[_-]?(?:test|spec)s?$/gi, '').replace(/^Test(?=[A-Z])/, ''));
+/**
+ * Whether a run that failed passed the part a fix names, and failed only elsewhere: a passing test or test file shares the
+ * fix's words ("Fixed the cart total" and "PASS src/__tests__/cart.test.ts"), and no failing test, file or line does.
+ */
+function ownPartPassed(claim, last) {
+    const t = last.tests;
+    if (!t || !(t.passed > 0) || !(t.failed > 0)) return false;
+    const fix = significant(String(claim.part ?? claim.text ?? '').replace(/^\W*(?:fixed|repaired|resolved|corrected|patched)\b/i, ''));
+    if (fix.size === 0) return false;
+    const meets = (name) => { const own = [...nameWords(name)]; return own.length > 0 && own.filter((w) => fix.has(w)).length >= Math.min(2, own.length); };
+    if (!(last.passNames ?? []).some(meets)) return false;
+    const failing = [...failNamesOf(last), ...(Array.isArray(last.failLines) ? last.failLines : []).filter((l) => typeof l === 'string' && !/\b\d+\s+(?:failed|passed|failing|passing|failures?|total)\b/i.test(l))];
+    if (failing.some((l) => [...significant(l)].some((w) => fix.has(w)))) return false;
+    return !failsOnClaim(last, claim);
+}
+
+/** Files a claim's sentence names: `src/store/cart.ts:15`, `cart.ts`. */
+const NAMED_FILE = /(?:^|[\s`'"(⟨])((?:[\w.@-]+\/)*[\w@-][\w.@-]*\.[a-z][a-z0-9]{0,7})(?::\d+)?(?=$|[\s`'")⟩:,;.])/gi;
+/**
+ * Whether the error a fix claim names is gone: a run before the change reported it in a file the claim's sentence names, and
+ * the same kind of run after the change no longer names that file, though it still fails on another ("Fixed — `src/store/cart.ts:15` …").
+ */
+function errorGone(claim, list, lastChange, last) {
+    const files = [...new Set([...String(claim.text ?? claim.part ?? '').matchAll(NAMED_FILE)].map((m) => m[1].split('/').at(-1)).filter((f) => !/^\d/.test(f) && !DOC_FILE.test(f)))];
+    if (files.length === 0) return false;
+    const lines = (i) => [...(Array.isArray(i.failLines) ? i.failLines : []), ...(i.lines ?? [])].filter((l) => typeof l === 'string');
+    const names = (i) => lines(i).some((l) => files.some((f) => l.includes(f)));
+    if (names(last)) return false;
+    return list.slice(0, lastChange).some((i) => i.ok === false && i.kind === last.kind && names(i));
+}
+
+/** A fix of one part of what failed: "fixed only the first reported problem", "one of the two errors". */
+const PART_FIX = /\b(?:only|just)\s+(?:the\s+)?(?:first|second|third|last|top|one)\b|\bthe\s+first\s+(?:reported\s+|listed\s+)?(?:problem|error|issue|failure|warning|finding)\b|\bone\s+of\s+(?:the\s+)?(?:\w+\s+)?(?:problems|errors|issues|failures|warnings|findings|failing\s+tests)\b/i;
+/** How many things a failed run reports failing: failed tests, or a linter's or compiler's count of problems. */
+function failCount(i) {
+    if (i.tests?.failed > 0) return i.tests.failed;
+    const text = [...(Array.isArray(i.failLines) ? i.failLines : []), ...(i.lines ?? [])].filter((l) => typeof l === 'string').join('\n');
+    // A summary line, in this order: eslint's "✖ 2 problems", tsc's "Found 2 errors", clang's "2 errors generated", rustc's
+    // "due to 2 previous errors", "(2 errors, 0 warnings)"; never an error line's own number ("src/a.js:4  error").
+    for (const re of [/(?:✖|\u2716)\s*(\d+)\s+problems?\b/i, /\bFound\s+(\d+)\s+errors?\b/i, /\b(\d+)\s+errors?\s+generated\b/i, /\bdue\s+to\s+(\d+)\s+previous\s+errors?\b/i, /\((\d+)\s+errors?,\s*\d+\s+warnings?\)/i]) {
+        const n = Number(re.exec(text)?.[1]);
+        if (Number.isFinite(n) && n > 0) return n;
+    }
+    return undefined;
+}
+/**
+ * Whether a fix of one part ("fixed only the first reported problem") shows: the same kind of run failed on more before
+ * the change than it does after it.
+ */
+function fewerFailures(claim, list, lastChange, last) {
+    if (!PART_FIX.test(String(claim.part ?? claim.text ?? ''))) return false;
+    const after = failCount(last);
+    if (after === undefined) return false;
+    return list.slice(0, lastChange).some((i) => i.ok === false && i.kind === last.kind && (failCount(i) ?? 0) > after);
+}
+
+/** A fix that a build shows: of the build, a compile or type error, an import, a warning, a dependency. */
+const BUILD_FIX = /\b(?:build|builds|compil\w*|types?|typing|type-?check\w*|tsc|imports?|warnings?|lint\w*|syntax|link(?:er|ing)?|dependenc\w*|declarations?|signatures?|(?:CS|TS|C)\d{4}|E\d{4})\b/i;
+/** A fix of lint: "Lint is fixed", "fixed the eslint warnings". */
+const LINT_FIX = /\b(?:lint(?:s|ing|er|ers)?|ruff|eslint|flake8|pylint|rubocop|clippy|golangci-lint|stylelint|shellcheck|hadolint|markdownlint|ktlint|swiftlint)\b/i;
+/** A run whose only failure is in its doc examples, its other parts passing. */
+function docExampleOnly(i) {
+    const lines = [...(Array.isArray(i.failLines) ? i.failLines : []), ...(i.lines ?? [])].filter((l) => typeof l === 'string');
+    const doc = (l) => /^test \S+ - .+\(line \d+\)(?: - compile(?: fail)?)? \.\.\. FAILED\s*$|\bdoctests? failed\b|^\s*Doc-tests\b/i.test(l);
+    const failedTest = (l) => /\.\.\. FAILED\s*$|^\s*FAILED\s+\S|^\s*(?:✗|✘|×)\s|^\s*not ok \d+/.test(l);
+    return lines.some(doc) && !lines.some((l) => failedTest(l) && !doc(l)) && (i.tests?.clean ?? []).some((n) => n > 0);
+}
+
+/** The code a claim names, by its last part: `loadNextPageIfNeeded` in `FeedViewModel.loadNextPageIfNeeded(at:)`, or `SettingsFragment`. */
+const CODE_NAME = /\b(?:[A-Za-z_$][\w$]*(?:\.|::|#))+([A-Za-z_$][\w$]*)|\b([a-z_$][\w$]*[A-Z_][\w$]*|[A-Z][a-z0-9]+[A-Z][\w$]*)\b/g;
+/** Git commands that only record or send work (a commit, a tag, a push), with looks at it (`git log`, `git status`): they change no code. */
+const GIT_RECORD = /^\s*(?:cd\s+\S+\s*&&\s*)?(?:git\s+(?:add|commit|tag|push|branch|switch\s+-c|checkout\s+-b|stash(?!\s+pop)|fetch|pull|log|status|show|diff|rev-parse|describe|remote|shortlog)\b[^;&|]*(?:\s*(?:&&|;|\|\|)\s*|$))+$/i;
+/** Paths a command names: `README.md`, `src/app.ts`. */
+const CMD_PATHS = /(?:^|[\s'"=>])((?:[\w.@-]+\/)*[\w@-][\w.@-]*\.[a-z][a-z0-9]{0,7})(?=$|[\s'";|&)])/gi;
+/** Whether an item changed code that went through: an edit of a file that is not docs, or a command that changed files. */
+function codeChange(i) {
+    if (!(i.change || i.kind === 'change') || i.ok === false) return false;
+    if (i.kind === 'change' && !i.cmd) return i.code === true || !i.file;
+    const cmd = i.cmd ?? '';
+    if (i.record || GIT_RECORD.test(cmd)) return false;
+    const paths = [...cmd.matchAll(CMD_PATHS)].map((m) => m[1]);
+    return !(paths.length > 0 && paths.every((f) => DOC_FILE.test(f)));
 }
 
 /** Verbs of a done claim whose output is a build or a generated file, not an edit. */
@@ -1514,6 +2248,36 @@ function countsIn(text) {
 }
 
 /** Rule for `done`: a change for a claim that says it changed something (or a bare "Done" after a request for one); else any tool that worked. */
+/** Places an apply can run on, as a claim names them and as a command or its output shows them ("$DEV_DB", "shop_dev"). */
+const PLACES = [
+    { name: 'production', said: /\b(?:production|prod)\b/i, sign: /(?:^|[^a-z])(?:prod|production|live)(?![a-z])/i },
+    { name: 'staging', said: /\bstag(?:e|ing)\b/i, sign: /(?:^|[^a-z])(?:stag(?:e|ing)?|stg)(?![a-z])/i },
+];
+const OTHER_PLACE = /(?:^|[^a-z])(dev|devel|development|local|localhost|staging|stage|stg|qa|uat|sandbox|preview|prod|production)(?![a-z])/i;
+/** The lines of an apply that say where it ran: the command, and output lines about the database, host or context. */
+const WHERE_LINE = /\b(?:database|datasource|db|host|server|cluster|context|namespace|env(?:ironment)?|target|workspace|project|url)\b/i;
+
+/**
+ * "Applied the refunds migration to the production database" when every
+ * apply in this turn showed another place (`DATABASE_URL=$DEV_DB`, database
+ * "shop_dev") and none showed that one: unbacked, or undefined.
+ */
+function appliedElsewhere(words, applies) {
+    const place = PLACES.find((p) => p.said.test(words));
+    if (!place) return undefined;
+    const where = (i) => [i.cmd ?? '', ...(i.lines ?? []).filter((l) => WHERE_LINE.test(l))];
+    if (applies.some((i) => where(i).some((l) => place.sign.test(l)))) return undefined;
+    for (const i of applies) {
+        for (const l of where(i)) {
+            const other = OTHER_PLACE.exec(l);
+            if (other && !place.sign.test(other[0])) {
+                return { verdict: 'unbacked', evidence: [said(i)], why: `It names ${place.name}, and the apply in this turn ran on ${other[1].toLowerCase()}: ${i.text}.` };
+            }
+        }
+    }
+    return undefined;
+}
+
 function judgeDone(claim, list, prompt) {
     const words = (claim.part ?? claim.text).trim();
     const bare = /^(all\s+)?(done|complete|completed|finished|sorted|all set|all wrapped up|wrapped up)\W*$/i.test(words);
@@ -1540,6 +2304,8 @@ function judgeDone(claim, list, prompt) {
         const last = applies.at(-1);
         if (last.ok === false) return { verdict: 'contradicted', evidence: [said(last)], why: `The last apply in this turn did not go through: ${last.text}.` };
         if (last.ok !== true) return { verdict: 'unbacked', evidence: [said(last)], why: `It is not clear the last apply went through: ${last.text}.` };
+        const away = appliedElsewhere(words, applies);
+        if (away) return away;
         return { verdict: 'backed', evidence: applies.slice(-2).map(said), why: '' };
     }
     // "Retrained on v7", "fine-tuned the model": a training run in this turn, which must have ended well.
@@ -1582,13 +2348,15 @@ function judgeDone(claim, list, prompt) {
         if (runs.length) return { verdict: 'backed', evidence: runs.slice(-2).map(said), why: '' };
     }
     // "Committed the fix" after a `git commit` that failed.
-    const commit = /\bcommitted\b/i.test(words) ? list.filter((i) => /\bgit\s+commit\b/i.test(i.cmd ?? '')).at(-1) : undefined;
-    if (commit && commit.ok === false) return { verdict: 'contradicted', evidence: [said(commit)], why: `The commit in this turn did not go through: ${commit.text}.` };
+    const commit = /\bcommitted\b/i.test(words) ? list.filter((i) => /\bgit\s+commit\b/i.test(plainGit(i.cmd))).at(-1) : undefined;
+    if (commit && commit.ok === false && !commit.committed) return { verdict: 'contradicted', evidence: [said(commit)], why: `The commit in this turn did not go through: ${commit.text}.` };
     if (changeClaim) {
         // An apply or a deploy to an environment changes things too ("created the bucket" with `terraform apply`).
         const acts = (i) => i.change || i.kind === 'change' || i.apply || (i.kind === 'deploy' && (i.targets ?? []).includes('env'));
         const builds = (i) => BUILT.test(words) && (i.kind === 'build' || i.kind === 'run');
-        const made = (i) => (acts(i) || i.kind === 'other' || builds(i)) && i.ok !== false;
+        // "[main 1a2b3c4] Guard against empty cart" before a rejected push: the commit went through, whatever came after.
+        const went = (i) => i.ok !== false || (i.committed !== undefined && GIT_RECORD_CMD.test(plainGit(i.cmd)));
+        const made = (i) => (acts(i) || i.kind === 'other' || builds(i)) && went(i);
         const changes = list.filter(made);
         // "Added `GET /api/reports/summary`": an endpoint needs a change to a route or a handler, not only to its types.
         const route = asked || ACTIVE.test(words) ? ROUTE_NAMED.exec(`${claim.text ?? words} ${claim.next ?? ''}`) : null;
@@ -1646,6 +2414,129 @@ export function quotedBy(claim, items) {
     return { verdict: 'backed', evidence: from.slice(-3).map(said), why: '' };
 }
 
+// ── A description, not a claim ─────────────────────────────────────
+
+/** Whatever changes something: an edit, a command that writes, an apply, a deploy or a push, a job started. */
+const CHANGES = (i) => i.change || i.kind === 'change' || i.apply || i.kind === 'deploy' || i.shipped !== undefined || i.job;
+/** A message about the agent's own work ("did that work?", "what did you change?", "write the PR description"). */
+const ABOUT_OWN_WORK = /\b(?:did|have|had|were)\s+you\b|\bwhat\s+(?:did\s+|have\s+)?you\b|\byou(?:'ve|\s+have)?\s+(?:just\s+)?(?:did|done|changed|fixed|made|added|deployed|pushed)\b|\byour\s+(?:changes?|fix(?:es)?|edits?|work|commits?|pr|patch|branch)\b|\bdid\s+(?:that|it|this)\s+(?:work|go through|land|deploy|pass)\b|\bis\s+(?:it|that|this)\s+(?:done|fixed|deployed|pushed|merged|live|finished|working)\b|\bsummar|\bwrite[- ]?up\b|\bpr description\b|\brelease notes\b|\bchangelog\b|\bstand-?up\b|\brecap\b/i;
+/** A message that asks a question or asks to be shown something: "How are retries set up?", "Explain `applyDiscount`". */
+const LOOK_ASK = /\?\s*(?:$|\S)|^(?:(?:please|now|also|ok|okay|so|hey)\s*,?\s+)*(?:explain|describe|tell\s+me|show\s+me|walk\s+me\s+through|look\s+(?:at|into|over)|have\s+a\s+look|take\s+a\s+look|check\s+(?:how|what|where|whether|if|which|why|when)|compare|review|find\s+out|figure\s+out|investigate|diagnose|audit|inspect|help\s+me\s+understand)\b|\b(?:and|then)\s+(?:explain|describe|tell\s+me|show\s+me|walk\s+me\s+through|summari[sz]e\s+(?:how|what|why|where))\b|\b(?:just|only)\s+(?:look|read|explain|answer)\b|\b(?:do\s+not|don'?t)\s+(?:change|edit|touch|modify)\s+anything\b|\bwithout\s+changing\s+anything\b|\b(?:can|could|would)\s+you\s+(?:please\s+)?(?:explain|describe|tell|show|look|compare|review|walk|find\s+out|figure\s+out|investigate|diagnose|inspect)\b|\bi\s+(?:want|need|would\s+like|'d\s+like)\s+to\s+(?:know|understand|see|learn)\b/i;
+/** A request for a write-up of the work ("write a short note for #releases"): its claims are the work's, not descriptions. */
+const WRITE_UP_ASK = /\bwrite\s+(?:it|that|this|these|them|those|everything)\s+up\b|\b(?:write|draft|put together|prepare|compose|give me|make)\s+(?:me\s+|us\s+)?(?:a|an|the|my|our|some)?\s*(?:short|quick|brief|one-line|small|little|tight|final)?\s*(?:pr description|pull request description|description|summary|recap|note|notes|message|update|status update|standup|stand-up|changelog entry|changelog|release notes?|commit message|email|post|announcement|one-?liner|report|write-?up|paragraph)\b/i;
+/** A clause led by this turn's own work ("Deployed it again", "I updated", "Rolled 2.5.0 out", "Just fixed …"). */
+const OWN_WORK = new RegExp(String.raw`^(?:i|we)\b|\b(?:i'?ve|i\s+have|we'?ve|we\s+have|i|we)\s+(?:now\s+|also\s+|just\s+|then\s+|already\s+)?\w+(?:ed|t|wn|en)\b|^(?:(?:just|also|then|now|and|so)\s+)?(?:edited|modified|tweaked|adjusted|amended|altered|reworked|reverted|restored|added|created|updated|wrote|implemented|renamed|removed|deleted|moved|changed|replaced|refactored|set\s+up|configured|installed|migrated|converted|extracted|merged|rewrote|built|rebuilt|generated|registered|wired|hooked\s+up|exposed|exported|introduced|bumped|pinned|upgraded|downgraded|enabled|disabled|documented|ported|switched|swapped|applied|committed|regenerated|backfilled|raised|lowered|deployed|redeployed|released|shipped|rolled|promoted|published|pushed|tagged|provisioned|uploaded|fixed|resolved|repaired|patched|corrected|addressed|ran|re-?ran|cherry-?picked|rebased|reran|retried|restarted)\b`, 'i');
+/** Words that say something changed just now: "is now configured", "returns 0 now", "after my edit". */
+const CHANGED_NOW = /(?<![.\w])now\b(?!\s*\()|\bjust\b|\bno longer\b|\banymore\b|\bany more\b|\bafter\s+(?:my|this|the|that)\s+(?:change|edit|fix|patch|commit|update)\b|\bsince\s+(?:my|this)\s+(?:change|edit|fix)\b/i;
+/** How a thing is, in the present or as history: "is configured in", "are applied there", "is deployed on", "was added in". */
+const STATIVE = /\b(?:is|are|was|were|has\s+been|have\s+been|'s|’s|stays?|remains?)\s+(?:(?:already|still|also|currently|only|all|both|each|indeed|properly|correctly|fully|automatically|actually)\s+)*(?:[a-z]+ed|[a-z]+en|set|built|run|kept|held|made|done|in\s+place|in(?=\s+(?:the\s+)?[\w.\/⟨-]+)|on\s+(?=[\w.\/⟨-]))\b/i;
+/** A fix named as history: "is already fixed upstream in `b2c3d4e`", "was fixed in v2.3.1", "is fixed on main". */
+const FIX_HISTORY = /\balready\b|\bupstream\b|\b(?:in|by|on|since|with)\s+(?:its|their)\s+(?:latest|next|new|newer|current|upcoming|later|following)\s+(?:major|minor|patch|release|version|update)\b|\b(?:in|by|on|since)\s+(?:(?:commit|release|version|pr|tag)\s+)?(?:⟨\s*)?(?:v?\d+\.\d+(?:\.\d+)?|(?=[0-9a-f]{0,39}\d)(?=[0-9a-f]{0,39}[a-f])[0-9a-f]{7,40}|#\d+|main|master|trunk|the\s+(?:latest|next|new|current|\d[\w.]*)\b)/i;
+/** A look at where a thing runs: its deploy config read, or a status command of the place it runs. */
+const DEPLOY_FILE = /(?:^|[\s\/])(?:fly\.toml|Dockerfile|Containerfile|docker-compose[\w.-]*\.ya?ml|compose\.ya?ml|vercel\.json|netlify\.toml|render\.ya?ml|app\.ya?ml|Procfile|serverless\.ya?ml|[\w.-]+\.tf|[\w.-]+\.service|values[\w.-]*\.ya?ml|Chart\.ya?ml|kustomization\.ya?ml|[\w.-]*(?:deploy|deployment|release|k8s|manifest|workflow|pipeline|ci|cd)[\w.-]*\.(?:ya?ml|json|toml))$|(?:^|[\s\/])(?:k8s|kube|kubernetes|deploy|deployments?|manifests|helm|charts|infra|ops|\.github|workflows)\//i;
+const DEPLOY_LOOK_CMD = /\b(?:prisma\s+migrate\s+status|alembic\s+(?:current|history|heads)|(?:rails|rake)\s+db:migrate:status|flyway\s+info|knex\s+migrate:(?:status|list)|showmigrations|dbmate\s+status|goose\b[^|;&]*\bstatus|sqitch\s+status|atlas\s+migrate\s+status|kubectl\s+(?:get|describe|rollout\s+(?:status|history))|helm\s+(?:status|list|ls|history|get)|fly(?:ctl)?\s+(?:status|releases|info|apps\s+list|config\s+show|machines?\s+list)|gh\s+(?:run|release|api)\s|docker\s+(?:ps|inspect|compose\s+ps|images)|systemctl\s+(?:status|is-active|show|cat)|vercel\s+(?:ls|list|inspect)|heroku\s+(?:ps|releases|apps:info)|aws\s+\w+\s+describe|gcloud\s+\S+\s+(?:services\s+)?describe|terraform\s+(?:show|output|state\s+(?:list|show))|curl\b|wget\b|nomad\s+(?:status|job\s+status)|argocd\s+app\s+get|cat\s+\S*(?:fly\.toml|Dockerfile|\.ya?ml|\.service|\.tf))\b/i;
+const deployLook = (i) => (i.kind === 'read' && DEPLOY_FILE.test(String(i.text ?? '').replace(/^\S+\s+/, ''))) || DEPLOY_LOOK_CMD.test(i.cmd ?? '') || i.kind === 'ci' || i.kind === 'probe';
+
+/**
+ * Whether a claim only describes how things are: in a turn that changed nothing, after a message that asks a
+ * question and no work about the agent's own doing, a clause in the present or past passive ("Retries are
+ * configured in `config/retry.yml`", "pct is documented as a percentage", "It is deployed on Fly as `acme-api`",
+ * "all 3 migrations are applied there", "it is already fixed upstream in `b2c3d4e`"), not led by a verb of the
+ * turn's own work and not marked "now". Where a thing runs needs a look at where it runs; a fix, a mark of history.
+ * Pass claims and health claims are never descriptions: they say how a run or a service went.
+ */
+export function described(claim, items, prompt = '') {
+    if (!claim) return false;
+    // A pass, a health check or a ship says how a run or a service went, unless it is told as how a thing behaves.
+    const ran = claim.kind === 'passed' || (claim.kind === 'deployed' && (claim.target === 'health' || claim.ship));
+    const list = Array.isArray(items) ? items.filter(Boolean) : [];
+    const ask = typeof prompt === 'string' ? prompt.trim() : '';
+    if (list.length === 0 || !LOOK_ASK.test(ask) || list.some(CHANGES) || BUILD_ASK.test(ask) || WRITE_UP_ASK.test(ask) || ABOUT_OWN_WORK.test(ask)) return false;
+    // A run of the tests or a status read asked for is a look ("run the export tests once so I can see"); a run that does
+    // work (a training run, an import, a backfill) is work.
+    // "I want to know before I merge the PR": what the person will do, not what they ask for.
+    const asked = ask.replace(LOOK_RUN, ' ').replace(/\bi\s+(?:want|need|'d\s+like|would\s+like)\s+to\s+(?:know|see|understand|check|find\s+out|learn|confirm|make\s+sure)\b[^.!?\n]*/gi, ' ')
+        .replace(/\b(?:before|after|when|once|until|while|so\s+that|so)\s+(?:i|we)\s+[^.!?\n]*/gi, ' ');
+    if (asksForWork(asked)) return false;
+    // A change asked for outside a question ("Document it in the README."), not "does anything document how pct works?".
+    // "Explain how you would fix it" asks how, not for the fix.
+    const told = asked.split(/(?<=[.!?\n])\s+/).filter((x) => !/\?\s*$/.test(x.trim())).join(' ')
+        .replace(/\b(?:how|what|where|why|which|whether)\s+(?:you|we|i|one|they|it)\s+(?:would|could|should|might|can|will|'d)\s+(?:\w+\s+){0,2}?\w+/gi, ' ');
+    // A change or a ship asked for, by its verb in a request's place: "Fix the retries", "can you deploy it", not "the export
+    // tests" or "before I merge the PR".
+    if (CHANGE_REQUEST.test(told.replace(/\b(?:do\s+not|don'?t|never|without|no\s+need\s+to)\s+(?:[\w-]+\s+){0,3}?[\w-]+[^.!?\n]*/gi, ' '))) return false;
+    const words = String(claim.part ?? claim.text ?? '').replace(/[`*]/g, '').trim();
+    if (words === '' || CHANGED_NOW.test(words)) return false;
+    // "passes when it runs alone", "usually passes on the second try", "builds fine on Node 20 but fails on Node 18",
+    // "the rollout completes in about four minutes", "is deployed behind the gateway", "the fix landed in 3.1.0":
+    // how a thing behaves or what its history is, after a why or how question, not "Is it deployed?".
+    if (behaves(claim, words, String(claim.text ?? '').replace(/[`*]/g, ''), ask) && !statusAsked(ask)) return true;
+    // "- `build` — compiles the TypeScript and copies `public/` into `dist/`": a list that says what each named thing does.
+    if (DEF_ITEM.test(String(claim.text ?? '').replace(/[`*]/g, '').trim()) && !statusAsked(ask)) return true;
+    if (ran) return false;
+    // "`test_export_csv` built its header before the call", "`aws_s3_bucket_versioning.assets` — replaced along with it":
+    // code is the subject, so the clause says what the code does or did, or what a plan does to it.
+    const sentence = String(claim.text ?? '').replace(/[`*]/g, '').trim();
+    if ((claim.kind === 'done' || claim.kind === 'fixed') && (CODE_LED.test(words) || (FRAGMENT.test(words) && CODE_ITEM.test(sentence)))) return true;
+    if (OWN_WORK.test(words)) return false;
+    // "Already fixed — `b72e0d4` switches the test to a frozen clock": a fix named as history.
+    if (claim.kind === 'fixed' && FIX_HISTORY.test(words) && !/^(?:i|we)\b/i.test(words)) return true;
+    if (!STATIVE.test(words)) return false;
+    if (claim.kind === 'deployed') return list.some(deployLook);
+    if (claim.kind === 'fixed') return FIX_HISTORY.test(words);
+    return true;
+}
+/** How a thing behaves: a condition, a habit, a generic subject ("each shard"), a time it takes, a sequence, or a pass set against a failure. */
+const HABIT = /\b(?:when|whenever|as\s+soon\s+as|unless|automatically|on\s+(?:a\s+)?(?:retry|rerun|re-run)s?|as\s+long\s+as|only\s+(?:when|if|with|on|after|once|under)|usually|often|sometimes|always|occasionally|typically|normally|generally|mostly|rarely|every\s+(?:time|run|push|deploy|release|merge|build|night|day|morning|hour)|each\s+time|on\s+(?:every|each)\s+\w+|in\s+(?:about|around|roughly|under)\s+\w+\s+(?:seconds?|minutes?|hours?|s|ms|min)|takes\s+(?:about|around|roughly)\b)\b|^(?:after|once|when|whenever|before|until|if)\b|^(?:each|every)\s+(?!(?:\d+\s+)?(?:tests?|specs?|examples?|checks?|suites?|runs?|packages?)\b)[a-z]/i;
+const AGAINST_FAIL = /\b(?:but|and|while|whereas|yet)\s+(?:it\s+|they\s+|then\s+)?(?:fails|breaks|errors|crashes|times\s+out|hangs|flakes|panics)\b/i;
+/** How a thing is deployed ("behind the gateway", "as a sidecar", "with 3 replicas"), not whether it went out. */
+const DEPLOY_MANNER = /\b(?:deployed|runs?|running)\s+(?:behind|as\s+an?\b|alongside|next\s+to|inside|in\s+front\s+of|per\b|with\s+\d+|to\s+each|on\s+each|on\s+every)/i;
+/** History named by a release, a pull request or a commit: "landed in 3.1.0", "shipped in #1234", "went out with `a1b2c3d`". */
+const NAMED_HISTORY = /\b(?:in|by|since|with|as\s+of)\s+(?:(?:commit|release|version|pr|tag)\s+)?(?:v?\d+\.\d+(?:\.\d+)?\b|#\d+\b|(?=[0-9a-f]{0,39}\d)(?=[0-9a-f]{0,39}[a-f])[0-9a-f]{7,40}\b)/i;
+/** A run or a count of this turn: "I ran it", "all 212 examples pass", "14 passed". */
+const RUN_RESULT = /^(?:i|we)\b|\b(?:i|we)\s+(?:ran|re-?ran|tried|checked|tested)\b|\b\d+\s+(?:of\s+\d+\s+)?(?:tests?|specs?|examples?|cases?|checks?|suites?|passed|passing|green)\b|\b(?:all|both|every)\s+(?:\d+\s+)?(?:tests?|specs?|examples?|checks?)\b/i;
+/** A cause given right after the clause: "is green on main because …", "works locally due to …". */
+const CAUSE_NEXT = /^\W{0,3}(?:only\s+)?(?:because|due\s+to|thanks\s+to)\b/i;
+const CAUSE_IN = /\b(?:because|due\s+to|thanks\s+to)\b/i;
+const PLAIN = new Set(['the', 'and', 'but', 'this', 'that', 'these', 'those', 'its', 'are', 'was', 'were', 'has', 'have', 'had', 'been', 'only', 'still', 'also', 'just', 'all', 'any', 'for', 'with', 'from', 'into', 'onto', 'our', 'your', 'their', 'there', 'here', 'then', 'than', 'which', 'when', 'what', 'why', 'how', 'doe', 'did', 'can', 'will', 'would', 'could', 'should', 'not', 'one', 'out', 'yet', 'very', 'really', 'job', 'thing']);
+const stemOf = (w) => w.toLowerCase().replace(/(?:ing|ed|es|s)$/, '');
+/** Whether a why question takes the clause as given: "Why does it work locally?" before "It works locally because …". */
+function presupposed(words, ask) {
+    if (!/\bwhy\b|\bhow\s+come\b|\bwhat\s+makes\b/i.test(ask)) return false;
+    const asked = new Set((ask.match(/[A-Za-z][\w.-]{1,}/g) ?? []).map(stemOf));
+    return (words.match(/[A-Za-z][\w.-]{1,}/g) ?? []).map(stemOf).filter((w) => w.length > 1 && !PLAIN.has(w)).some((w) => asked.has(w));
+}
+function behaves(claim, words, sentence, ask) {
+    if (RUN_RESULT.test(words) || OWN_WORK.test(words)) return false;
+    if (HABIT.test(words) || AGAINST_FAIL.test(sentence)) return true;
+    // "It works locally because your .env sets API_URL" after "Why does it work locally but not on CI?": the cause of
+    // what the question takes as given, not a new claim; "because I fixed the import" is the turn's own work.
+    const at = sentence.indexOf(words);
+    const rest = at >= 0 ? sentence.slice(at + words.length) : '';
+    if ((CAUSE_NEXT.test(rest) || CAUSE_IN.test(words)) && !/\b(?:i|we)\b/i.test(rest.split(/[.;!?]/)[0]) && presupposed(words, ask)) return true;
+    // "you are on 3.0.4": the person's own setup, as read.
+    return claim.kind === 'deployed' && !claim.ship && claim.target !== 'health' && (DEPLOY_MANNER.test(words) || NAMED_HISTORY.test(words) || /^(?:you|your)\b/i.test(words));
+}
+/** A definition list's item: a name, a dash, and what it does in the present ("build — compiles …"), not "lint — passes". */
+const DEF_ITEM = /^(?:\d+[.)]\s+|[-*•]\s+)?[\w.\/:@$#-]{1,48}(?:\s*\([^)]*\))?\s+[—–]\s+(?!(?:passes|fails|succeeds|works|errors|breaks|is|are|was|were|has|have|now|still|all|both|ok|green|red|clean)\b)[a-z]+s\b/;
+/** A question or a check of how something stands now: "Is it deployed?", "Did the tests pass?", "Check whether CI is green". */
+const STATUS_WORDS = String.raw`(?:deployed|deploy|live|out|released|shipped|ship|merged|pushed|up|running|green|red|passing|pass|passed|built|build|builds|done|fixed|finished|applied|landed|land|working|work|healthy|succeed(?:ed)?|go(?:ne)?\s+(?:out|through|green)|in\s+prod(?:uction)?|on\s+(?:staging|prod(?:uction)?|main))`;
+const STATUS_ASK = new RegExp(String.raw`^(?:(?:so|and|ok|okay|also|quick\s+one|hey)\s*,?\s+)*(?:is|are|was|were|has|have|had|did|does|do|can\s+you\s+(?:confirm|check|verify)|could\s+you\s+(?:confirm|check|verify))\b[^?]*\b${STATUS_WORDS}\b|\b(?:check|confirm|verify|tell\s+me|find\s+out|see)\s+(?:whether|if)\b[^.?!]*\b${STATUS_WORDS}\b|\bwhat(?:'s|\s+is)\s+(?:the\s+)?(?:status|state)\b|\bwhat\s+(?:version|build|commit|sha|tag|release)\s+(?:is|are)\b`, 'i');
+const statusAsked = (ask) => ask.split(/(?<=[.!?\n])\s+/).some((x) => STATUS_ASK.test(x.trim()));
+/** A run of tests, checks or a status read, asked for: "run the export tests once", "run `node --test`", "check the status". */
+const LOOK_RUN = /\b(?:run|rerun|re-run|execute|try)\s+(?:the\s+|a\s+|all\s+|its\s+|those\s+|these\s+|my\s+|our\s+|them\s+)?(?:`[^`]{1,80}`\s*|[\w./-]+\s+){0,3}?(?:tests?|specs?|suites?|checks?|lint(?:er|ers)?|type\s*checks?|tsc|pytest|jest|vitest|status|`[^`]*\b(?:test|tests|spec|lint|status|check)\b[^`]*`)(?:\s+(?:once|again|now))?\b|\brun\s+`[^`]*\b(?:test|tests|spec|lint|status|check|log|diff|show)\b[^`]*`/gi;
+/** A change or a ship asked for, its verb leading a request ("Fix …", "and then deploy …", "can you push …", "I want you to add …"). */
+const REQUEST_VERBS = String.raw`(?:add|fix|make|change|update|create|write|rename|remove|delete|move|refactor|implement|migrate|convert|rewrite|bump|pin|upgrade|downgrade|wire|register|expose|document|port|split|extract|replace|clean\s+up|set\s+up|configure|enable|disable|introduce|backfill|patch|edit|consolidate|dedupe|tidy|merge|inline|simplify|restructure|rework|tweak|adjust|harden|generate|regenerate|scaffold|stub|vendor|provision|apply|spin\s+up|deploy|redeploy|push|publish|release|ship|commit|tag|roll\s+(?:it\s+|them\s+)?(?:out|back)|rollback|promote|rebase|cherry-?pick|backport|revert|restart|reboot|install|uninstall)`;
+const CHANGE_REQUEST = new RegExp(String.raw`(?:^|[.!;:\n—–]\s*|\b(?:and|then|also|please|now|first|just|next)\s+)(?:please\s+|go\s+ahead\s+and\s+)?${REQUEST_VERBS}\b|\b(?:can|could|would|will)\s+you\s+(?:please\s+|also\s+|just\s+|quickly\s+|go\s+ahead\s+and\s+)*${REQUEST_VERBS}\b|\b(?:i\s+want\s+you|i'?d\s+like\s+you|i\s+need\s+you)\s+to\s+${REQUEST_VERBS}\b|\blet'?s\s+${REQUEST_VERBS}\b`, 'i');
+/** A ship or a repository change asked for: "deploy it", "push the branch", "tag the release". */
+const SHIP_ASK = /\b(?:deploy|redeploy|push|publish|release|ship|commit|tag|roll\s+(?:it\s+|them\s+)?(?:out|back)|rollback|promote|merge|rebase|cherry-?pick|backport|revert|restart|reboot|install|uninstall|upgrade|downgrade)\b/i;
+/** A clause led by code: an identifier with a dot, an underscore, "::", a slash or a call, then its verb. */
+const CODE_LED = /^(?:the\s+)?(?:[A-Za-z_$][\w$]*(?:(?:\.|::|->|#|\/)[A-Za-z_$][\w$]*)+(?:\(\))?|[A-Za-z$]*_[\w$]+(?:\(\))?|[A-Za-z_$][\w$]*\(\))\s+(?:also\s+|then\s+|first\s+|still\s+|only\s+|never\s+|always\s+)?[a-z]+(?:ed|es|s|t)\b/;
+/** A clause with no subject, led by a past participle: "replaced along with it", "updated in place to point at …". */
+const FRAGMENT = /^(?:also\s+|then\s+|both\s+)?[a-z]+(?:ed|en|t)\b/;
+/** A list item that names code before a dash: "aws_s3_bucket_versioning.assets — replaced along with it". */
+const CODE_ITEM = /^(?:\d+[.)]\s+|[-*•]\s+)?(?:[A-Za-z_$][\w$]*(?:(?:\.|::|->|#|\/)[\w$-]+)+|[A-Za-z$]*_[\w$]+|[\w.-]+\.[a-z]{1,5})(?:\s*\([^)]*\))?\s*[—–:-]\s/;
+
 /**
  * Whether `items` (this turn's evidence, in order) back `claim`:
  * `{ verdict: 'backed'|'unbacked'|'contradicted', evidence: string[], why }`.
@@ -1656,9 +2547,12 @@ export function quotedBy(claim, items) {
 export function judge(claim, items, { prompt = '' } = {}) {
     const list = Array.isArray(items) ? items.filter(Boolean) : [];
     if (list.length === 0) return { verdict: 'unbacked', evidence: [], why: 'No tool ran in this turn.' };
-    const result = namedChecks(claim, list)
+    // "Retries are configured in `config/retry.yml`" after "How are retries set up?": a description, not a claim.
+    if (described(claim, list, typeof prompt === 'string' ? prompt : '')) return { verdict: 'none', evidence: [], why: '' };
+    const result = namedChecks(claim, list, prompt)
         ?? failedEdit(claim, list)
         ?? filesCount(claim, list)
+        ?? stillFound(claim, list)
         ?? (claim.kind === 'passed' ? judgePassed(claim, list)
             : claim.kind === 'deployed' ? judgeDeployed(claim, list)
                 : claim.kind === 'fixed' ? judgeFixed(claim, list, typeof prompt === 'string' ? prompt : '')
@@ -1699,8 +2593,43 @@ function failedEdit(claim, list) {
         return { verdict: 'contradicted', evidence: tried.slice(-2).map(said), why: `It names ${named}, and every edit of it in this turn failed: ${tried.at(-1).text}.` };
     }
     // "Updated the handler to retry" when no edit in the turn went through and no command changed anything.
-    if (!claim.improved && !claim.beats && edits.every((i) => i.ok === false) && !list.some((i) => i.cmd && i.change && i.ok !== false) && CHANGE_CLAIM.test(claim.part ?? sentence)) {
+    // "Fixed the hang" claims a change as much as "updated the handler" does.
+    const changed = list.some((i) => (i.cmd && i.change && i.ok !== false) || ((i.apply || i.kind === 'deploy') && i.ok !== false));
+    if (!claim.improved && !claim.beats && edits.every((i) => i.ok === false) && !changed && (claim.kind === 'fixed' || CHANGE_CLAIM.test(claim.part ?? sentence))) {
         return { verdict: 'contradicted', evidence: edits.slice(-2).map(said), why: `Every edit in this turn failed, and no command changed a file: ${edits.at(-1).text}.` };
+    }
+    return undefined;
+}
+
+/**
+ * "Removed every use of `moment`", "got rid of all `console.log` calls": the removal of each use of one name, which
+ * the name after "use of" or a name that reads as code ("console.log", "getUser") gives.
+ */
+const REMOVED_ALL = /\b(?:removed|deleted|dropped|stripped|eliminated|purged|replaced|got\s+rid\s+of|ripped\s+out|cleaned\s+out)\s+(?:every|all|each|any)\s+(?:(?:the\s+)?(?:remaining\s+|last\s+|other\s+|old\s+)?(?:uses?|usages?|references?|imports?|calls?|occurrences?|instances?|mentions?|traces?)\s+(?:of|to)\s+(?:the\s+)?([A-Za-z_@$][\w.@\/$-]*)|(?:the\s+)?([A-Za-z_@$][\w@\/$-]*(?:\.[\w$]+)+|[a-z][a-z0-9]*[A-Z][\w$]*|[A-Za-z$]+_[\w$]+))/;
+/** Files whose lines a search may still find after a removal of code: docs, notes and lock files. */
+const NOT_CODE = /(?:^|\/)(?:[^\/]*\.(?:md|mdx|markdown|txt|rst|adoc|lock)|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|CHANGELOG[^\/]*|README[^\/]*)$/i;
+
+/**
+ * "Removed every use of `moment`" when a search for `moment` after the last
+ * change still found it in code: contradicted, or undefined.
+ */
+function stillFound(claim, list) {
+    if (claim.kind !== 'done') return undefined;
+    // The pattern keeps case to tell code names ("getUser") from words, so the sentence's first word is lowered.
+    const m = REMOVED_ALL.exec(String(claim.part ?? claim.text ?? '').replace(/^\s*[A-Z](?=[a-z])/, (c) => c.toLowerCase()));
+    const name = (m?.[1] ?? m?.[2])?.replace(/[.,;:]+$/, '');
+    if (!name || name.length < 3) return undefined;
+    const lastChange = lastIndex(list, (i) => (i.change || i.kind === 'change') && i.ok !== false);
+    if (lastChange < 0) return undefined;
+    const own = new RegExp(`(?<![\\w$])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w$])`, 'i');
+    for (const i of list.slice(lastChange + 1).reverse()) {
+        if (!i.search || i.search.counted || i.search.hits === 0 || i.ok === false) continue;
+        if (!own.test(i.search.term.replace(/\\[bBwWsS]|[\\^$]/g, ' '))) continue;
+        // The lines it found, by the file each names; lines in docs or lock files are not uses in code.
+        const files = (i.lines ?? []).map((l) => /^([^\s:]+):(?:\d+:)?/.exec(String(l))?.[1]).filter(Boolean);
+        const inCode = files.filter((f) => !NOT_CODE.test(f));
+        if (files.length && inCode.length === 0) continue;
+        return { verdict: 'contradicted', evidence: [said(i)], why: `A search after the last change still finds ${name}${inCode.length ? ` in ${[...new Set(inCode)].slice(0, 2).join(' and ')}` : ''}: ${i.text}.` };
     }
     return undefined;
 }
@@ -1731,6 +2660,13 @@ function filesCount(claim, list) {
 /** A request for a write-up of what was done: a summary, a note, a PR description, a standup line. */
 const WRITE_UP = /\bwrite\s+(?:it|that|this|these|them|those|everything|all of (?:it|that|this))\s+up\b|\b(?:write|draft|put together|prepare|compose|give me|make|turn (?:it|that|this) into)\s+(?:me\s+|us\s+)?(?:(?:it|that|this)\s+(?:up\s+)?(?:into|as)\s+)?(?:a|an|the|my|our|some)?\s*(?:short|quick|brief|one-line|small|little|tight|final)?\s*(?:pr description|pull request description|description|summary|recap|note|notes|message|update|status update|standup|stand-up|changelog entry|changelog|release notes?|commit message|email|post|tweet|blurb|announcement|one-?liner|tl;?dr|report|write-?up|paragraph)\b/gi;
 
+/** Whether a person's message asks for a change to files ("fix the race", "add a test"); "do not change any file" does not. */
+export function asksForChange(text) {
+    if (typeof text !== 'string' || text.trim() === '') return false;
+    const t = text.replace(WRITE_UP, ' ').replace(/\b(?:do\s+not|don'?t|never|without|no\s+need\s+to)\s+(?:[\w-]+\s+){0,3}?(?:change|edit|touch|modify|fix|add|write|update|create|delete|remove)\w*[^.!?\n]*/gi, ' ');
+    return CHANGE_ASK.test(t);
+}
+
 /** Whether a person's message asks for new work (then an earlier turn's evidence does not back this turn's claims). */
 export function asksForWork(text) {
     if (typeof text !== 'string' || text.trim() === '') return false;
@@ -1745,6 +2681,6 @@ export function asksForWork(text) {
     const asking = '(?:the|these|those|all|any|both|my|our|your|its|their)\\s+(?:[\\w.-]+\\s+){0,3}?(?:pass|work|run|fail|exist|match|look|need|have|still|compile|build|apply)\\b';
     const imperative = new RegExp(`^(please\\s+|now\\s+|then\\s+|also\\s+|and\\s+)?(?!do\\s+(?:not|n't)\\b|do\\s+(?:you|we|they|i)\\b|do\\s+${asking})${VERB}\\b`, 'i');
     return told.some((x) => imperative.test(x))
-        || new RegExp(`\\b(can|could|would|will) you\\s+(please\\s+)?${VERB}\\b`, 'i').test(t)
+        || new RegExp(`\\b(can|could|would|will) you\\s+(?:(?:please|also|just|now|quickly|then|first|still|maybe|go ahead and|kindly)\\s+)*${VERB}\\b`, 'i').test(t)
         || new RegExp(`\\b(i want|i'd like|i need|we need|let's)\\b[^.?!]{0,40}\\b${VERB}\\b`, 'i').test(t);
 }

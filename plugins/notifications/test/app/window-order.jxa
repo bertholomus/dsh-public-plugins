@@ -1,0 +1,15 @@
+// Where one app's window is (macOS window server list, metadata only: no pixels, no titles).
+// Prints JSON about the given pid's windows only: how many, whether one is on screen, and how
+// many ordinary windows of other apps are in front of it (0 = in front of everything).
+//   osascript -l JavaScript window-order.jxa <pid>
+ObjC.import('CoreGraphics');
+function run(argv) {
+    const pid = Number(argv[0]);
+    const all = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionAll, 0))) || [];
+    const onscreen = ObjC.deepUnwrap(ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly | $.kCGWindowListExcludeDesktopElements, 0))) || [];
+    const big = (w) => (w.kCGWindowBounds ? w.kCGWindowBounds.Height : 0) > 200;
+    const mine = all.filter((w) => w.kCGWindowOwnerPID === pid && w.kCGWindowLayer === 0 && big(w));
+    const ordinary = onscreen.filter((w) => w.kCGWindowLayer === 0 && (w.kCGWindowAlpha === undefined || w.kCGWindowAlpha > 0) && (w.kCGWindowBounds ? w.kCGWindowBounds.Height : 0) > 50);
+    const rank = ordinary.findIndex((w) => w.kCGWindowOwnerPID === pid && big(w));
+    return JSON.stringify({ windows: mine.length, onScreen: mine.some((w) => Boolean(w.kCGWindowIsOnscreen)), inFrontOfIt: rank < 0 ? null : rank });
+}

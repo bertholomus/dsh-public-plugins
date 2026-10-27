@@ -10,9 +10,23 @@ import { openWork } from './notes.js';
 /** How many sessions the page lists. */
 const MAX_SESSIONS = 80;
 
-/** A log entry in a few words, for its session's row ("last: …"). */
+/**
+ * A log entry in a few words, for its session's row ("last: …"): what
+ * happened, by the entry's state, not only what was tried.
+ */
 export function lastWords(entry) {
     if (entry.kind === 'ask') return entry.state === 'answered' ? 'you answered its question' : entry.state === 'withdrawn' ? 'its question was withdrawn' : 'asked you';
+    if (entry.kind === 'rearm') {
+        if (entry.state === 'not started') return /^DSH refused/.test(entry.reason ?? '') ? 'DSH refused to start its goal' : 'its goal did not start';
+        if (entry.state === 'starting' || entry.state === 'waiting for a round') return 'starting its goal';
+        if (entry.state === 'done') return 'its goal was no longer active, so nothing was started';
+    }
+    if (typeof entry.note === 'string') {
+        if (entry.state === 'not delivered') return 'its note was not delivered';
+        if (entry.state === 'not proven') return 'its note may not have arrived';
+        if (entry.state === 'sending') return 'sending it a note';
+        if (entry.state === 'in the queue') return 'its note waits in the queue';
+    }
     const text = String(entry.text ?? '').trim().replace(/\.$/, '');
     return text ? `${text[0].toLowerCase()}${text.slice(1)}` : '';
 }
@@ -28,7 +42,7 @@ function rowWord(row, s) {
 }
 
 /** The page's view of everything Autopilot knows. */
-export async function pageState({ pilot, watch, journal, config, check }) {
+export async function pageState({ pilot, watch, journal, config, check, decisions = false }) {
     const rows = await watch.list();
     const pending = pilot.pending();
     const latest = new Map();
@@ -53,7 +67,8 @@ export async function pageState({ pilot, watch, journal, config, check }) {
             ...(hold ? { hold } : {}),
             ...(s.backedOff ? { backedOff: s.backedOff } : {}),
             ...(s.gaveUp ? { gaveUp: s.gaveUp } : {}),
-            ...(last ? { last: { text: lastWords(last), state: last.state, at: last.at } } : {}),
+            // The time it reached that state: an answer or a withdrawal says when it happened, not when it was asked.
+            ...(last ? { last: { text: lastWords(last), state: last.state, at: last.settledAt ?? last.at } } : {}),
         });
     }
     const hourAgo = pilot.now() - 3600000;
@@ -63,6 +78,8 @@ export async function pageState({ pilot, watch, journal, config, check }) {
         ...(problem ? { problem } : {}),
         ...(watchProblem ? { watchProblem } : {}),
         enabled: config.enabled !== false,
+        // Whether Decisions runs, so the page links to it only then.
+        decisions: decisions === true,
         paused: pilot.data.paused === true,
         defaultRule: pilot.defaultRule(),
         settings: {

@@ -61,12 +61,17 @@ export class ProjectsRemote {
 
     /**
      * Every coordinating chat with its thread settings and access settings
-     * and their sources, with the user's tools (guardedTools) and the
-     * permissions DSH offers.
+     * and their sources, with the user's tools (guardedTools), the
+     * permissions DSH offers, and the settings that are wrong now, in words
+     * (the plugin's page shows them).
      */
     async list() {
         try {
-            return { ...this.lists(), guarded: this.manager.guards().map(([name]) => name), permissions: this.manager.permissionCatalog() };
+            return {
+                ...this.lists(), guarded: this.manager.guards().map(([name]) => name), permissions: this.manager.permissionCatalog(),
+                problems: this.manager.configProblems().map((p) => p.message),
+                store: this.manager.storeProblems(),
+            };
         } catch (error) {
             throw failure(error);
         }
@@ -217,6 +222,63 @@ export class ProjectsRemote {
     }
 }
 
+/** What every endpoint but the window's reads answers while the plugin is switched off in its settings. */
+export const OFF_TEXT = 'The coordinator is switched off: its row in your profile\'s cordis.patch.yml says enabled: false. Set it to true, or take the line out, to coordinate again.';
+
+/**
+ * The endpoints while the plugin is switched off in its settings
+ * (`enabled: false`): the window's reads say so (sessions and list answer
+ * `off: true`), so it offers no Coordinate anywhere, and anything else is
+ * refused in those words. Nothing here reads or writes the plugin's state.
+ */
+export class OffRemote {
+    /**
+     * @param {object} ctx - the plugin's context (the binding reads it).
+     * @param {{message: string}[]} problems - the settings to fix, as checkConfig found them.
+     */
+    constructor(ctx, problems = []) {
+        this.ctx = ctx;
+        this.problems = problems.map((p) => p.message);
+        this.typertRemote = bindTypertRemote(this, SERVICE, { namespace: NAMESPACE });
+    }
+
+    async sessions() {
+        return { sessions: {}, off: true };
+    }
+
+    async list() {
+        return { projects: [], guarded: [], permissions: null, problems: this.problems, off: true };
+    }
+
+    async news() {
+        return { news: [] };
+    }
+
+    // Each method names its parameters as ProjectsRemote does: DSH's gateway reads the names from the
+    // method's source and refuses a call whose arguments it does not name, before any words could reach the window.
+    async seeNews(target, seq) {
+        void target, seq;
+        return { news: [] };
+    }
+
+    async describe(target) { throw off(target); }
+
+    async update(target, changes) { throw off(target, changes); }
+
+    async continueThread(target, thread) { throw off(target, thread); }
+
+    async changes(target, thread) { throw off(target, thread); }
+
+    async coordinate(target, on) { throw off(target, on); }
+
+    async archive(project) { throw off(project); }
+
+    async restore(project) { throw off(project); }
+}
+
+/** The refusal while switched off. A method passes its arguments only so that it names them for the gateway; none is read. */
+const off = () => new RemoteError('coordinator/refused', OFF_TEXT, {});
+
 /** Mark methods the way the `@Remote` decorator does in DSH's TypeScript. */
 function markRemote(Class, names) {
     for (const name of names) {
@@ -226,6 +288,6 @@ function markRemote(Class, names) {
         });
     }
 }
-markRemote(ProjectsRemote, [
-    'describe', 'list', 'sessions', 'news', 'seeNews', 'update', 'continueThread', 'changes', 'coordinate', 'archive', 'restore',
-]);
+const METHODS = ['describe', 'list', 'sessions', 'news', 'seeNews', 'update', 'continueThread', 'changes', 'coordinate', 'archive', 'restore'];
+markRemote(ProjectsRemote, METHODS);
+markRemote(OffRemote, METHODS);

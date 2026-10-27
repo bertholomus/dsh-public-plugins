@@ -1,0 +1,963 @@
+[
+  {
+    "id": "jc01",
+    "kind": "coding",
+    "folder": "~/scratch",
+    "prompt": "Write a function that converts a slug like my-blog-post back into a title in Title Case.",
+    "answers": []
+  },
+  {
+    "id": "jc02",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "Add a unit test for the parseConfig function that covers an empty file.",
+    "answers": []
+  },
+  {
+    "id": "jc03",
+    "kind": "coding",
+    "folder": "~/Projects/photo-sorter",
+    "prompt": "Add a --verbose flag to the CLI that prints each file as it's processed.",
+    "answers": []
+  },
+  {
+    "id": "jc04",
+    "kind": "coding",
+    "folder": "~/src/invoice-pdf",
+    "prompt": "Add a POST /users endpoint to the Express app that validates the email and returns 201.",
+    "answers": []
+  },
+  {
+    "id": "jc05",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "Write a regex that matches US phone numbers like (555) 123-4567 or 555-123-4567.",
+    "answers": []
+  },
+  {
+    "id": "jc06",
+    "kind": "coding",
+    "folder": "~/Projects/photo-sorter",
+    "prompt": "Fix this: TypeError: 'NoneType' object is not subscriptable on line 14 of scripts/report.py",
+    "answers": []
+  },
+  {
+    "id": "jc07",
+    "kind": "coding",
+    "folder": "~/scratch",
+    "prompt": "Write a SQL query to count orders per customer for last month, highest first.",
+    "answers": []
+  },
+  {
+    "id": "jc08",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "Set up a GitHub Actions workflow that runs npm test on every pull request.",
+    "answers": []
+  },
+  {
+    "id": "jc09",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "My React component re-renders on every keystroke, how do I memoize the list?",
+    "answers": []
+  },
+  {
+    "id": "jc10",
+    "kind": "coding",
+    "folder": "~/Projects/photo-sorter",
+    "prompt": "Write a bash one-liner that renames all .jpeg files in this folder to .jpg.",
+    "answers": []
+  },
+  {
+    "id": "jc11",
+    "kind": "coding",
+    "folder": "~/src/invoice-pdf",
+    "prompt": "Add type hints to the functions in utils.py.",
+    "answers": []
+  },
+  {
+    "id": "jc12",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "Refactor this loop into a list comprehension:\n\nresult = []\nfor x in items:\n    if x.active:\n        result.append(x.id)",
+    "answers": []
+  },
+  {
+    "id": "jc13",
+    "kind": "coding",
+    "folder": "~/src/harbor-gateway",
+    "prompt": "Write a Go test for the retry helper that checks it stops after three attempts.",
+    "answers": []
+  },
+  {
+    "id": "jc14",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "How do I make this Python script accept a file path as an argument?",
+    "answers": []
+  },
+  {
+    "id": "jc15",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "Write a helper that formats a byte count as KB, MB or GB with one decimal.",
+    "answers": []
+  },
+  {
+    "id": "jc16",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "Fix the flaky test in test/date.test.js; it fails around midnight UTC.",
+    "answers": []
+  },
+  {
+    "id": "jc17",
+    "kind": "coding",
+    "folder": "~/scratch",
+    "prompt": "Convert this callback code to async/await:\n\nfs.readFile(path, 'utf8', (err, data) => {\n  if (err) return cb(err);\n  cb(null, JSON.parse(data));\n});",
+    "answers": []
+  },
+  {
+    "id": "jc18",
+    "kind": "coding",
+    "folder": "~/src/invoice-pdf",
+    "prompt": "Write a Dockerfile for a small Flask app on Python 3.12.",
+    "answers": []
+  },
+  {
+    "id": "jc19",
+    "kind": "coding",
+    "folder": "~/code/tide-ledger",
+    "prompt": "Add a Makefile target that runs the linter.",
+    "answers": []
+  },
+  {
+    "id": "jc21",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "Write a function to debounce the search input by 300 ms.",
+    "answers": []
+  },
+  {
+    "id": "jc22",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "Parse this JSON log line and pull out the status code: {\"ts\":\"2026-10-17T10:00:00Z\",\"status\":502,\"path\":\"/api/v2/keys\"}",
+    "answers": []
+  },
+  {
+    "id": "jc23",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "Write a cron expression that runs at 02:30 every weekday.",
+    "answers": []
+  },
+  {
+    "id": "jc24",
+    "kind": "coding",
+    "folder": "~/Projects/photo-sorter",
+    "prompt": "Add input validation so the age field must be between 0 and 130.",
+    "answers": []
+  },
+  {
+    "id": "jc25",
+    "kind": "coding",
+    "folder": "~/src/harbor-gateway",
+    "prompt": "My Go build fails with: undefined: errors.Join — what Go version do I need?",
+    "answers": []
+  },
+  {
+    "id": "jc26",
+    "kind": "coding",
+    "folder": "~/Projects/photo-sorter",
+    "prompt": "Write a Python script that resizes every image in a folder to 1024px wide.",
+    "answers": []
+  },
+  {
+    "id": "jc27",
+    "kind": "coding",
+    "folder": "~/scratch",
+    "prompt": "Speed up this query, it's doing a full scan: SELECT * FROM events WHERE user_id = 42 ORDER BY created_at DESC LIMIT 20;",
+    "answers": []
+  },
+  {
+    "id": "jc28",
+    "kind": "coding",
+    "folder": "~/src/invoice-pdf",
+    "prompt": "Add a CHANGELOG entry for the new export feature.",
+    "answers": []
+  },
+  {
+    "id": "jc29",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "Write a GitLab CI job that caches node_modules between runs.",
+    "answers": []
+  },
+  {
+    "id": "jc30",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "Fix the off-by-one in this binary search:\n\nwhile (lo < hi) { const mid = (lo + hi) >> 1; if (a[mid] < x) lo = mid; else hi = mid - 1; }",
+    "answers": []
+  },
+  {
+    "id": "jc31",
+    "kind": "coding",
+    "folder": "~/work/quartz-cache",
+    "prompt": "Write a function that checks if two strings are anagrams, ignoring spaces and case.",
+    "answers": []
+  },
+  {
+    "id": "jc32",
+    "kind": "coding",
+    "folder": "~/scratch",
+    "prompt": "Add a health check to docker-compose.yml for the postgres service.",
+    "answers": []
+  },
+  {
+    "id": "jc33",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "Write a k8s liveness probe for a container serving /healthz on port 8080.",
+    "answers": []
+  },
+  {
+    "id": "jc34",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "Write a script that deletes git branches already merged into main.",
+    "answers": []
+  },
+  {
+    "id": "jc35",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "Add retries with exponential backoff to the fetch call in api.js.",
+    "answers": []
+  },
+  {
+    "id": "jc36",
+    "kind": "coding",
+    "folder": "~/src/invoice-pdf",
+    "prompt": "Error when running the server:\n\nError: listen EACCES: permission denied 0.0.0.0:443\n    at Server.setupListenHandle [as _listen2] (node:net:1872:21)",
+    "answers": []
+  },
+  {
+    "id": "jc37",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "Write a TypeScript type for a paginated API response with items and a nextCursor.",
+    "answers": []
+  },
+  {
+    "id": "jc38",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "Make the date picker close when you press Escape.",
+    "answers": []
+  },
+  {
+    "id": "jc39",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "Write a Python function that retries a callable up to N times with a delay between tries.",
+    "answers": []
+  },
+  {
+    "id": "jc40",
+    "kind": "coding",
+    "folder": "~/src/invoice-pdf",
+    "prompt": "Write a migration to add an index on users.email.",
+    "answers": []
+  },
+  {
+    "id": "jc41",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "Add a dark mode toggle to the settings page.",
+    "answers": []
+  },
+  {
+    "id": "jc42",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "Fix: ModuleNotFoundError: No module named 'yaml'",
+    "answers": []
+  },
+  {
+    "id": "jc43",
+    "kind": "coding",
+    "folder": "~/code/tide-ledger",
+    "prompt": "Write unit tests for the money formatting helper, including negative amounts and rounding.",
+    "answers": []
+  },
+  {
+    "id": "jc44",
+    "kind": "coding",
+    "folder": "~/work/quartz-cache",
+    "prompt": "Write a function that splits a list into chunks of size n.",
+    "answers": []
+  },
+  {
+    "id": "jc45",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "Replace moment.js with date-fns in this file.",
+    "answers": []
+  },
+  {
+    "id": "jc46",
+    "kind": "coding",
+    "folder": "~/code/tide-ledger",
+    "prompt": "Write a SQL query that finds duplicate emails in the users table.",
+    "answers": []
+  },
+  {
+    "id": "jc47",
+    "kind": "coding",
+    "folder": "~/src/invoice-pdf",
+    "prompt": "Add logging to the payment handler so we can see request ids.",
+    "answers": []
+  },
+  {
+    "id": "jc48",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "Write an nginx config that proxies /api to localhost:3000.",
+    "answers": []
+  },
+  {
+    "id": "jc49",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "Write a jq command to pull the name field out of every object in an array.",
+    "answers": []
+  },
+  {
+    "id": "jc50",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-api/internal/handlers",
+    "prompt": "This handler leaks a goroutine when the client disconnects, can you fix it?",
+    "answers": []
+  },
+  {
+    "id": "jc51",
+    "kind": "coding",
+    "folder": "~/src/harbor-gateway",
+    "prompt": "Write a benchmark for the header parsing function.",
+    "answers": []
+  },
+  {
+    "id": "jc52",
+    "kind": "coding",
+    "folder": "~/work/quartz-cache",
+    "prompt": "panic: runtime error: index out of range [3] with length 3\n\ngoroutine 1 [running]:\nmain.pick(...)\n\t/src/ring.go:88",
+    "answers": []
+  },
+  {
+    "id": "jc53",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "Write a bash script that backs up a folder to a tar.gz with today's date in the name.",
+    "answers": []
+  },
+  {
+    "id": "jc54",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "Add a request id middleware that sets X-Request-Id if the client didn't send one.",
+    "answers": []
+  },
+  {
+    "id": "jc55",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "How do I undo my last git commit but keep the changes?",
+    "answers": []
+  },
+  {
+    "id": "jc56",
+    "kind": "coding",
+    "folder": "~/scratch",
+    "prompt": "Write a Python script that reads a CSV and prints the average of the price column.",
+    "answers": []
+  },
+  {
+    "id": "jc57",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "The build fails with: Module not found: Error: Can't resolve './Header' in '/app/src/components'",
+    "answers": []
+  },
+  {
+    "id": "jc58",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "Write a function that validates an IPv4 address without using a regex.",
+    "answers": []
+  },
+  {
+    "id": "jc59",
+    "kind": "coding",
+    "folder": "~/code/tide-ledger",
+    "prompt": "Can you add a --since flag to the export script so it only exports entries after a date?",
+    "answers": []
+  },
+  {
+    "id": "jc60",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "Write a Rust function that reverses the words in a sentence.",
+    "answers": []
+  },
+  {
+    "id": "ja01",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "Which day of the week do lantern-api releases go out?",
+    "answers": [
+      "Projects/lantern-api/Release checklist.md"
+    ]
+  },
+  {
+    "id": "ja02",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "How long before an API key expires?",
+    "answers": [
+      "Projects/lantern-api/Authentication.md"
+    ]
+  },
+  {
+    "id": "ja03",
+    "kind": "answers",
+    "folder": "~/src/harbor-gateway",
+    "prompt": "Where do I change the gateway's listening port?",
+    "answers": [
+      "Projects/harbor-gateway/Gateway ports.md"
+    ]
+  },
+  {
+    "id": "ja04",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "What happens if a lantern-api client sends more than 200 requests in a burst?",
+    "answers": [
+      "Projects/lantern-api/Rate limits.md"
+    ]
+  },
+  {
+    "id": "ja05",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "Who should I ask before changing quartz-cache's ports?",
+    "answers": [
+      "People/Owners.md"
+    ]
+  },
+  {
+    "id": "ja06",
+    "kind": "answers",
+    "folder": "~/work/quartz-cache",
+    "prompt": "How many nodes does the quartz cluster have?",
+    "answers": [
+      "Projects/quartz-cache/Cluster layout.md"
+    ]
+  },
+  {
+    "id": "ja07",
+    "kind": "answers",
+    "folder": "~/code/tide-ledger",
+    "prompt": "Can I deploy tide-ledger on the first of the month?",
+    "answers": [
+      "Projects/tide-ledger/Month-end close.md"
+    ]
+  },
+  {
+    "id": "ja08",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "What's the restore procedure for the ledger database?",
+    "answers": [
+      "Projects/tide-ledger/Ledger backups.md"
+    ]
+  },
+  {
+    "id": "ja09",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "When does the platform on-call hand over?",
+    "answers": [
+      "People/On-call.md"
+    ]
+  },
+  {
+    "id": "ja10",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "Which browsers do we support for the web app?",
+    "answers": [
+      "Projects/lantern-web/Browser support.md"
+    ]
+  },
+  {
+    "id": "ja13",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "What header carries the API key?",
+    "answers": [
+      "Projects/lantern-api/Authentication.md"
+    ]
+  },
+  {
+    "id": "ja14",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "The CI agent ran out of disk, what do I do?",
+    "answers": [
+      "Runbooks/Disk full on a build agent.md"
+    ]
+  },
+  {
+    "id": "ja15",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "How often do our certificates need renewing?",
+    "answers": [
+      "Runbooks/Rotating TLS certificates.md"
+    ]
+  },
+  {
+    "id": "ja16",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "Why did we move lantern's job queue off Redis?",
+    "answers": [
+      "Decisions/2026-03 Lantern job queue on NATS JetStream.md"
+    ]
+  },
+  {
+    "id": "ja17",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "What should the quartz client do when a read takes too long?",
+    "answers": [
+      "Projects/quartz-cache/Client settings.md"
+    ]
+  },
+  {
+    "id": "ja19",
+    "kind": "answers",
+    "folder": "~/src/harbor-gateway",
+    "prompt": "What happens if a gateway rollout fails its health check?",
+    "answers": [
+      "Projects/harbor-gateway/Deploying the gateway.md"
+    ]
+  },
+  {
+    "id": "ja20",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "I'm new here, what should my first week look like?",
+    "answers": [
+      "People/Onboarding.md"
+    ]
+  },
+  {
+    "id": "ja21",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "How do I flush cached prices in quartz?",
+    "answers": [
+      "Runbooks/Flushing the quartz cache.md"
+    ]
+  },
+  {
+    "id": "ja22",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "Is it safe to restart two quartz nodes at once?",
+    "answers": [
+      "Runbooks/Restarting a quartz-cache node.md"
+    ]
+  },
+  {
+    "id": "ja23",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "Where are the gateway's routes configured?",
+    "answers": [
+      "Projects/harbor-gateway/Routing rules.md"
+    ]
+  },
+  {
+    "id": "ja24",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "Can I rename a field in the v2 API?",
+    "answers": [
+      "Decisions/2026-04 Lantern API versioning.md"
+    ]
+  },
+  {
+    "id": "ja25",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "What Postgres version is the ledger on?",
+    "answers": [
+      "Decisions/2026-02 Ledger stays on Postgres.md"
+    ]
+  },
+  {
+    "id": "ja26",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "When's team lunch?",
+    "answers": [
+      "Misc/Office.md"
+    ]
+  },
+  {
+    "id": "ja27",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "Can you write a quick test that the rate limiter returns 429 after 100 requests?",
+    "answers": [
+      "Projects/lantern-api/Rate limits.md"
+    ]
+  },
+  {
+    "id": "ja28",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "What port does the web dev server use?",
+    "answers": [
+      "Projects/lantern-web/Running lantern-web locally.md"
+    ]
+  },
+  {
+    "id": "ja29",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "Who's the backup owner for tide-ledger?",
+    "answers": [
+      "People/Owners.md"
+    ]
+  },
+  {
+    "id": "ja30",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-api",
+    "prompt": "how do i get the api running on my laptop",
+    "answers": [
+      "Projects/lantern-api/Local development.md"
+    ]
+  },
+  {
+    "id": "jd01",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "need a bash loop that retries curl until it gets a 200",
+    "answers": []
+  },
+  {
+    "id": "jd02",
+    "kind": "coding",
+    "folder": "~/scratch",
+    "prompt": "how do i get the last 7 days of rows in postgres",
+    "answers": []
+  },
+  {
+    "id": "jd03",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "quick one: python sort a list of dicts by two keys",
+    "answers": []
+  },
+  {
+    "id": "jd04",
+    "kind": "coding",
+    "folder": "~/src/harbor-gateway",
+    "prompt": "whats the cleanest way to read env vars with defaults in go",
+    "answers": []
+  },
+  {
+    "id": "jd05",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "regex for a uk postcode?",
+    "answers": []
+  },
+  {
+    "id": "jd07",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "typescript: how do i type a function that takes either a string or a string[]",
+    "answers": []
+  },
+  {
+    "id": "jd08",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "docker build keeps re-downloading all the npm packages every time, how do i cache that layer",
+    "answers": []
+  },
+  {
+    "id": "jd09",
+    "kind": "coding",
+    "folder": "~/scratch",
+    "prompt": "pandas groupby month and sum the amount column",
+    "answers": []
+  },
+  {
+    "id": "jd10",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "jest says 'Cannot use import statement outside a module'",
+    "answers": []
+  },
+  {
+    "id": "jd11",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "how do i check if a port is free from a shell script",
+    "answers": []
+  },
+  {
+    "id": "jd12",
+    "kind": "coding",
+    "folder": "~/src/harbor-gateway",
+    "prompt": "go: convert a time.Duration to a human string like 1h5m",
+    "answers": []
+  },
+  {
+    "id": "jd13",
+    "kind": "coding",
+    "folder": "~/code/tide-ledger",
+    "prompt": "sql: delete duplicate rows but keep the newest one per email",
+    "answers": []
+  },
+  {
+    "id": "jd14",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "cron that runs every 15 minutes between 9 and 5 on weekdays",
+    "answers": []
+  },
+  {
+    "id": "jd15",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "react: how do i focus an input when a modal opens",
+    "answers": []
+  },
+  {
+    "id": "jd16",
+    "kind": "coding",
+    "folder": "~/work/quartz-cache",
+    "prompt": "what's the go equivalent of python's defaultdict",
+    "answers": []
+  },
+  {
+    "id": "jd17",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "git: how do i squash my last 3 commits",
+    "answers": []
+  },
+  {
+    "id": "jd18",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "redis-cli command to see memory usage of one key",
+    "answers": []
+  },
+  {
+    "id": "jd19",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "curl with a bearer token and a json body, example?",
+    "answers": []
+  },
+  {
+    "id": "jd20",
+    "kind": "coding",
+    "folder": "~/src/harbor-gateway",
+    "prompt": "need a makefile rule that only rebuilds when .proto files change",
+    "answers": []
+  },
+  {
+    "id": "jd21",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "how do i make a github action run only when files under docs/ change",
+    "answers": []
+  },
+  {
+    "id": "jd22",
+    "kind": "coding",
+    "folder": "~/scratch",
+    "prompt": "nginx 502 bad gateway after deploy, upstream is a node app on 3000",
+    "answers": []
+  },
+  {
+    "id": "jd23",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "unit test for a function that hits the clock, how do i fake time in python",
+    "answers": []
+  },
+  {
+    "id": "jd24",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "kubectl command to restart a deployment without changing anything",
+    "answers": []
+  },
+  {
+    "id": "jd25",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "my docker container can't reach the host's localhost, mac",
+    "answers": []
+  },
+  {
+    "id": "jd26",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "what does `ERR_OSSL_EVP_UNSUPPORTED` mean when running webpack",
+    "answers": []
+  },
+  {
+    "id": "jd27",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "rust: borrowed value does not live long enough in a loop pushing &str into a vec",
+    "answers": []
+  },
+  {
+    "id": "jd28",
+    "kind": "coding",
+    "folder": "~/src/invoice-pdf",
+    "prompt": "how to rate limit an express endpoint to 10 req/min per ip",
+    "answers": []
+  },
+  {
+    "id": "jd29",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "write me a quick script to tail a log and alert when 'ERROR' shows up",
+    "answers": []
+  },
+  {
+    "id": "jd30",
+    "kind": "coding",
+    "folder": "~/code/tide-ledger",
+    "prompt": "is there a way to make postgres use the index for a LIKE '%foo%' query",
+    "answers": []
+  },
+  {
+    "id": "jd31",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "python requests: timeout and retry on 503",
+    "answers": []
+  },
+  {
+    "id": "jd33",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "flutter: listview inside column overflow error",
+    "answers": []
+  },
+  {
+    "id": "jd34",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "how do i debug a memory leak in node",
+    "answers": []
+  },
+  {
+    "id": "jd36",
+    "kind": "coding",
+    "folder": "~/scratch",
+    "prompt": "health check endpoint in fastapi",
+    "answers": []
+  },
+  {
+    "id": "jd37",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "convert this to a for loop: [x*2 for x in nums if x > 0]",
+    "answers": []
+  },
+  {
+    "id": "jd39",
+    "kind": "coding",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "eslint keeps complaining about unused vars in catch blocks, how do i turn that off",
+    "answers": []
+  },
+  {
+    "id": "jd40",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "bash: loop over lines in a file with spaces in them",
+    "answers": []
+  },
+  {
+    "id": "jd41",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "the deploy job fails with 'permission denied (publickey)' on git clone",
+    "answers": []
+  },
+  {
+    "id": "jd42",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "postgres: list all tables and their sizes",
+    "answers": []
+  },
+  {
+    "id": "jd43",
+    "kind": "coding",
+    "folder": "~/work/quartz-cache",
+    "prompt": "go: how do i cancel a goroutine after a timeout",
+    "answers": []
+  },
+  {
+    "id": "jd44",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "sql to get the second highest salary",
+    "answers": []
+  },
+  {
+    "id": "jd45",
+    "kind": "coding",
+    "folder": "~/src/harbor-gateway",
+    "prompt": "how do i run only one test file with go test",
+    "answers": []
+  },
+  {
+    "id": "jd32",
+    "kind": "answers",
+    "folder": "~/code/tide-ledger",
+    "prompt": "how do i add a column with a default to a big table without locking it",
+    "answers": [
+      "Projects/tide-ledger/Schema migrations.md"
+    ]
+  },
+  {
+    "id": "jd38",
+    "kind": "answers",
+    "folder": "~/Projects/lantern-web",
+    "prompt": "what's a good way to structure feature flags in this app",
+    "answers": [
+      "Projects/lantern-web/Feature flags.md"
+    ]
+  }
+]

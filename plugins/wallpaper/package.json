@@ -20,6 +20,10 @@
     "cordis.patch.yml",
     "README.md"
   ],
+  "scripts": {
+    "test": "node lib/impl.test.mjs && node test/unit.test.mjs",
+    "test:e2e": "node ../../scripts/e2e.mjs wallpaper"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
@@ -32,7 +36,8 @@
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-sidebar",
         "@deepseek-ai/dsh-client-ui-workspace",
-        "@deepseek-ai/dsh-client-ui-settings"
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-primitives"
       ]
     }
   }

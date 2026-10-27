@@ -13,20 +13,35 @@
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
   },
-  "files": ["lib", "locale", "icon.svg", "icon.png", "cordis.patch.yml", "README.md"],
+  "files": [
+    "lib",
+    "locale",
+    "icon.svg",
+    "icon.png",
+    "cordis.patch.yml",
+    "README.md"
+  ],
   "dsh": {
-    "bundle": { "patch": "./cordis.patch.yml" },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
     "client": {
       "platform": "web",
       "inject": [
-        "@deepseek-ai/dsh-client-ui-plugin-manager", "@deepseek-ai/dsh-client-resources",
-        "@deepseek-ai/dsh-client-ui-primitives", "@deepseek-ai/dsh-client-connection"
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-client-resources",
+        "@deepseek-ai/dsh-client-ui-primitives",
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-workspace"
       ]
     }
   },
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "peerDependencies": {
     "@deepseek-ai/schemastery": "^3.18.1",
-    "@deepseek-ai/dsh-typert-protocol": "*"
+    "@deepseek-ai/dsh-typert-protocol": "*",
+    "@deepseek-ai/dsh-home-paths": "*"
   }
 }

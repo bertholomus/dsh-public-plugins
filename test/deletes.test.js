@@ -1,9 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lstatSync, mkdtempSync, mkdirSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
+import { lstatSync, mkdtempSync, mkdirSync, realpathSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { deletesOf, codeDeletesOf, deletesWhat, isFree, madeDirsOf, identityOf } from '../plugins/coordinator/lib/deletes.js';
+import { deletesOf, codeDeletesOf, deletesWhat, isFree, madeDirsOf, identityOf, middleCut } from '../plugins/coordinator/lib/deletes.js';
 
 // What a project thread's command deletes (plugins/coordinator/lib/deletes.js): the plugin asks the user before one that
 // deletes files the thread didn't create. Scripts the thread created are read through `read`, here from this table.
@@ -68,7 +68,9 @@ const NO_DELETES = [
   'rm --help',
   'command -v rm',
   'cat build/a.o > /dev/null',
-  'mv build build.old',
+  'git mv old.txt new.txt',
+  'rsync -a out/ /tmp/out/',
+  'cp README.md /tmp/',
   'npm run build',
   'npm ci',
   'make',
@@ -110,6 +112,67 @@ test('deletes: what a delete says, after "the command"', () => {
     assert.equal(said('cargo clean'), 'runs cargo clean, whose name says it deletes files');
     assert.equal(said("python3 -c \"import shutil; shutil.rmtree('build')\""), 'runs code that deletes build (python3)');
     assert.equal(said("python3 -c \"import os; os.system('rm -rf build')\""), 'runs code that deletes build (rm)');
+});
+
+test('deletes: a prompt names the file: from the thread\'s folder when it is in it, else cut in the middle, so its name stays (round-1 finding 4)', () => {
+    const ws = '/Users/someone/Projects/goal95/judge/coordinator-r1/ws';
+    const said = (command, folders = [ws]) => deletesWhat(deletesOf(command, { cwd: ws }), { folders });
+    // Before, the path was cut from its start: "deletes /Users/someone/Projects/goal95/judge/coordinator-r1/ws/RE… (rm)".
+    assert.equal(said(`rm ${ws}/README.md`), 'deletes README.md (rm)');
+    assert.equal(said(`rm -rf ${ws}/notes/old ${ws}/build/`), 'deletes notes/old and build (rm)');
+    assert.equal(said('cd notes && rm list.txt'), 'deletes notes/list.txt (rm)', 'from the folder, not from where it cd-ed');
+    assert.equal(said('rm -rf build/'), 'deletes build/ (rm)', 'as the command names it when that is the same');
+    assert.equal(said(`rm -rf ${ws}`), 'deletes the whole folder ws (rm)');
+    // Outside the folders, a long path keeps its end.
+    const far = '/Users/someone/Library/Application-Support/SomeLongVendorName/caches/the-file-it-deletes.db';
+    const words = said(`rm ${far}`);
+    assert.match(words, /^deletes \/Users\/someone\/.*….*\/the-file-it-deletes\.db \(rm\)$/);
+    assert.ok(words.length <= 'deletes  (rm)'.length + 60, words);
+    assert.equal(middleCut('short/path.txt'), 'short/path.txt');
+    assert.equal(middleCut(`${ws}/README.md`), '/Users/someone/Projects/…/judge/coordinator-r1/ws/README.md');
+    assert.equal(middleCut('x'.repeat(100)).length, 60);
+    assert.ok(middleCut('x'.repeat(100)).includes('…'));
+});
+
+test('deletes: a path is said from the folder whether it or the folder is named by its real path (macOS\'s /var is /private/var)', () => {
+    const work = mkdtempSync(join(tmpdir(), 'deletes-real-'));
+    writeFileSync(join(work, 'a.txt'), 'x');
+    const real = realpathSync(work);
+    assert.equal(deletesWhat(deletesOf(`rm ${join(real, 'a.txt')}`, { cwd: work }), { folders: [work] }), 'deletes a.txt (rm)');
+    assert.equal(deletesWhat(deletesOf(`rm ${join(work, 'a.txt')}`, { cwd: work }), { folders: [real] }), 'deletes a.txt (rm)');
+});
+
+test('deletes: a move out of the thread\'s folders asks as a delete of what moves; a move inside them is a rename (round-1 finding 6)', () => {
+    const work = mkdtempSync(join(tmpdir(), 'deletes-moves-'));
+    writeFileSync(join(work, 'README.md'), 'the user\'s');
+    mkdirSync(join(work, 'notes'));
+    writeFileSync(join(work, 'notes', 'list.txt'), 'the user\'s');
+    mkdirSync(join(work, 'docs'));
+    writeFileSync(join(work, 'mine.txt'), 'x');
+    const mine = mineOf([join(work, 'mine.txt')]);
+    const items = (command) => deletesOf(command, { cwd: work });
+    const free = (command) => items(command).every((d) => isFree(d, { work: [work], mine }));
+    // Before, mv counted as nothing at all: every one of these passed the check.
+    for (const command of ['mv README.md /tmp/', 'mv -t /tmp README.md', 'mv --target-directory=/tmp README.md', 'mv README.md ../', 'mv README.md "$DEST"',
+        'mv notes .git/', 'mv . /tmp/x', `mv ${work} /tmp/w`, 'mv *.md /tmp/', 'sudo mv README.md /tmp/', "bash -c 'mv notes/list.txt /tmp/'", 'd=$(mktemp -d) && mv README.md "$d"/',
+        'rsync -a --remove-source-files notes/ backup:/srv/notes/', 'rsync -a --remove-source-files notes/ /tmp/notes/', 'ls | xargs mv -t /tmp', "find . -name '*.md' | xargs -I{} mv {} /tmp/"]) {
+        assert.ok(items(command).length > 0, `counted: ${command}`);
+        assert.ok(!free(command), `asks: ${command}`);
+    }
+    // Inside the folders a move is a rename; the thread's own file may go anywhere; what isn't there moves nothing.
+    for (const command of ['mv README.md docs/README.md', 'mv notes notes-old', 'mv -t docs README.md', 'mv *.md docs/', 'mv notes/list.txt .', 'rsync -a --remove-source-files notes/ ./copy/',
+        'mv mine.txt /tmp/', 'mv gone.txt /tmp/']) {
+        assert.ok(free(command), `free: ${command}`);
+    }
+    // What the prompt says.
+    const said = (command) => deletesWhat(items(command).filter((d) => !isFree(d, { work: [work], mine })), { folders: [work] });
+    assert.equal(said('mv README.md /tmp/'), 'moves README.md to /tmp/ (mv)');
+    assert.equal(said('mv README.md notes/list.txt /tmp/'), 'moves README.md and notes/list.txt to /tmp/ (mv)');
+    assert.equal(said('rm -rf notes && mv README.md ~/old/'), 'deletes notes (rm) and moves README.md to ~/old/ (mv)');
+    assert.equal(said('rsync -a --remove-source-files notes/ backup:/srv/notes/'), 'moves notes/ to backup:/srv/notes/ (rsync)');
+    assert.equal(said('ls | xargs mv -t /tmp'), 'moves the files named on its input to /tmp (xargs mv)');
+    assert.equal(said('mv README.md "$DEST"'), 'moves README.md to $DEST (mv)');
+    assert.equal(said(`mv ${work} /tmp/w`), `moves the whole folder ${work.split('/').at(-1)} to /tmp/w (mv)`);
 });
 
 test('deletes: where each thing is, when that can be told', () => {
@@ -232,4 +295,19 @@ test('deletes: code deletes by its calls; its strings count as commands only whe
     assert.deepEqual(paths("FileUtils.rm_rf('tmp/cache')"), ['/w/tmp/cache']);
     assert.deepEqual(paths("console.log('rm -rf build')"), []);
     assert.deepEqual(paths("print('call os.remove on it')"), []);
+});
+
+test('a workspace in the OS temp folder, named through a link (macOS /var is /private/var), is still the workspace', () => {
+    // Its user files ask before they go, whichever spelling the command or DSH uses; never "a temp file outside it".
+    const base = mkdtempSync(join(tmpdir(), 'deletes-link-'));
+    mkdirSync(join(base, 'real', 'ws', 'legacy'), { recursive: true });
+    writeFileSync(join(base, 'real', 'ws', 'legacy', 'notes.txt'), 'the user\'s notes\n');
+    symlinkSync(join(base, 'real'), join(base, 'link'), 'dir');
+    const real = join(base, 'real', 'ws');
+    const viaLink = join(base, 'link', 'ws');
+    const asked = (command, work) => deletesOf(command, { cwd: work }).some((d) => !isFree(d, { work: [work] }));
+    assert.equal(asked(`rm -rf ${join(viaLink, 'legacy')}`, real), true, 'the command names the link, DSH the real folder');
+    assert.equal(asked(`rm -rf ${join(real, 'legacy')}`, viaLink), true, 'the command names the real folder, DSH the link');
+    assert.equal(asked(`rm -rf ${join(viaLink, 'legacy', '*.txt')}`, real), true, 'a pattern too');
+    assert.equal(asked(`rm -rf ${join(viaLink, 'legacy')}`, viaLink), true);
 });

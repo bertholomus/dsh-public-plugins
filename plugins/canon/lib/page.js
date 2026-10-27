@@ -4,7 +4,7 @@
  *
  * @module dsh-plugin-canon/page
  */
-import { RANGES } from './config.js';
+import { RANGES, alsoWrong, unquoted } from './config.js';
 
 /** Log entries the page's history lists, newest first. */
 const HISTORY = 150;
@@ -13,6 +13,8 @@ const SESSIONS = 30;
 const PER_SESSION = 3;
 /** Sessions whose switch is kept, at most. */
 const MAX_SWITCHES = 5000;
+/** Folders inside the vault kept by name (vault.js's MAX_CLOSED_NAMED). */
+const MAX_CLOSED = 20;
 
 const isRecord = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 
@@ -22,12 +24,20 @@ export const working = ({ config, check }) => config.enabled !== false && (check
 /** The switches as stored: `{ v: 1, off: { [sessionId]: at } }`; anything else starts empty. */
 export function parseSwitches(value) {
     const off = {};
-    if (isRecord(value) && value.v === 1 && isRecord(value.off)) {
-        for (const [id, at] of Object.entries(value.off).slice(-MAX_SWITCHES)) {
-            if (id && id.length <= 200 && Number.isFinite(at)) off[id] = at;
+    let closed;
+    if (isRecord(value) && value.v === 1) {
+        if (isRecord(value.off)) {
+            for (const [id, at] of Object.entries(value.off).slice(-MAX_SWITCHES)) {
+                if (id && id.length <= 200 && Number.isFinite(at)) off[id] = at;
+            }
+        }
+        // The folders inside the vault What happened named last, so a restart names none of them again.
+        const c = value.closed;
+        if (isRecord(c) && typeof c.vault === 'string' && Array.isArray(c.names) && Number.isSafeInteger(c.count) && c.count >= 0) {
+            closed = { vault: c.vault.slice(0, 4096), names: c.names.filter((n) => typeof n === 'string').slice(0, MAX_CLOSED).map((n) => n.slice(0, 1000)), count: c.count };
         }
     }
-    return { v: 1, off };
+    return { v: 1, off, ...(closed ? { closed } : {}) };
 }
 
 /** Recall switched off for single sessions, kept across restarts (a JsonStore of parseSwitches). */
@@ -102,6 +112,9 @@ function settingsOf(config, current) {
     };
 }
 
+/** The newest drafts that name the active notes on their subject (one search each). */
+const RELATED_DRAFTS = 30;
+
 /**
  * Everything the page shows.
  * @param {object} parts
@@ -116,7 +129,11 @@ function settingsOf(config, current) {
  */
 export async function pageState({ config, check, current, vault, events, recalls, switches, titles }) {
     const on = working({ config, check });
-    const problem = check?.problem;
+    // A number or true/false in quotes that would be right without them: the page offers to save it so.
+    const fix = check?.problem?.live && check.problem.key ? unquoted(config, check.problem.key) : undefined;
+    // Every wrong setting is named: the first, and the others after it.
+    const also = check?.problem ? alsoWrong(check) : [];
+    const problem = check?.problem && { ...check.problem, ...(fix === undefined ? {} : { unquoted: fix }), ...(also.length ? { also } : {}) };
     const sessions = on ? recentSessions(recalls.list({ limit: 300 }), switches) : [];
     const drafts = on ? vault.drafts() : [];
     const history = events.list({ limit: HISTORY });
@@ -128,10 +145,11 @@ export async function pageState({ config, check, current, vault, events, recalls
         ...(problem ? { problem } : {}),
         enabled: config.enabled !== false,
         settings: settingsOf(config, current()),
-        vault: on ? vault.status() : { state: 'unset', counts: { notes: 0, active: 0, drafts: 0, other: 0, unreadable: 0 } },
+        vault: on ? vault.status() : { state: 'unset', counts: { notes: 0, active: 0, drafts: 0, other: 0, unreadable: 0, closed: 0 }, closed: [] },
         sessions: sessions.map((s) => ({ ...s, title: names.get(s.sessionId) ?? '' })),
         // A draft from a session DSH no longer has (or another computer's) names it without a way to open it.
-        drafts: drafts.map((d) => ({ ...d, sessionTitle: d.sessionId ? names.get(d.sessionId) ?? '' : '', sessionKnown: Boolean(d.sessionId) && names.has(d.sessionId) })),
+        // The newest drafts also name the active notes on the same subject, for a person to read before Promote.
+        drafts: drafts.map((d, i) => ({ ...d, related: i < RELATED_DRAFTS && typeof vault.related === 'function' ? vault.related(d) : [], sessionTitle: d.sessionId ? names.get(d.sessionId) ?? '' : '', sessionKnown: Boolean(d.sessionId) && names.has(d.sessionId) })),
         // Each entry names its session as DSH does now (its title), and says whether DSH still has it.
         history: history.map((e) => (named(e.sessionId) ? { ...e, sessionTitle: names.get(e.sessionId) ?? '', sessionKnown: names.has(e.sessionId) } : e)),
     };

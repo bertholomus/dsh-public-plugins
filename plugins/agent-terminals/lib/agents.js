@@ -27,10 +27,10 @@
 import { randomUUID } from 'node:crypto';
 import { accessSync, constants, existsSync, statSync } from 'node:fs';
 import { basename, isAbsolute } from 'node:path';
-import { STYLES, STYLE_IDS, argvOf, expandHome, findFlagsTranscript, findNewTranscript, findTranscriptById, launchLine, pickShell, programName, transcriptPath } from './launch.js';
+import { STYLES, STYLE_IDS, argvOf, dataFolder, expandHome, findFlagsTranscript, findNewTranscript, findTranscriptById, launchLine, pickShell, programName, transcriptPath } from './launch.js';
 import { whereIs } from './detect.js';
-import { Tail, closeOver, emptyFold, foldEntry, oneLine, parseLines, provenIn, statusOf } from './transcripts.js';
-import { MAX_MESSAGE } from './typist.js';
+import { Tail, closeOver, emptyFold, foldEntry, oneLine, parseLines, proofs, statusOf } from './transcripts.js';
+import { MAX_MESSAGE, plainMessage } from './typist.js';
 import { clip, errorText, isRecord, later } from './shared/safe.js';
 
 /** Messages kept per agent (finished ones go first). */
@@ -43,6 +43,10 @@ const PROOF_WHILE_WORKING_MS = 30 * 60 * 1000;
 const LATE_PROOF_MS = 24 * 60 * 60 * 1000;
 /** How long a new program must run before it counts as started (one that is not there ends at once). */
 const START_CHECK_MS = 2500;
+/** How long a program started again after a restart may take to settle before it counts as started (one that fails says so first). */
+const READY_CHECK_MS = 20000;
+/** An exit this soon after a resume is a resume that failed: Start anew is said too. */
+const EARLY_EXIT_MS = 30000;
 /** How long a new session's first turn may take before its log entry stops waiting for its end. */
 const FIRST_TURN_MS = 5 * 60 * 1000;
 /** A detail-only change (the tool it runs now) reaches the session row at most this often. */
@@ -88,6 +92,7 @@ export function parseData(value) {
             createdAt: number(a.createdAt) ?? 0,
             ...(number(a.launchedAt) ? { launchedAt: a.launchedAt } : {}),
             ...(number(a.primedAt) ? { primedAt: a.primedAt } : {}),
+            ...(number(a.cutAt) ? { cutAt: a.cutAt } : {}),
             ...(Number.isInteger(a.hostPid) ? { hostPid: a.hostPid } : {}),
             ...(isRecord(a.ended) && typeof a.ended.text === 'string' ? { ended: { why: text(a.ended.why) ?? 'stopped', text: a.ended.text, at: number(a.ended.at) ?? 0, ...(Number.isInteger(a.ended.code) ? { code: a.ended.code } : {}) } } : {}),
             ...(text(a.problem) ? { problem: a.problem } : {}),
@@ -99,10 +104,38 @@ export function parseData(value) {
     }
     const recent = (Array.isArray(value?.recent) ? value.recent : []).filter((r) => isRecord(r) && typeof r.program === 'string' && STYLE_IDS.includes(r.style)).slice(0, KEEP_RECENT)
         .map((r) => ({ program: r.program, args: strings(r.args), style: r.style, ...(text(r.data) ? { data: r.data } : {}) }));
-    return { version: 1, agents, recent };
+    // The settings it last ran with (lib/config.js settingsSnapshot): what an edit of DSH's profile changed is said at the next start.
+    const settings = isRecord(value?.settings) ? Object.fromEntries(Object.entries(value.settings).filter(([key]) => /^[A-Za-z]\w{0,39}$/.test(key)).slice(0, 32)) : undefined;
+    // The DSH process that last started Agent Terminals: a start in the same one is not a start with DSH.
+    const ranPid = Number.isInteger(value?.ranPid) ? { ranPid: value.ranPid } : {};
+    return { version: 1, agents, recent, ...(settings ? { settings } : {}), ...ranPid };
 }
 
 export const terminalIdOf = (key, launches) => `agent-${key}-${launches}`;
+
+/** A path as people read it: under the home folder as ~/…, else as it is. */
+export function homeForm(path, home) {
+    const text = String(path ?? '');
+    const base = typeof home === 'string' ? home.replace(/\/+$/, '') : '';
+    if (!base || !isAbsolute(base)) return text;
+    return text === base ? '~' : text.startsWith(`${base}/`) ? `~/${text.slice(base.length + 1)}` : text;
+}
+
+/** A program as people read it: its name when it was given as one, else its path as ~/…. */
+export const programForm = (program, home) => (String(program ?? '').includes('/') ? homeForm(program, home) : String(program ?? ''));
+
+/**
+ * The one message a new agent's session gets so that DSH lists it in its
+ * sidebar: its model is given the one line to answer, and told there is no
+ * task and no answer is needed, so its reply asks nobody anything (a reply
+ * that asks would make a card in Decisions for nothing). Its words keep
+ * clear of what Session Watch reads as asking, so a model that says them
+ * back in its own words asks nothing either.
+ */
+export function listingNote(record, home) {
+    const where = homeForm(record.folder, home) || 'this session\'s folder';
+    return `A coding agent runs in this session's terminal tab: ${programName(record.program)} in ${where}, started by Agent Terminals. This message only lets DSH list the session in its sidebar: there is no task here, and no answer is needed. Reply with exactly this one line and nothing else: The coding agent runs in its terminal tab.`;
+}
 
 /**
  * Check what the start form sent, in words.
@@ -133,10 +166,10 @@ export function checkLaunch(input, { home } = {}) {
         try {
             isFolder = statSync(folder).isDirectory();
         } catch {}
-        if (!isFolder) throw new Error(`There is no folder at ${folder}: create it first, or choose another.`);
+        if (!isFolder) throw new Error(`There is no folder at ${homeForm(folder, home)}: create it first, or choose another.`);
     }
     const name = String(input.name ?? '').trim().slice(0, 80) || `${programName(program)}${folder ? ` · ${basename(folder)}` : ''}`;
-    const task = typeof input.task === 'string' && input.task.trim() ? input.task.trim() : undefined;
+    const task = typeof input.task === 'string' && plainMessage(input.task).trim() ? plainMessage(input.task).trim() : undefined;
     if (task && Buffer.byteLength(task, 'utf8') > MAX_MESSAGE) throw new Error(`The first message is longer than ${MAX_MESSAGE / 1024} KB: shorten it, or put it in a file and send the file's path.`);
     return { program: resolved, args, style, ...(data ? { data } : {}), ...(folder ? { folder } : {}), ...(sessionId ? { sessionId } : {}), name, ...(task ? { task } : {}) };
 }
@@ -183,7 +216,7 @@ export class AgentTerminals {
      * @param {() => boolean} [options.working] - false while a setting is wrong.
      * @param {() => void} [options.changed] - what the page shows moved.
      */
-    constructor({ watch, controller, sessions, typist, config, store, journal, logger, notify, home, working = () => true, changed, now = Date.now, wait = sleep, tickMs = 1000, startCheckMs = START_CHECK_MS }) {
+    constructor({ watch, controller, sessions, typist, config, store, journal, logger, notify, home, working = () => true, changed, now = Date.now, wait = sleep, tickMs = 1000, startCheckMs = START_CHECK_MS, pid = process.pid }) {
         this.watch = watch;
         this.controller = controller;
         this.sessions = sessions;
@@ -200,12 +233,18 @@ export class AgentTerminals {
         this.wait = wait;
         this.tickMs = tickMs;
         this.startCheckMs = startCheckMs;
+        /** This DSH's process: what an earlier one left (a terminal, an open log entry) is told apart by it. */
+        this.pid = pid;
         /** What only this process knows, by agent key. */
         this.lives = new Map();
         this.timer = undefined;
         this.started = false;
         /** Counts stops: work begun before a stop (a wait for a screen, a proof loop) ends instead of acting after it. */
         this.era = 0;
+        /** The log entries of first turns this process still waits on (any other one left open was cut by a restart). */
+        this.firstTurns = new Set();
+        /** Whether the log was looked over for entries an earlier run of DSH left open. */
+        this.settled = false;
     }
 
     get records() {
@@ -241,6 +280,10 @@ export class AgentTerminals {
         if (this.started) return;
         this.started = true;
         this.schedule(0);
+        if (!this.settled) {
+            this.settled = true;
+            void this.settleStale().catch((error) => this.logger?.warn?.(`agent-terminals: could not close the log entries left open: ${errorText(error)}`));
+        }
         void this.recover().catch((error) => this.logger?.warn?.(`agent-terminals: could not pick up the agents: ${errorText(error)}`));
     }
 
@@ -274,7 +317,7 @@ export class AgentTerminals {
                 continue;
             }
             const info = this.terminalInfo(record);
-            if (!info && record.hostPid === process.pid) {
+            if (!info && record.hostPid === this.pid) {
                 // The same DSH, so not a restart: its terminal was closed while Agent Terminals was not running.
                 this.ended(record, 'closed', `Its terminal was closed while Agent Terminals was not running (closing an agent's terminal tab ends the agent). ${this.againWords(record)}`);
                 continue;
@@ -296,19 +339,20 @@ export class AgentTerminals {
                 continue;
             }
             if (info) {
-                this.ended(record, info.state === 'failed' ? 'failed' : 'exited', info.state === 'failed' ? `Its terminal failed${info.error ? `: ${info.error}` : ''}.` : exitWords(record, info.exitCode, this.againWords(record)), info.exitCode);
+                this.ended(record, info.state === 'failed' ? 'failed' : 'exited', info.state === 'failed' ? `Its terminal failed${info.error ? `: ${info.error}` : ''}.` : exitWords(record, info.exitCode, this.againWords(record), this.lastWords(record), this.home), info.exitCode);
                 continue;
             }
             // DSH restarted: its terminals ended with it, and so did what was typed in but not yet read.
             this.lostWithRestart(record);
-            const resumable = this.canResume(record);
-            if (!this.config.resumeAfterRestart || !resumable) {
+            // Only what its program can resume is resumed: one that has no conversation yet starts again without a resume.
+            const mode = this.againMode(record, { look: true });
+            if (!this.config.resumeAfterRestart || mode === 'none') {
                 record.wanted = 'stopped';
                 record.ended = {
                     why: 'restart',
-                    text: !resumable
+                    text: mode === 'none'
                         ? 'DSH restarted, which ended its terminal. This program cannot resume a conversation, so it was not started again: Start again runs it anew.'
-                        : 'DSH restarted, which ended its terminal. Starting agents again after a restart is off: Start again resumes its conversation.',
+                        : `DSH restarted, which ended its terminal. Starting agents again after a restart is off: ${this.againWords(record)}`,
                     at: this.now(),
                 };
                 this.store.change();
@@ -316,15 +360,35 @@ export class AgentTerminals {
                 this.publish(record);
                 continue;
             }
+            if (mode === 'anew') this.newConversation(record);
             try {
-                await this.run(record, { resume: true });
-                this.log({ kind: 'restart', agent: record.key, sessionId: record.sessionId, text: `Started ${record.name} again after DSH restarted`, why: 'DSH ended its terminal when it quit. It resumes its conversation in a new terminal with the same name, so its tab finds it.', state: 'done', by: 'Agent Terminals' });
+                await this.run(record, { resume: mode === 'resume' });
             } catch (error) {
                 // Still meant to run: the next start of DSH (or of Agent Terminals, once a setting is fixed) tries again.
                 this.failed(record, error, 'after DSH restarted', { keepWanted: true });
+                continue;
             }
+            // Started is said once it holds (its screen settles and it still runs); one that ends at once says why instead.
+            void this.confirmRestart(record, mode).catch((error) => this.logger?.warn?.(`agent-terminals: ${record.name}: ${errorText(error)}`));
         }
         this.changed();
+    }
+
+    /** A program started again after DSH restarted: logged as started once it holds, or as not started, with why. */
+    async confirmRestart(record, mode) {
+        const era = this.era;
+        const problem = await this.confirmStart(record, { untilReady: true });
+        if (this.era !== era || !this.records[record.key]) return;
+        if (problem) {
+            this.log({ kind: 'restart', agent: record.key, sessionId: record.sessionId, text: `Could not start ${record.name} again after DSH restarted`, why: problem, state: 'failed', by: 'Agent Terminals' });
+            return;
+        }
+        const why = mode === 'resume'
+            ? `DSH ended its terminal when it quit. It resumes its ${record.style === 'continue' ? 'folder\'s latest conversation' : 'conversation'} in a new terminal with the same name, so its tab finds it.`
+            : mode === 'id'
+                ? 'DSH ended its terminal when it quit. It had no conversation to resume yet (its program writes one with its first message), so it starts again under the same id, in a new terminal with the same name.'
+                : 'DSH ended its terminal when it quit. It had no conversation to resume yet, so it starts a new one, in a new terminal with the same name.';
+        this.log({ kind: 'restart', agent: record.key, sessionId: record.sessionId, text: `Started ${record.name} again after DSH restarted`, why, state: 'done', by: 'Agent Terminals' });
     }
 
     schedule(ms = this.tickMs) {
@@ -353,7 +417,7 @@ export class AgentTerminals {
         if (record.wanted === 'running' && live.launchAt && !live.launching && !live.exited) {
             const info = this.terminalInfo(record);
             if (!info) this.ended(record, 'closed', `Its terminal was closed (closing an agent's terminal tab ends the agent). ${this.againWords(record)}`);
-            else if (info.state === 'exited') this.ended(record, 'exited', exitWords(record, info.exitCode, this.againWords(record)), info.exitCode);
+            else if (info.state === 'exited') this.ended(record, 'exited', exitWords(record, info.exitCode, this.exitAgain(record, live, info.exitCode), this.lastWords(record), this.home), info.exitCode);
             else if (info.state === 'failed') this.ended(record, 'failed', `Its terminal failed${info.error ? `: ${info.error}` : ''}.`);
         }
         this.read(record);
@@ -384,7 +448,7 @@ export class AgentTerminals {
         // A path that is not a program is said before a session is made for it.
         if (spec.program.includes('/')) {
             const path = expandHome(spec.program, this.home);
-            if (!findProgram(path, this.home).found) throw new Error(`There is no program at ${path}: check the path, and that the file is executable.`);
+            if (!findProgram(path, this.home).found) throw new Error(`There is no program at ${homeForm(path, this.home)}: check the path, and that the file is executable.`);
         }
         let sessionId = spec.sessionId;
         let folder = spec.folder;
@@ -396,7 +460,7 @@ export class AgentTerminals {
             folder = row.cwd ?? folder ?? '';
         } else {
             sessionId = await this.sessions.create(folder).catch((error) => {
-                throw new Error(`DSH could not make a session in ${folder}: ${errorText(error)}`);
+                throw new Error(`DSH could not make a session in ${homeForm(folder, this.home)}: ${errorText(error)}`);
             });
         }
         const key = randomUUID().replace(/-/g, '').slice(0, 8);
@@ -420,8 +484,9 @@ export class AgentTerminals {
         };
         this.records[key] = record;
         this.store.change();
-        const why = `${by === 'you' ? 'You' : by} started ${record.program} in ${folder || 'its session\'s folder'}${spec.sessionId ? '' : ', in a new session'}.`;
-        const entry = this.log({ kind: 'start', agent: key, sessionId, text: `Starting ${record.name}`, why, state: 'starting', by, program: record.program });
+        // Paths as people read them (~/…): the card's command shows the whole of it on hover.
+        const why = `${by === 'you' ? 'You' : by} started ${programForm(record.program, this.home)} in ${homeForm(folder, this.home) || 'its session\'s folder'}${spec.sessionId ? '' : ', in a new session'}.`;
+        const entry = this.log({ kind: 'start', agent: key, sessionId, text: `Starting ${record.name}`, why, state: 'starting', by, program: record.program, pid: this.pid });
         if (!spec.sessionId) {
             try {
                 await this.sessions.rename(sessionId, record.name);
@@ -446,7 +511,7 @@ export class AgentTerminals {
             try {
                 this.journal.set(entry.id, problem
                     ? { text: `Could not start ${record.name}`, state: 'failed', reason: problem }
-                    : { text: `Started ${record.name}`, state: 'done', ...(look.found ? {} : { why: `${why} DSH did not find ${record.program} where it looks for programs; the shell in its terminal did.` }) });
+                    : { text: `Started ${record.name}`, state: 'done', ...(look.found ? {} : { why: `${why} DSH did not find ${programForm(record.program, this.home)} where it looks for programs; the shell in its terminal did.` }) });
             } catch {}
         }
         // The session gets its first turn (so DSH lists it) only once the program runs: none for one that is not there.
@@ -461,16 +526,21 @@ export class AgentTerminals {
      * ends within that moment.
      * @returns {Promise<string | undefined>} why it did not start, in words.
      */
-    async confirmStart(record) {
+    async confirmStart(record, { untilReady = false } = {}) {
         const live = this.liveOf(record);
-        for (let waited = 0; waited < this.startCheckMs; waited += 250) {
+        const era = this.era;
+        // After a restart nobody waits on the answer: it waits for the program to settle (a slow one fails later).
+        const most = untilReady ? Math.max(this.startCheckMs, READY_CHECK_MS) : this.startCheckMs;
+        for (let waited = 0; waited < most; waited += 250) {
             await this.wait(250);
+            if (this.era !== era) return undefined;
             if (live.exited || record.wanted !== 'running') break;
             const info = this.terminalInfo(record);
             if (!info || info.state !== 'running') {
                 this.check(record);
                 break;
             }
+            if (untilReady && live.ready && waited + 250 >= this.startCheckMs) break;
         }
         if (!live.exited && record.wanted === 'running') return undefined;
         return record.ended?.text ?? record.problem ?? 'It ended at once.';
@@ -492,36 +562,109 @@ export class AgentTerminals {
         }
         record.launches += 1;
         record.terminalId = terminalIdOf(record.key, record.launches);
-        const resume = !fresh && this.canResume(record);
-        if (!resume) {
-            delete record.transcript;
-            if (STYLES[record.style]?.idAtStart) record.conversationId = randomUUID();
-            else delete record.conversationId;
-        }
+        // Only what its program can resume is resumed: one with no conversation yet starts again under its id, or anew.
+        const mode = fresh ? 'fresh' : this.againMode(record, { look: true });
+        if (mode === 'fresh' || mode === 'anew' || mode === 'none') this.newConversation(record);
         this.store.change();
+        const who = by === 'you' ? 'You' : by;
+        const why = {
+            resume: `${who} started it again; it resumes its ${record.style === 'continue' ? 'folder\'s latest conversation' : 'conversation'}.`,
+            id: `${who} started it again under the same id: it had no conversation to resume yet (its program writes one with its first message).`,
+            anew: `${who} started it again; it had no conversation to resume yet, so it starts a new one.`,
+            none: `${who} started it again; this program cannot resume, so it starts anew.`,
+            fresh: `${who} started it again with a new conversation.`,
+        }[mode];
         let problem;
         try {
-            await this.run(record, { resume });
+            await this.run(record, { resume: mode === 'resume' });
             problem = await this.confirmStart(record);
-            if (!problem) this.log({ kind: 'start', agent: key, sessionId: record.sessionId, text: `Started ${record.name} again`, why: resume ? `${by === 'you' ? 'You' : by} started it again; it resumes its conversation.` : `${by === 'you' ? 'You' : by} started it again${fresh ? ' with a new conversation' : '; this program cannot resume, so it starts anew'}.`, state: 'done', by });
+            this.log(problem
+                ? { kind: 'start', agent: key, sessionId: record.sessionId, text: `Could not start ${record.name} again`, why: problem, state: 'failed', by }
+                : { kind: 'start', agent: key, sessionId: record.sessionId, text: `Started ${record.name} again`, why, state: 'done', by });
         } catch (error) {
+            // Said by failed(): the card and the log name what stopped it.
             problem = this.failed(record, error, 'when started again');
         }
         this.changed();
         return { agent: this.view(record), ...(problem ? { problem } : {}) };
     }
 
-    /** What Start again does for an agent, in words. */
-    againWords(record) {
-        return this.canResume(record) ? 'Start again resumes its conversation.' : 'Start again runs it anew (this program cannot resume a conversation).';
+    /** A new conversation at the next start: a new id for a program that takes one, else none until its transcript names it. */
+    newConversation(record) {
+        delete record.transcript;
+        delete record.cutAt;
+        if (STYLES[record.style]?.idAtStart) record.conversationId = randomUUID();
+        else delete record.conversationId;
+        this.store.change();
+    }
+
+    /**
+     * How the next start of an agent goes, by what its program has:
+     * 'resume' its conversation; 'id': no conversation uses its id yet (a
+     * program that takes its id at the start writes its transcript with its
+     * first message), so it starts under that id again; 'anew': no
+     * conversation to resume yet, so a new one; 'none': its program cannot
+     * resume. `look` also searches its whole conversations folder for a
+     * transcript the CLI put elsewhere (read() does that every few seconds).
+     * @returns {'resume' | 'id' | 'anew' | 'none'}
+     */
+    againMode(record, { look = false } = {}) {
+        const style = STYLES[record.style];
+        if (!style?.resume) return 'none';
+        if (style.idAtStart) {
+            if (!record.conversationId) return 'anew';
+            return this.hasTranscript(record, look) ? 'resume' : 'id';
+        }
+        if (record.style === 'subcommand') return record.conversationId ? 'resume' : 'anew';
+        return 'resume';
+    }
+
+    /** Whether the transcript of a program that takes its id at the start is there yet. */
+    hasTranscript(record, look) {
+        const path = transcriptPath(record, this.home);
+        if (path && existsSync(path)) return true;
+        if (!look) return false;
+        const found = findFlagsTranscript(record, this.home);
+        if (!found) return false;
+        if (found !== record.transcript) {
+            record.transcript = found;
+            this.store.change();
+        }
+        return true;
     }
 
     /** Whether an agent's conversation can be resumed now. */
-    canResume(record) {
-        const style = STYLES[record.style];
-        if (!style?.resume) return false;
-        if (style.idAtStart || record.style === 'subcommand') return Boolean(record.conversationId);
-        return true;
+    canResume(record, options) {
+        return this.againMode(record, options) === 'resume';
+    }
+
+    /** What Start again does for an agent, in words. */
+    againWords(record, { look = true } = {}) {
+        switch (this.againMode(record, { look })) {
+            case 'resume': return record.style === 'continue' ? 'Start again resumes the latest conversation in its folder.' : 'Start again resumes its conversation.';
+            case 'none': return 'Start again runs it anew (this program cannot resume a conversation).';
+            default: return 'Start again starts it again (it has no conversation to resume yet).';
+        }
+    }
+
+    /** What Start again does, said when its program ended: after a resume that failed at once, Start anew is said too. */
+    exitAgain(record, live, code) {
+        if (live.resumed && Number.isInteger(code) && code !== 0 && this.now() - (live.launchAt || 0) < EARLY_EXIT_MS) {
+            return 'Start again tries to resume it once more; Start anew starts a new conversation.';
+        }
+        return this.againWords(record);
+    }
+
+    /** What the program printed last before it ended: the last line on its screen after the line that started it. */
+    lastWords(record) {
+        const lines = this.typist.screenLines(record.sessionId, record.terminalId);
+        if (!Array.isArray(lines)) return undefined;
+        let from = 0;
+        lines.forEach((line, at) => {
+            if (String(line).includes('|| exit $?')) from = at + 1;
+        });
+        const said = lines.slice(from).map((line) => String(line).trim()).filter((line) => /[\p{L}\p{N}]/u.test(line));
+        return said.length ? clip(said.at(-1), 200) : undefined;
     }
 
     /**
@@ -535,6 +678,7 @@ export class AgentTerminals {
             delete record.problem;
             live.exited = false;
             live.ready = false;
+            live.resumed = resume;
             this.publish(record);
             const controller = this.controller();
             if (typeof controller?.create !== 'function') throw new Error('This DSH has no terminals for plugins (its terminal controller is not running).');
@@ -583,7 +727,7 @@ export class AgentTerminals {
             }
             if (this.typist.way(record.sessionId, record.terminalId).way === 'attached') this.typist.release(record.sessionId, record.terminalId);
             record.launchedAt = this.now();
-            record.hostPid = process.pid;
+            record.hostPid = this.pid;
             delete record.ended;
             record.wanted = 'running';
             live.launchAt = record.launchedAt;
@@ -672,10 +816,12 @@ export class AgentTerminals {
      * when that turn ends.
      */
     async firstTurn(record) {
-        const note = `A coding agent runs in this session's terminal: ${record.program} in ${record.folder || 'this session\'s folder'}, started by Agent Terminals. Reply with one short line to say you see it; there is nothing else to do.`;
-        const entry = this.log({ kind: 'session', agent: record.key, sessionId: record.sessionId, text: 'Giving its session a first turn', why: 'DSH lists a session in its sidebar once a turn ran in it. The session\'s model answers one line.', state: 'sending', by: 'Agent Terminals' });
+        const note = listingNote(record, this.home);
+        const entry = this.log({ kind: 'session', agent: record.key, sessionId: record.sessionId, text: 'Giving its session a first turn', why: 'DSH lists a session in its sidebar once a turn ran in it. The session\'s model answers one line.', state: 'sending', by: 'Agent Terminals', pid: this.pid });
+        if (entry) this.firstTurns.add(entry.id);
         const set = (patch) => {
             if (!entry) return;
+            this.firstTurns.delete(entry.id);
             try { this.journal.set(entry.id, patch); } catch {}
         };
         let off;
@@ -693,14 +839,70 @@ export class AgentTerminals {
             if (delivery?.state === 'failed') throw new Error(delivery.reason ?? 'the session did not take it');
             const end = await ended;
             if (!end) set({ text: 'Gave its session a first turn', state: 'done', reason: off ? 'Its session took the message; its turn had not ended 5 minutes later.' : 'Its session took the message.' });
-            else if (end.kind === 'completed') set({ text: 'Gave its session a first turn', state: 'done' });
-            else set({ text: 'Its session\'s first turn did not finish', state: 'failed', reason: `The turn ended ${end.kind === 'error' ? `with an error${end.error ? `: ${end.error}` : ''}` : end.kind === 'aborted' ? 'stopped' : `as ${end.kind ?? 'unknown'}`}. The session is listed in the sidebar all the same.` });
+            else if (end.kind === 'completed') {
+                // Its model was told to ask nothing; one that asked all the same may have a card in Decisions: said, so it is not taken for the agent's.
+                const asked = await this.askedInFirstTurn(record);
+                set({ text: 'Gave its session a first turn', state: 'done', ...(asked ? { reason: `Its model's reply asked something all the same (“${clip(asked, 120)}”): Decisions may list it, though nothing waits on you there. Dismiss it in Decisions.` } : {}) });
+            } else set({ text: 'Its session\'s first turn did not finish', state: 'failed', reason: `${turnEnd(end)}. The session is listed in the sidebar all the same.` });
         } catch (error) {
             set({ text: 'Could not give its session a first turn', state: 'failed', reason: `${errorText(error)}. The session is listed once you open it and send something.` });
         } finally {
             clearTimeout(timer);
             try { off?.(); } catch {}
+            if (entry) this.firstTurns.delete(entry.id);
         }
+    }
+
+    /** What the session's model asked in its reply to the listing note, if it asked anything (Session Watch reads the reply). */
+    async askedInFirstTurn(record) {
+        try {
+            const state = await this.watch.fullState?.(record.sessionId);
+            const ask = state?.ask;
+            if (!isRecord(ask) || typeof ask.question !== 'string' || ask.soft === true) return undefined;
+            return !isRecord(state.end) || ask.turn === state.end.turn ? ask.question : undefined;
+        } catch {
+            return undefined;
+        }
+    }
+
+    /**
+     * At the first start in this DSH: close the log entries an earlier run
+     * left open, so none says "sending" or "starting" for good. A session's
+     * first turn cut by a restart is settled from the session's own last
+     * turn; a start DSH quit during, from whether the agent ran; a message of
+     * an agent that was forgotten, as taken back.
+     */
+    async settleStale() {
+        const open = this.journal.list({ limit: 400 }).filter((entry) => entry.pid !== this.pid && (
+            (entry.kind === 'session' && entry.state === 'sending')
+            || (entry.kind === 'start' && entry.state === 'starting')
+            || (entry.kind === 'message' && ['queued', 'waiting', 'typing', 'typed'].includes(entry.state) && !this.records[entry.agent])));
+        for (const entry of open) {
+            if (entry.kind === 'start') {
+                const record = this.records[entry.agent];
+                const ran = Boolean(record?.launchedAt && record.launchedAt >= (entry.at ?? 0));
+                this.setEntry(entry.id, ran
+                    ? { text: String(entry.text ?? '').replace(/^Starting /, 'Started '), state: 'done', reason: 'DSH quit just after it started, before the start was checked.' }
+                    : { text: String(entry.text ?? '').replace(/^Starting /, 'Could not start '), state: 'failed', reason: 'DSH quit before it started.' });
+            } else if (entry.kind === 'message') {
+                this.setEntry(entry.id, { state: entry.state === 'typed' ? 'not proven' : 'cancelled', reason: entry.state === 'typed' ? 'Its agent was forgotten before its transcript showed it.' : 'Its agent was forgotten before it was typed in.' });
+            } else {
+                let end;
+                try {
+                    end = (await this.watch.fullState?.(entry.sessionId))?.end;
+                } catch {}
+                const endAt = typeof end?.at === 'number' ? end.at : Date.parse(end?.at ?? '');
+                const after = Number.isFinite(endAt) && endAt >= (entry.at ?? 0);
+                if (after && end.kind === 'completed') this.setEntry(entry.id, { text: 'Gave its session a first turn', state: 'done', reason: 'Its turn ended while DSH was quitting.' });
+                else if (after) this.setEntry(entry.id, { text: 'Its session\'s first turn did not finish', state: 'stopped', reason: `${turnEnd(end)}, as DSH quit. The session is listed in the sidebar all the same.` });
+                else this.setEntry(entry.id, { text: 'Its session\'s first turn was cut off', state: 'stopped', reason: 'DSH quit before the turn ended. The session is listed in the sidebar all the same.' });
+            }
+        }
+        if (open.length) this.changed();
+    }
+
+    setEntry(id, patch) {
+        try { this.journal.set(id, patch); } catch {}
     }
 
     // ── Stopping ───────────────────────────────────────────────────────
@@ -723,7 +925,8 @@ export class AgentTerminals {
         }
         this.waitDeliveries(record, 'The agent is stopped: Start again and this is typed in.');
         this.store.change();
-        this.log({ kind: 'stop', agent: key, sessionId: record.sessionId, text: `Stopped ${record.name}`, why: closed ? 'Its terminal was closed, which ends the program in it.' : 'Its terminal could not be closed; it may still run until DSH ends it.', state: closed ? 'done' : 'failed', by });
+        const who = by === 'you' ? 'You' : by;
+        this.log({ kind: 'stop', agent: key, sessionId: record.sessionId, text: `Stopped ${record.name}`, why: closed ? `${who} stopped it; its terminal closed, which ends the program in it.` : `${who} stopped it, but its terminal could not be closed: it may still run until DSH ends it.`, state: closed ? 'done' : 'failed', by });
         this.publish(record);
         this.changed();
         return { agent: this.view(record) };
@@ -735,6 +938,11 @@ export class AgentTerminals {
         const record = this.need(key);
         if (record.wanted === 'running' || this.terminalInfo(record)?.state === 'running') await this.stopAgent(key, { by });
         const live = this.liveOf(record);
+        // Its messages not typed in (or not yet proven) go with it, said so; an answer's question is not raised again.
+        for (const item of record.deliveries) {
+            if (OPEN.has(item.state) || item.state === 'typing') this.close(record, item, 'cancelled', 'Its agent was forgotten before it was typed in.');
+            else if (item.state === 'typed') this.close(record, item, 'not proven', 'Its agent was forgotten before its transcript showed it.');
+        }
         if (live.askId) {
             try { this.watch.dropAsk(live.askId); } catch {}
         }
@@ -811,7 +1019,10 @@ export class AgentTerminals {
         }
         const closed = closeOver(fold, Infinity);
         live.fold = closed;
-        if (closed.cut && !fold.cut) {
+        // Logged once: a second restart before the next message finds the same job cut, and says nothing again.
+        if (closed.cut && !fold.cut && closed.cut.at !== record.cutAt) {
+            record.cutAt = closed.cut.at;
+            this.store.change();
             this.log({ kind: 'cut', agent: record.key, sessionId: record.sessionId, text: `${record.name}'s job was cut off`, why: `Its program ended while it worked on “${clip(closed.cut.text, 120)}”. It starts again idle in the same conversation: send it a message to carry on.`, state: 'stopped', by: 'Agent Terminals' });
         }
     }
@@ -876,17 +1087,22 @@ export class AgentTerminals {
         const live = this.liveOf(record);
         if (live.launching) return { status: 'starting', detail: 'Starting its terminal.' };
         if (record.wanted !== 'running' || live.exited) return { status: 'stopped', detail: record.ended?.text ?? record.problem ?? 'Not running.' };
-        // Agent Terminals is not running its agents (a wrong setting, or no terminals): the agent is not running either.
+        // Agent Terminals is not running its agents (switched off in the profile, a wrong setting, or no terminals): the agent is not running either.
         if (!this.started && !live.launchAt) {
-            // Its program may still run in its terminal (a setting went wrong while it ran): said so, not "stopped".
+            const off = this.config.enabled === false;
+            // Its program may still run in its terminal (switched off or a setting went wrong while it ran): said so, not "stopped".
             if (this.terminalInfo(record)?.state === 'running') {
-                return { status: 'running', unfollowed: true, detail: this.working()
-                    ? 'Running in its terminal. Agent Terminals picks it up where it is once DSH\'s terminals are there.'
-                    : 'Running in its terminal, not followed: Agent Terminals waits for a setting to be fixed (see the top of this page), then picks it up where it is.' };
+                return { status: 'running', unfollowed: true, detail: off
+                    ? 'Running in its terminal, not followed: Agent Terminals is switched off in DSH\'s profile (enabled: false). Set enabled to true there and it picks it up where it is.'
+                    : this.working()
+                        ? 'Running in its terminal. Agent Terminals picks it up where it is once DSH\'s terminals are there.'
+                        : 'Running in its terminal, not followed: Agent Terminals waits for a setting to be fixed (see the top of this page), then picks it up where it is.' };
             }
-            return { status: 'stopped', detail: this.working()
-                ? 'Not running: DSH\'s terminals are not there, so Agent Terminals cannot pick it up yet.'
-                : 'Not running: Agent Terminals waits for a setting to be fixed (see the top of this page), then picks it up again.' };
+            return { status: 'stopped', detail: off
+                ? 'Not running: Agent Terminals is switched off in DSH\'s profile (enabled: false). Set enabled to true there and it picks it up again.'
+                : this.working()
+                    ? 'Not running: DSH\'s terminals are not there, so Agent Terminals cannot pick it up yet.'
+                    : 'Not running: Agent Terminals waits for a setting to be fixed (see the top of this page), then picks it up again.' };
         }
         if (!live.launchAt) return { status: 'starting', detail: 'Picking it up.' };
         const format = STYLES[record.style]?.format ?? 'none';
@@ -984,7 +1200,7 @@ export class AgentTerminals {
             error.refused = true;
             throw error;
         }
-        const words = answer === 'recommended' && ask.recommendation ? `Go with your recommendation: ${ask.recommendation}` : String(answer ?? '').trim();
+        const words = plainMessage(answer === 'recommended' && ask.recommendation ? `Go with your recommendation: ${ask.recommendation}` : answer).trim();
         if (!words) throw new Error('The answer is empty.');
         const item = this.queue(record, words, by, 'as an answer in Decisions', { askId: ask.id });
         return { text: `It goes into “${record.name}”'s terminal when the agent is ready, and counts as delivered once its transcript shows it.`, delivery: item.id };
@@ -996,7 +1212,8 @@ export class AgentTerminals {
     send(key, words, { by = 'you' } = {}) {
         this.ensureWorking();
         const record = this.need(key);
-        const body = String(words ?? '').trim();
+        // Control keys never go in with a message, so what is kept is what its transcript will show.
+        const body = plainMessage(words).trim();
         if (!body) throw new Error('Write the message first.');
         if (Buffer.byteLength(body, 'utf8') > MAX_MESSAGE) throw new Error(`The message is longer than ${MAX_MESSAGE / 1024} KB: shorten it, or put it in a file and send the file's path.`);
         const item = this.queue(record, body, by);
@@ -1018,6 +1235,22 @@ export class AgentTerminals {
         this.changed();
         void this.pump(record);
         return item;
+    }
+
+    /** A message that did not go in (failed) or was not proven, sent again: its whole text, as a new message. */
+    resend(key, id, { by = 'you' } = {}) {
+        this.ensureWorking();
+        const record = this.need(key);
+        const item = record.deliveries.find((d) => d.id === id);
+        if (!item) throw new Error('That message is not in its list any more.');
+        if (item.resent) throw new Error('It was sent again already: see the newer message.');
+        if (item.state !== 'failed' && item.state !== 'not proven') {
+            throw new Error(item.state === 'delivered' ? 'Its transcript shows it already.' : item.state === 'cancelled' ? 'It was taken back: write it again below.' : 'It is still on its way: only a message that failed or was not proven is sent again.');
+        }
+        const again = this.queue(record, item.text, by, 'again');
+        item.resent = again.id;
+        this.store.change();
+        return { delivery: { ...again } };
     }
 
     /** Take back a message that is not typed in yet. */
@@ -1044,6 +1277,19 @@ export class AgentTerminals {
             if (OPEN.has(item.state) && item.why !== why) {
                 item.state = 'waiting';
                 item.why = why;
+            }
+        }
+    }
+
+    /** What became of a message of an agent that goes: on it, in its log entry, and (for an answer) in Decisions. */
+    close(record, item, state, why) {
+        Object.assign(item, { state, why });
+        if (item.entry) this.setEntry(item.entry, { state, reason: why });
+        if (item.askId && OUTCOME[state]) {
+            try {
+                this.watch.askOutcome?.(item.askId, { state: OUTCOME[state], text: why, by: 'Agent Terminals', sessionId: record.sessionId });
+            } catch (error) {
+                this.logger?.warn?.(`agent-terminals: could not tell Decisions: ${errorText(error)}`);
             }
         }
     }
@@ -1168,9 +1414,9 @@ export class AgentTerminals {
                 // Stopped: the next start looks for its proof (lateProof); it presses no Enter.
                 if (this.era !== era || !this.records[record.key]) return;
                 this.read(record);
-                const proof = provenIn(live.fold, item.text, since);
+                const proof = this.proofsOf(record, live.fold).get(item.id);
                 if (proof) {
-                    this.settle(record, item, 'delivered', `Its transcript shows it${item.enters > 1 ? `, after Enter ${item.enters} times (the first was swallowed)` : ''}.`, { provenAt: proof.at || this.now() });
+                    this.settle(record, item, 'delivered', `Its transcript shows it${item.enters > 1 ? `, after Enter ${item.enters} times (the first was swallowed)` : ''}.`, provedBy(proof, this.now()));
                     this.log({ kind: 'proof', agent: record.key, sessionId: record.sessionId, text: `${record.name} has the message`, why: `Its own transcript shows “${clip(item.text, 120)}”.`, state: 'done', by: 'Agent Terminals' });
                     this.publish(record);
                     return;
@@ -1219,24 +1465,48 @@ export class AgentTerminals {
     }
 
     /**
+     * The transcript's proof for every message of an agent still looking
+     * for one (typed in, or not proven within a day), each line proving one
+     * message only, the oldest message first; the places that proved its
+     * delivered messages stay theirs.
+     * @returns {Map<string, { at: number, key: string, from: number, to: number }>} by message id.
+     */
+    proofsOf(record, fold) {
+        const now = this.now();
+        const wanted = [];
+        const claimed = [];
+        for (const d of record.deliveries) {
+            if (d.state === 'delivered') {
+                if (isRecord(d.proof) && typeof d.proof.key === 'string') claimed.push(d.proof);
+                else if (Number.isFinite(d.provenAt)) claimed.push({ at: d.provenAt, text: d.text });
+            } else if (Number.isFinite(d.typedAt) && (d.state === 'typed' || (d.state === 'not proven' && now - d.typedAt <= LATE_PROOF_MS))) {
+                wanted.push({ id: d.id, text: d.text, since: d.typedAt });
+            }
+        }
+        return proofs(fold, wanted, claimed);
+    }
+
+    /**
      * A message typed in before Agent Terminals stopped (a plugin reload)
      * still has its proof looked for, without pressing Enter again.
      */
     lateProof(record, live) {
         if (!live.fold || STYLES[record.style]?.format === 'none') return;
+        // Worked out once for every message still looking (one line proves one message, the oldest first).
+        const found = this.proofsOf(record, live.fold);
         for (const item of record.deliveries) {
             if (!item.typedAt || live.proving.has(item.id)) continue;
             const late = item.state === 'not proven';
             if (item.state !== 'typed' && !(late && this.now() - item.typedAt <= LATE_PROOF_MS)) continue;
-            const proof = provenIn(live.fold, item.text, item.typedAt);
+            const proof = found.get(item.id);
             if (proof && late) {
-                this.settle(record, item, 'delivered', 'Its transcript shows it, later than Agent Terminals looked for it (it was marked not proven).', { provenAt: proof.at || this.now() });
+                this.settle(record, item, 'delivered', 'Its transcript shows it, later than Agent Terminals looked for it (it was marked not proven).', provedBy(proof, this.now()));
                 this.log({ kind: 'proof', agent: record.key, sessionId: record.sessionId, text: `${record.name} has the message after all`, why: `Its own transcript shows “${clip(item.text, 120)}”, later than Agent Terminals looked for it.`, state: 'done', by: 'Agent Terminals' });
                 if (item.noProof) {
                     try { this.journal.set(item.noProof, { state: 'done', reason: 'Seen later: its transcript shows it.' }); } catch {}
                 }
             } else if (proof) {
-                this.settle(record, item, 'delivered', 'Its transcript shows it.', { provenAt: proof.at || this.now() });
+                this.settle(record, item, 'delivered', 'Its transcript shows it.', provedBy(proof, this.now()));
             } else if (!late && this.now() - item.typedAt > PROOF_WHILE_WORKING_MS) {
                 this.settle(record, item, 'not proven', 'Typed in 30 minutes ago, and its transcript still does not show it. Look at its terminal.');
             }
@@ -1262,10 +1532,13 @@ export class AgentTerminals {
         } catch (error) {
             this.logger?.warn?.(`agent-terminals: could not read the transcript of ${record.name}: ${errorText(error)}`);
         }
+        // One line proves one message: a line an earlier message was proven by (the same words sent twice,
+        // or words inside an earlier message) proves nothing more, so a message the program never read is typed again.
+        const found = this.proofsOf(record, fold);
         for (const item of typed) {
-            const proof = provenIn(fold, item.text, item.typedAt);
+            const proof = found.get(item.id);
             if (proof) {
-                this.settle(record, item, 'delivered', 'Its transcript shows it.', { provenAt: proof.at || this.now() });
+                this.settle(record, item, 'delivered', 'Its transcript shows it.', provedBy(proof, this.now()));
             } else if (item.again) {
                 this.settle(record, item, 'failed', 'DSH restarted twice before the agent read it, and each time its program ended with the message unread in its input line. Send it again.');
                 this.log({ kind: 'restart', agent: record.key, sessionId: record.sessionId, text: `A message for ${record.name} was lost`, why: `DSH restarted twice before the agent read “${clip(item.text, 120)}”.`, state: 'failed', by: 'Agent Terminals' });
@@ -1296,8 +1569,20 @@ export class AgentTerminals {
 
     remember(spec) {
         const entry = { program: spec.program, args: spec.args, style: spec.style, ...(spec.data ? { data: spec.data } : {}) };
-        const same = (r) => r.program === entry.program && r.style === entry.style && JSON.stringify(r.args) === JSON.stringify(entry.args) && r.data === entry.data;
-        this.store.data.recent = [entry, ...this.store.data.recent.filter((r) => !same(r))].slice(0, KEEP_RECENT);
+        this.store.data.recent = this.distinct([entry, ...this.store.data.recent]);
+    }
+
+    /** Programs used before, each once: a conversations folder given as ~/… or in full, or left as the default, is one folder. */
+    distinct(list) {
+        const seen = new Set();
+        const out = [];
+        for (const r of list) {
+            const id = JSON.stringify([expandHome(r.program, this.home), r.style, r.args, dataFolder(r, this.home)]);
+            if (seen.has(id)) continue;
+            seen.add(id);
+            out.push(r);
+        }
+        return out.slice(0, KEEP_RECENT);
     }
 
     /** One agent as the page shows it. */
@@ -1328,6 +1613,7 @@ export class AgentTerminals {
             ready: live.ready,
             launching: Boolean(live.launching),
             canResume: this.canResume(record),
+            again: this.againWords(record, { look: false }),
             ...(record.conversationId ? { conversationId: record.conversationId } : {}),
             ...(transcriptPath(record, this.home) ? { transcript: transcriptPath(record, this.home) } : {}),
             keepsTranscript: STYLES[record.style]?.format !== 'none',
@@ -1339,7 +1625,7 @@ export class AgentTerminals {
             launches: record.launches,
             typing: this.typist.way(record.sessionId, record.terminalId).way ?? null,
             controlTakenAt: this.typist.takenAt(record.sessionId, record.terminalId),
-            deliveries: record.deliveries.slice(-12).reverse().map((d) => ({ id: d.id, text: clipLines(d.text, 400), by: d.by, at: d.at, state: d.state, ...(d.why ? { why: d.why } : {}), ...(d.enters ? { enters: d.enters } : {}), ...(d.way ? { way: d.way } : {}), ...(d.provenAt ? { provenAt: d.provenAt } : {}) })),
+            deliveries: record.deliveries.slice(-12).reverse().map((d) => ({ id: d.id, text: clipLines(d.text, 400), by: d.by, at: d.at, state: d.state, ...(d.why ? { why: d.why } : {}), ...(d.enters ? { enters: d.enters } : {}), ...(d.way ? { way: d.way } : {}), ...(d.provenAt ? { provenAt: d.provenAt } : {}), ...(d.resent ? { resent: d.resent } : {}) })),
         };
     }
 
@@ -1369,18 +1655,38 @@ export class AgentTerminals {
         });
     }
 
+    /**
+     * Programs used before, each with its conversations folder when it is
+     * not the default one (so two that differ there read apart), and both
+     * as people read them (`shown`: ~/… for a path under the home folder).
+     */
     get recent() {
-        return this.store.data.recent;
+        return this.distinct(this.store.data.recent).map((r) => {
+            const folder = dataFolder(r, this.home);
+            const other = r.data && folder !== dataFolder({ program: r.program }, this.home);
+            return { ...r, ...(other ? { folder } : {}), shown: { program: programForm(r.program, this.home), ...(other ? { folder: homeForm(folder, this.home) } : {}) } };
+        });
     }
 }
 
+/** What a delivered message keeps of its proof: when the line was written, and which place in which line (so no other message is proven by it). */
+const provedBy = (proof, now) => ({ provenAt: proof.at || now, proof: { key: proof.key, from: proof.from, to: proof.to } });
+
+/** How a session's turn ended, in words (Session Watch's turn end). */
+export function turnEnd(end) {
+    if (end?.kind === 'error') return `The turn ended with an error${end.error ? `: ${String(end.error).replace(/\.$/, '')}` : ''}`;
+    if (end?.kind === 'aborted' || end?.kind === 'interrupted') return 'The turn was stopped';
+    return `The turn ended as ${end?.kind ?? 'unknown'}`;
+}
+
 /** Why an agent's program ended, in words, from its exit code. */
-export function exitWords(record, code, again = 'Start again resumes its conversation.') {
-    if (code === 127) return `It exited with code 127: the shell could not find ${record.program}. Use its full path (“which ${programName(record.program)}” in a terminal shows it), or check the name.`;
-    if (code === 126) return `It exited with code 126: ${record.program} is not a program the shell can run. Check the path and that it is executable.`;
+export function exitWords(record, code, again = 'Start again resumes its conversation.', last = undefined, home = undefined) {
+    if (code === 127) return `It exited with code 127: the shell could not find ${programForm(record.program, home)}. Use its full path (“which ${programName(record.program)}” in a terminal shows it), or check the name.`;
+    if (code === 126) return `It exited with code 126: ${programForm(record.program, home)} is not a program the shell can run. Check the path and that it is executable.`;
     if (code === 0) return `It exited by itself (code 0). ${again}`;
     if (code === 130 || code === 129 || code === 143) return `It was interrupted (code ${code}). ${again}`;
-    return `It exited${Number.isInteger(code) ? ` with code ${code}` : ''}. Its terminal shows why. ${again}`;
+    // What it printed last says why (its screen is gone once its terminal closes).
+    return `It exited${Number.isInteger(code) ? ` with code ${code}` : ''}${last ? `: “${last}”` : ''}. ${again}`;
 }
 
 /**

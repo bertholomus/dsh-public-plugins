@@ -69,7 +69,7 @@ const CARDS = {
 };
 
 test('browser half: the header says what waits, what it lists, and where else new cards go', () => {
-    const { client } = loadClient(CLIENT);
+    const { client, window } = loadClient(CLIENT);
     const { kit, HeaderCard, DecisionsPage, TEXT } = client.internals;
     const acts = [];
     const act = (method, args) => { acts.push(plain([method, args])); };
@@ -111,6 +111,14 @@ test('browser half: the header says what waits, what it lists, and where else ne
     }
     // A test sent after the last new card still says so.
     assert.match(textIn(HeaderCard({ data: { ...base, mirror: { mode: 'webhook', place: 'hooks.example.com', perHour: 30, lastHour: 3, last: { at: failedAt - 5000, ok: true } } }, busy: false, act, said: { text: 'Test message sent to hooks.example.com.', where: 'mirror', n: 1, at: failedAt } })), /Test message sent/);
+    // Its news gets old: a minute on, the success line is gone; a failure stays until something newer says more.
+    const sentAt = Date.now() - 61000;
+    const hookData = { ...base, mirror: { mode: 'webhook', place: 'hooks.example.com', perHour: 30, lastHour: 3 } };
+    assert.match(textIn(HeaderCard({ data: hookData, busy: false, act, said: { text: 'Test message sent to hooks.example.com.', where: 'mirror', n: 1, at: sentAt }, now: sentAt + 59000 })), /Test message sent/);
+    const old = HeaderCard({ data: hookData, busy: false, act, said: { text: 'Test message sent to hooks.example.com.', where: 'mirror', n: 1, at: sentAt }, now: sentAt + 61000 });
+    assert.doesNotMatch(textIn(old), /Test message sent/);
+    assert.equal(elementsOf(old).find((e) => e.props?.['data-decisions-test-said'] !== undefined).props['data-decisions-test-said'], '', 'its live region stays, empty');
+    assert.match(textIn(HeaderCard({ data: hookData, busy: false, act, said: { text: 'Not sent: hooks.example.com: it could not be reached.', where: 'mirror', failed: true, n: 2, at: sentAt }, now: sentAt + 300000 })), /Not sent: hooks\.example\.com/);
     const opened = [];
     kit.setNavigation({ openBundle: (name) => opened.push(name) });
     const missing = HeaderCard({ data: { ...base, mirror: { mode: 'webhook', perHour: 30, lastHour: 0, problem: 'No webhook address is set yet: add it in Decisions\' settings in Plugins' } }, busy: false, act });
@@ -125,16 +133,51 @@ test('browser half: the header says what waits, what it lists, and where else ne
     elementsOf(noNotes).find((e) => e.type === 'Button' && textIn(e) === 'Open Notifications in Plugins').props.onClick();
     assert.equal(opened.at(-1), 'dsh-plugin-notifications');
     assert.equal(elementsOf(HeaderCard({ data: base, busy: false, act })).find((e) => e.type === 'Button' && textIn(e) === 'Open Notifications in Plugins'), undefined, 'not while they run');
+    // Session Watch's own wrong setting: named in the header, with a button that puts the cursor in it on Session Watch's page.
+    const watchWrong = HeaderCard({ data: { ...base, watchProblem: { text: 'How long a message may wait to be read (deliveryTimeoutSeconds) must be a whole number of seconds from 10 to 86400 (it is "600")', key: 'deliveryTimeoutSeconds', live: true } }, busy: false, act });
+    assert.match(textIn(watchWrong), /Session Watch uses its default for a wrong setting: .*\(it is "600"\)\. Change it in Session Watch's settings in Plugins\./);
+    elementsOf(watchWrong).find((e) => e.type === 'Button' && textIn(e) === 'Open Session Watch\'s settings').props.onClick();
+    assert.equal(opened.at(-1), 'dsh-plugin-session-watch');
+    // The suite's window-wide board of focus asks (the kit's openPlugin), read by Session Watch's own form.
+    assert.equal(window['dsh-plugin-suite/focus/v1']?.asks.get('dsh-plugin-session-watch')?.key, 'deliveryTimeoutSeconds', 'the cursor goes to the wrong setting');
+    // One that only the profile holds: where to change it, and no button.
+    const watchProfile = HeaderCard({ data: { ...base, watchProblem: { text: 'X (x) must be y (it is "z")', key: 'x', live: false } }, busy: false, act });
+    assert.match(textIn(watchProfile), /Change it in Session Watch's entry in DSH's profile \(cordis\.patch\.yml\)\. DSH applies the file when you save it\./);
+    assert.equal(elementsOf(watchProfile).find((e) => e.type === 'Button' && textIn(e) === 'Open Session Watch\'s settings'), undefined);
     kit.setNavigation(undefined);
     assert.equal(elementsOf(HeaderCard({ data: base, busy: false, act })).find((e) => e.type === 'Button'), undefined, 'no settings button on a DSH that cannot open it');
     assert.match(textIn(HeaderCard({ data: { ...base, mirror: { mode: 'command', place: 'notify', perHour: 30, lastHour: 0 } }, busy: false, act })), /New cards also go to notify: 0 of 30 this hour\./);
     assert.match(textIn(HeaderCard({ data: { ...base, watchProblem: { text: 'How long a message may wait to be read (deliveryTimeoutSeconds) must be a whole number of seconds from 10 to 86400 (it is 5)' } }, busy: false, act })), /Session Watch uses its default for a wrong setting: .*\(it is 5\)\. Change it in Session Watch's settings in Plugins\./);
 });
 
+test('browser half: the empty state names only what it lists, and a long wait reads in days', () => {
+    const { client } = loadClient(CLIENT);
+    const { nothingText, waitText, Waited, WaitingCard } = client.internals;
+    const all = nothingText(base.sources);
+    assert.equal(all, 'When a session asks you something (a DECISION NEEDED or BLOCKED line, a reply that ends with a question, a tool that needs approval, a question in the question box, a thread that needs a decision or a plugin\'s question), it shows here, and you can answer it here.');
+    const some = nothingText({ ...base.sources, approvals: false, threads: false });
+    assert.doesNotMatch(some, /approval|thread/, 'a kind switched off is not named');
+    assert.match(some, /a DECISION NEEDED or BLOCKED line, a reply that ends with a question, a question in the question box or a plugin's question\)/);
+    // On the page: the list's empty state, with approvals off.
+    const page = WaitingCard({ data: { ...base, sources: { ...base.sources, approvals: false }, waiting: [] }, onOpen: () => {}, act: () => {}, now: Date.now() });
+    assert.match(textIn(page), /Nothing waits on you/);
+    assert.doesNotMatch(textIn(page), /a tool that needs approval/);
+    // Waits: minutes, never "60 minutes", hours, then days from two days on (720 hours is allowed).
+    assert.equal(waitText(4 * 60), '4 minutes');
+    assert.equal(waitText(3580), '1 hour');
+    assert.equal(waitText(5.5 * 3600), '5.5 hours');
+    assert.equal(waitText(47 * 3600), '47 hours');
+    assert.equal(waitText(50.2 * 3600), '2 days', 'it read "50.2 hours"');
+    assert.equal(waitText(2.6 * 86400), '2.5 days');
+    assert.equal(waitText(30 * 86400), '30 days');
+    const now = Date.now();
+    assert.equal(textIn(Waited({ at: now - 3 * 86400000, now })), 'waiting 3 days');
+});
+
 test('browser half: with notifications not running, the header offers Notifications in Plugins only when it is installed', async () => {
     for (const [bundles, words, button] of [
         [[{ name: 'dsh-plugin-notifications', installed: true, enabled: false }], /not running: switch it on in Plugins to get them\./, true],
-        [[{ name: 'dsh-plugin-decisions', installed: true, enabled: true }], /not installed: add it in Plugins to get them\./, false],
+        [[{ name: 'dsh-plugin-decisions', installed: true, enabled: true }], /the Notifications plugin is not running: it is not installed\. Add it in Plugins to get them\./, false],
     ]) {
         const { react, mount } = statefulReact();
         const { client } = loadClient(CLIENT, { react });
@@ -150,6 +193,41 @@ test('browser half: with notifications not running, the header offers Notificati
         assert.deepEqual(asked, ['pluginManager/listBundles'], 'DSH\'s own list, read once');
         header.unmount();
     }
+});
+
+test('browser half: once the page had to say why it cannot work, a test\'s line and a failed action are not said again when it comes back', async (t) => {
+    const { react, mount } = statefulReact();
+    const { client } = loadClient(CLIENT, { react });
+    const { kit, DecisionsPage } = client.internals;
+    let up = true;
+    const state = { ...base, waiting: [CARDS.decision], mirror: { mode: 'webhook', place: 'hooks.example.com', perHour: 30, lastHour: 0 } };
+    kit.setConnection({ rpc: { call: async (_path, method) => {
+        // DSH's gateway answers 404 for a plugin that is not running.
+        if (!up) throw new Error('404 Not Found');
+        if (method === 'dsh-plugin-decisions/state') return { ok: true, value: state };
+        if (method === 'dsh-plugin-decisions/testMirror') return { ok: true, value: { place: 'hooks.example.com' } };
+        return new Promise(() => {});
+    } } });
+    const page = mount(DecisionsPage, { decisions: {} });
+    t.after(() => { page.unmount(); kit.setConnection(undefined); });
+    const button = (label) => elementsOf(page.tree).find((e) => e.type === 'Button' && textIn(e) === label);
+    const drawn = async () => { await settle(); await settle(); page.update({}); return textIn(page.tree); };
+    await drawn();
+    button('Send a test').props.onClick();
+    assert.match(await drawn(), /Test message sent to hooks\.example\.com\./);
+    // Decisions stops: a dismiss fails, and the page says why it cannot work.
+    up = false;
+    button('Dismiss').props.onClick();
+    assert.match(await drawn(), /which is not running\.|Decisions is not running\./);
+    assert.ok(elementsOf(page.tree).some((e) => e.props?.['data-suite-trouble'] !== undefined), 'the page says why it cannot work');
+    // It runs again: the page comes back as it is now, with neither line from before.
+    up = true;
+    button('Check again').props.onClick();
+    const back = await drawn();
+    assert.match(back, /Drop the old tables\?/);
+    assert.doesNotMatch(back, /Test message sent/, 'it said so before the page went down');
+    assert.doesNotMatch(back, /Not done/, 'the dismiss that failed while it was down');
+    assert.equal(elementsOf(page.tree).find((e) => e.props?.['data-decisions-test-said'] !== undefined)?.props['data-decisions-test-said'], '', 'its live region stays, empty');
 });
 
 test('browser half: the answer box is one line until you start answering, and what your last answer did stays true', () => {
@@ -274,6 +352,10 @@ test('browser half: each card has the controls its kind takes, and sends what th
     // A card seen a moment ago: one form for "just now".
     assert.match(textIn(draw({ ...CARDS.decision, at: Date.now() - 50000 })), /waiting less than a minute/);
     assert.doesNotMatch(textIn(draw({ ...CARDS.decision, at: Date.now() - 10000 })), /just now/);
+    // Just under an hour reads as the hour it rounds to, as the next card's does.
+    assert.match(textIn(draw({ ...CARDS.decision, at: Date.now() - 3590000 })), /waiting 1 hour/);
+    assert.match(textIn(draw({ ...CARDS.decision, at: Date.now() - 3605000 })), /waiting 1 hour/);
+    assert.match(textIn(draw({ ...CARDS.decision, at: Date.now() - 3500000 })), /waiting 58 minutes/);
 
     // One only the session can answer: the way there.
     const open = draw(CARDS.open);
@@ -455,6 +537,7 @@ test('settings in Plugins: Decisions\' page there has its live settings, and the
     assert.equal(field.props.label, 'Webhook address');
     assert.equal(field.props.configured, false);
     assert.equal(field.props.stateLabel, 'No address yet');
+    assert.equal(field.props.hint, 'Kept in DSH\'s key store, never in the settings file.', 'no "keep the one you have" while there is none');
     assert.equal(field.props.disabled, false);
     assert.equal(elementsOf(page).find((e) => e.type === 'button' && textIn(e) === 'Remove the address'), undefined, 'nothing to remove yet');
     // A typed address: one that cannot work is not staged; one that can is.
@@ -473,6 +556,7 @@ test('settings in Plugins: Decisions\' page there has its live settings, and the
     field = elementsOf(page).find((e) => e.type === 'SettingsSecretField');
     assert.equal(field.props.configured, true);
     assert.equal(field.props.stateLabel, 'An address is set');
+    assert.equal(field.props.hint, 'Kept in DSH\'s key store, never in the settings file. Leave it empty to keep the one you have.');
     assert.equal(field.props.text, '', 'the field never shows a stored value');
     elementsOf(page).find((e) => e.type === 'button' && textIn(e) === 'Remove the address').props.onClick();
     await settle();

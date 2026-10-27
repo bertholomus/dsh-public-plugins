@@ -1,0 +1,557 @@
+[
+  {
+    "id": "he-01",
+    "kind": "coding",
+    "folder": "/home/rafa/src/lantern-api",
+    "prompt": "getting this panic when i hit the csv export:\n\npanic: runtime error: invalid memory address or nil pointer dereference\n[signal SIGSEGV: segmentation violation code=0x1 addr=0x28 pc=0x104a2f3c]\n\ngoroutine 187 [running]:\ngithub.com/lantern/lantern-api/internal/export.(*Writer).WriteRow(0x0, {0x14000a1e000, 0x7, 0x8})\n\t/home/rafa/src/lantern-api/internal/export/writer.go:57 +0x3c\n\nwhat's nil here and how do i fix it",
+    "answers": []
+  },
+  {
+    "id": "he-02",
+    "kind": "answers",
+    "folder": "/home/rafa/src/lantern-api",
+    "prompt": "when a webhook delivery fails, push a retry job onto the redis list (lantern:jobs) so the worker picks it up again in a few minutes. the delivery code is in internal/webhooks/deliver.go",
+    "answers": [
+      "Decisions/2026-03 Lantern job queue on NATS JetStream.md"
+    ]
+  },
+  {
+    "id": "he-03",
+    "kind": "coding",
+    "folder": "/srv/storefront",
+    "prompt": "add a GET /health route to the express app that returns { status: 'ok', uptime } and a supertest test for it",
+    "answers": []
+  },
+  {
+    "id": "he-04",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "one liner to list the 10 biggest files under the current dir with human readable sizes? has to work on mac and linux",
+    "answers": []
+  },
+  {
+    "id": "he-05",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "how long do keys live in quartz before they expire? pretty sure its an hour but i want to check before i lean on it for the price cache",
+    "answers": [
+      "Decisions/2026-06 Quartz eviction policy.md"
+    ]
+  },
+  {
+    "id": "he-06",
+    "kind": "coding",
+    "folder": "/home/dana/projects/lantern-web",
+    "prompt": "src/components/InvoiceRow.tsx:42:18 - error TS2322: Type 'string | undefined' is not assignable to type 'string'.\n\nfix this properly pls, dont just slap a ! on it",
+    "answers": []
+  },
+  {
+    "id": "he-07",
+    "kind": "project",
+    "folder": "",
+    "prompt": "let's switch over to quartz-cache for a bit",
+    "answers": []
+  },
+  {
+    "id": "he-08",
+    "kind": "coding",
+    "folder": "/home/tomo/src/release-bot",
+    "prompt": "fetch_prs() in bot/github.py falls over when github sends back a 403/429 for the secondary rate limit. add retries with exponential backoff, and use Retry-After when it's set",
+    "answers": []
+  },
+  {
+    "id": "he-09",
+    "kind": "answers",
+    "folder": "/home/okke/src/harbor-gateway",
+    "prompt": "move the gateway's https listener from 8443 to 8444 and restart it, something else on that box needs 8443 now",
+    "answers": [
+      "Projects/harbor-gateway/Gateway ports.md",
+      "People/Owners.md"
+    ]
+  },
+  {
+    "id": "he-10",
+    "kind": "coding",
+    "folder": "/home/tomo/code/tide-ledger",
+    "prompt": "write a small split_cents(total, n) in ledger/money.py that splits an amount in cents into n parts that add up exactly, with the extra cents going to the first parts. add tests, including n bigger than total",
+    "answers": []
+  },
+  {
+    "id": "he-11",
+    "kind": "coding",
+    "folder": "/home/rafa/code/playground",
+    "prompt": "add a --dry-run flag to cleanup.py so it just prints which files it would delete insted of deleting them",
+    "answers": []
+  },
+  {
+    "id": "he-12",
+    "kind": "answers",
+    "folder": "/home/ines/work/finance-reports",
+    "prompt": "who's the backup owner for tide-ledger? ana's out till monday and i need someone to look at my PR",
+    "answers": [
+      "People/Owners.md"
+    ]
+  },
+  {
+    "id": "he-13",
+    "kind": "coding",
+    "folder": "/home/rafa/src/lantern-api",
+    "prompt": "rename GetUsr to GetUser across internal/accounts and update all the callers, the old name keeps confusing people",
+    "answers": []
+  },
+  {
+    "id": "he-14",
+    "kind": "answers",
+    "folder": "/home/dana/work/ci-pipelines",
+    "prompt": "builds keep failing on ci-agent-04:\n\n```\nfailed to register layer: write /var/lib/docker/overlay2/3fd9c1/diff/usr/lib/libLLVM-15.so.1: no space left on device\n```\n\ncan you clean it up so the queue gets moving again",
+    "answers": [
+      "Runbooks/Disk full on a build agent.md"
+    ]
+  },
+  {
+    "id": "he-15",
+    "kind": "coding",
+    "folder": "/home/rafa/code/playground",
+    "prompt": "how do i give functools.lru_cache a ttl? want the lookup data in this script to expire after 10 minutes",
+    "answers": []
+  },
+  {
+    "id": "he-16",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "postgres: get each user's most recent order. tables are users(id, email) and orders(id, user_id, created_at, total). one row per user, and keep users with no orders",
+    "answers": []
+  },
+  {
+    "id": "he-17",
+    "kind": "answers",
+    "folder": "/home/dana/projects/lantern-web",
+    "prompt": "add a feature flag for the new invoice page (newInvoicePage) and turn it on in staging only for now",
+    "answers": [
+      "Projects/lantern-web/Feature flags.md"
+    ]
+  },
+  {
+    "id": "he-18",
+    "kind": "coding",
+    "folder": "/home/okke/src/harbor-gateway",
+    "prompt": "Refactor internal/config/load.go so LoadConfig returns an error instead of calling log.Fatal when gateway.toml is missing a field. Update the callers and the tests.",
+    "answers": []
+  },
+  {
+    "id": "he-19",
+    "kind": "chat",
+    "folder": "/home/dana/projects/lantern-web",
+    "prompt": "yep that did it, carry on",
+    "answers": []
+  },
+  {
+    "id": "he-20",
+    "kind": "coding",
+    "folder": "/home/ines/src/shop-backend",
+    "prompt": "The orders list in the admin is really slow. Write a django migration that adds an index on orders.created_at",
+    "answers": []
+  },
+  {
+    "id": "he-21",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "which port does lantern-api answer health checks on? the loadbalancer keeps marking my new instnace unhealthy and i only opened 7311",
+    "answers": [
+      "Projects/lantern-api/Lantern ports.md"
+    ]
+  },
+  {
+    "id": "he-22",
+    "kind": "coding",
+    "folder": "/home/wren/dev/quartz-cache",
+    "prompt": "add a benchmark for EncodeKey in internal/codec/encode.go, plus one for the old fmt.Sprintf version so we can compare allocs",
+    "answers": []
+  },
+  {
+    "id": "he-23",
+    "kind": "coding",
+    "folder": "/home/ines/src/py-utils",
+    "prompt": "regex that matches dates like 2026-10-17 and 17/10/2026 but not 2026-13-01 or 32/01/2026",
+    "answers": []
+  },
+  {
+    "id": "he-24",
+    "kind": "answers",
+    "folder": "/home/tomo/code/tide-ledger",
+    "prompt": "someone ran an UPDATE on entries without a WHERE around 22:00 UTC last night. restore the ledger db from the 2026-10-16 backup",
+    "answers": [
+      "Projects/tide-ledger/Ledger backups.md"
+    ]
+  },
+  {
+    "id": "he-25",
+    "kind": "coding",
+    "folder": "/home/tomo/code/tide-ledger",
+    "prompt": "can you review this before i push?\n\n```diff\n--- a/ledger/validate.py\n+++ b/ledger/validate.py\n@@ -18,4 +18,4 @@ def validate_entry(entry):\n-    if entry.amount < 0:\n+    if entry.amount <= 0:\n         raise ValueError(\"amount must be positive\")\n-    if not entry.account_id:\n+    if entry.account_id is None:\n         raise ValueError(\"missing account\")\n```",
+    "answers": []
+  },
+  {
+    "id": "he-26",
+    "kind": "answers",
+    "folder": "/home/rafa/src/lantern-api",
+    "prompt": "Raise the rate limit for northwind's key (id 8c21) to 300 req/s with bursts up to 600. They asked for it in support ticket 5512.",
+    "answers": [
+      "Projects/lantern-api/Rate limits.md"
+    ]
+  },
+  {
+    "id": "he-27",
+    "kind": "coding",
+    "folder": "/home/wren/projects/blog",
+    "prompt": "set up a github actions workflow that runs npm ci, eslint and npm test on every PR (node 20), and fails the build if lint fails",
+    "answers": []
+  },
+  {
+    "id": "he-28",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "what does this mean and how do i fix it\n\nError: listen EADDRINUSE: address already in use :::3000\n    at Server.setupListenHandle [as _listen2] (node:net:1872:16)",
+    "answers": []
+  },
+  {
+    "id": "he-29",
+    "kind": "answers",
+    "folder": "/home/okke/src/harbor-gateway",
+    "prompt": "```\n$ echo | openssl s_client -connect localhost:8443 2>/dev/null | openssl x509 -noout -enddate\nnotAfter=Oct 22 09:14:03 2026 GMT\n```\ngateway cert runs out next week. renew it",
+    "answers": [
+      "Runbooks/Rotating TLS certificates.md"
+    ]
+  },
+  {
+    "id": "he-30",
+    "kind": "project",
+    "folder": "/home/tomo/code/tide-ledger",
+    "prompt": "back on tide-ledger today",
+    "answers": []
+  },
+  {
+    "id": "he-31",
+    "kind": "coding",
+    "folder": "/home/dana/projects/lantern-web",
+    "prompt": "formatRelativeTime in src/utils/time.ts says \"yesterday\" for things from 10 minutes ago if it's just after midnight. write a test that catches it, then fix it",
+    "answers": []
+  },
+  {
+    "id": "he-32",
+    "kind": "answers",
+    "folder": "/home/dana/projects/lantern-web",
+    "prompt": "if lantern-api ships a v3, how long does /v2 keep working? trying to work out how much runway the web client has before we have to move over",
+    "answers": [
+      "Decisions/2026-04 Lantern API versioning.md"
+    ]
+  },
+  {
+    "id": "he-33",
+    "kind": "coding",
+    "folder": "/opt/services/notify-worker",
+    "prompt": "npm audit flags axios (high). bump it to the latest 1.x and check nothing in src/http breaks",
+    "answers": []
+  },
+  {
+    "id": "he-34",
+    "kind": "vault",
+    "folder": "/home/rafa/src/lantern-api",
+    "prompt": "which of the team notes did you pull in for that answer? just list the titles",
+    "answers": []
+  },
+  {
+    "id": "he-35",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "git: undo my last commit but keep the changes, i havent pushed yet",
+    "answers": []
+  },
+  {
+    "id": "he-36",
+    "kind": "answers",
+    "folder": "/home/rafa/src/lantern-api",
+    "prompt": "quartz reads block for like 2s whenever one of the cache nodes goes down. add a timeout and retrys around the quartz calls in internal/cache/plans.go",
+    "answers": [
+      "Projects/quartz-cache/Client settings.md"
+    ]
+  },
+  {
+    "id": "hf-01",
+    "kind": "answers",
+    "folder": "/home/nadia/work/lantern-api",
+    "prompt": "northwind keeps hitting 429s on their nightly import. bump their key (key_7731) to 300 req/s with bursts up to 600, sales already signed off in the account thread",
+    "answers": [
+      "Projects/lantern-api/Rate limits.md"
+    ]
+  },
+  {
+    "id": "hf-02",
+    "kind": "coding",
+    "folder": "/home/nadia/work/lantern-api",
+    "prompt": "rename GetUsr to GetUser across internal/store and fix all the callers. just the go identifiers, dont touch the json tags",
+    "answers": []
+  },
+  {
+    "id": "hf-03",
+    "kind": "coding",
+    "folder": "/home/jo/code/scratch",
+    "prompt": "one-liner to list the top 10 IPs by request count in access.log (nginx combined format)",
+    "answers": []
+  },
+  {
+    "id": "hf-04",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "how long do quartz-cache keys live by default? i thought everything expired after an hour but the prices i'm seeing look fresher than that",
+    "answers": [
+      "Decisions/2026-06 Quartz eviction policy.md"
+    ]
+  },
+  {
+    "id": "hf-05",
+    "kind": "coding",
+    "folder": "/srv/app",
+    "prompt": "Add a /health endpoint to the Flask app: return {\"status\": \"ok\"}, and a 503 with the error message if the database check fails.",
+    "answers": []
+  },
+  {
+    "id": "hf-06",
+    "kind": "coding",
+    "folder": "/home/rafael/src/quartz-cache",
+    "prompt": "add a benchmark for EncodeKey in pkg/codec, i want to see allocs/op before i start optimzing it",
+    "answers": []
+  },
+  {
+    "id": "hf-07",
+    "kind": "project",
+    "folder": "",
+    "prompt": "tide-ledger again today. where did we leave off?",
+    "answers": []
+  },
+  {
+    "id": "hf-08",
+    "kind": "answers",
+    "folder": "/home/lena/dev/lantern-web",
+    "prompt": "CI is red on my PR, the build step dies with\n\nfailed to register layer: write /var/lib/docker/overlay2/3f9c1e7a/diff/usr/local/lib/node_modules/npm/package.json: no space left on device\n\nrunner was ci-agent-04 again. can you sort it out",
+    "answers": [
+      "Runbooks/Disk full on a build agent.md"
+    ]
+  },
+  {
+    "id": "hf-09",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "python: split a list into chunks of size n, last chunk can be shorter. as a generator pls",
+    "answers": []
+  },
+  {
+    "id": "hf-10",
+    "kind": "coding",
+    "folder": "/home/lena/dev/lantern-web",
+    "prompt": "convert src/components/UserMenu.jsx to tsx and type the props properly. its the last .jsx file left in the repo",
+    "answers": []
+  },
+  {
+    "id": "hf-11",
+    "kind": "answers",
+    "folder": "/srv/repos/harbor-gateway",
+    "prompt": "move the gateway's https listener from 8443 to 8444, 8443 collides with the envoy sidecar on the new hosts. (the old runbook says the gateway is on 7777 btw, pretty sure thats ancient)",
+    "answers": [
+      "Projects/harbor-gateway/Gateway ports.md",
+      "People/Owners.md"
+    ]
+  },
+  {
+    "id": "hf-12",
+    "kind": "coding",
+    "folder": "/home/bea/src/inventory-service",
+    "prompt": "write an alembic migration that adds an index on orders (customer_id, created_at). the table is big so create it concurrently, and make the downgrade drop it",
+    "answers": []
+  },
+  {
+    "id": "hf-13",
+    "kind": "answers",
+    "folder": "/home/nadia/work/lantern-api",
+    "prompt": "add a background job that sends the welcome email after signup, and enqueue it from the signup handler. use the same queue as the other jobs, that's still the lantern:jobs redis list right?",
+    "answers": [
+      "Decisions/2026-03 Lantern job queue on NATS JetStream.md"
+    ]
+  },
+  {
+    "id": "hf-14",
+    "kind": "coding",
+    "folder": "/home/nadia/work/lantern-api",
+    "prompt": "this started failing after my last change, can you take a look\n\n--- FAIL: TestParseCursor/empty_string (0.00s)\n    cursor_test.go:31: got <nil>, want ErrBadCursor\nFAIL\nFAIL\tgithub.com/lanternhq/lantern-api/internal/pagination\t0.014s",
+    "answers": []
+  },
+  {
+    "id": "hf-15",
+    "kind": "coding",
+    "folder": "/srv/repos/harbor-gateway",
+    "prompt": "write a test for the request-id middleware: if the incoming request already has X-Request-Id we keep it, otherwise we generate a uuid, set it on the request and echo it back in teh response header",
+    "answers": []
+  },
+  {
+    "id": "hf-16",
+    "kind": "answers",
+    "folder": "/home/jo/code/scratch",
+    "prompt": "lantern-api 2.13.1 went out this morning and the 5xx rate on /v2/orders is way up. `deployctl status lantern-api` shows 2.13.1 live in all zones. roll prod back to the last good release",
+    "answers": [
+      "Runbooks/Rolling back a lantern-api release.md"
+    ]
+  },
+  {
+    "id": "hf-17",
+    "kind": "coding",
+    "folder": "/home/ines/code/tide-ledger",
+    "prompt": "add a --json flag to `ledgerctl accounts list` so i can pipe it into jq",
+    "answers": []
+  },
+  {
+    "id": "hf-18",
+    "kind": "coding",
+    "folder": "/home/dmitri/dotfiles",
+    "prompt": "set up a pre-commit hook that runs shellcheck on every staged .sh file and blocks the commit if it finds anything",
+    "answers": []
+  },
+  {
+    "id": "hf-19",
+    "kind": "answers",
+    "folder": "/home/rafael/src/quartz-cache",
+    "prompt": "the price import that just ran pushed garbage vaules into quartz and the site is showing them. flush the prices namespace",
+    "answers": [
+      "Runbooks/Flushing the quartz cache.md"
+    ]
+  },
+  {
+    "id": "hf-20",
+    "kind": "coding",
+    "folder": "/opt/tools/report-gen",
+    "prompt": "getting this when i run the monthly report:\n\nTraceback (most recent call last):\n  File \"/opt/tools/report-gen/report.py\", line 57, in build_rows\n    if row.created_at < cutoff:\nTypeError: can't compare offset-naive and offset-aware datetimes\n\nwhats going on and how do i fix it",
+    "answers": []
+  },
+  {
+    "id": "hf-21",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "postgres query: second highest salary in each department, ties should count as the same rank",
+    "answers": []
+  },
+  {
+    "id": "hf-22",
+    "kind": "chat",
+    "folder": "/home/lena/dev/lantern-web",
+    "prompt": "perfect, that did it. thanks!",
+    "answers": []
+  },
+  {
+    "id": "hf-23",
+    "kind": "answers",
+    "folder": "/home/lena/dev/lantern-web",
+    "prompt": "put the new saved-searches page behind a feature flag and switch it on in staging only for now",
+    "answers": [
+      "Projects/lantern-web/Feature flags.md"
+    ]
+  },
+  {
+    "id": "hf-24",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "what does this mean and how do i fix it\n\nerror[E0502]: cannot borrow `items` as mutable because it is also borrowed as immutable\n  --> src/main.rs:14:9",
+    "answers": []
+  },
+  {
+    "id": "hf-25",
+    "kind": "answers",
+    "folder": "/home/nadia/work/lantern-api",
+    "prompt": "add a `created_by` field to the GET /v2/projects response. does that need a v3 or can it go straight into v2?",
+    "answers": [
+      "Decisions/2026-04 Lantern API versioning.md"
+    ]
+  },
+  {
+    "id": "hf-26",
+    "kind": "coding",
+    "folder": "/home/lena/dev/lantern-web",
+    "prompt": "the invoices list shows 'Invalid Date' when created_at is null. fix formatDate in src/utils/date.ts so it returns an empty string for null/undefined, and add a small test for it",
+    "answers": []
+  },
+  {
+    "id": "hf-27",
+    "kind": "coding",
+    "folder": "/home/kai/code/semver-tools",
+    "prompt": "write a regex that matches semver like 1.4.0, 2.0.0-rc.1 and 1.2.3+build.7 but not 01.2.3 or 1.2",
+    "answers": []
+  },
+  {
+    "id": "hf-28",
+    "kind": "answers",
+    "folder": "/home/ines/code/tide-ledger",
+    "prompt": "need a nullable `memo` text column on entries. write the migration and lets try to get it merged before the close on the 2nd",
+    "answers": [
+      "Projects/tide-ledger/Schema migrations.md",
+      "Projects/tide-ledger/Month-end close.md"
+    ]
+  },
+  {
+    "id": "hf-29",
+    "kind": "coding",
+    "folder": "/home/rafael/src/quartz-cache",
+    "prompt": "update golang.org/x/net to v0.33.0, dependabot flagged it. make sure go build ./... and the tests still pass",
+    "answers": []
+  },
+  {
+    "id": "hf-30",
+    "kind": "project",
+    "folder": "/srv/repos/harbor-gateway",
+    "prompt": "right, harbor-gateway. let's get going",
+    "answers": []
+  },
+  {
+    "id": "hf-31",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "quartz-cache is timing out all over the place and im on the lantern team, not platform. how do i page whoever is on call for it?",
+    "answers": [
+      "People/On-call.md"
+    ]
+  },
+  {
+    "id": "hf-32",
+    "kind": "coding",
+    "folder": "/srv/repos/harbor-gateway",
+    "prompt": "review this diff pls, it's in internal/accesslog/fields.go\n\n-\tfields[\"remote_addr\"] = r.RemoteAddr\n+\tif xff := r.Header.Get(\"X-Forwarded-For\"); xff != \"\" {\n+\t\tfields[\"remote_addr\"] = strings.Split(xff, \",\")[0]\n+\t} else {\n+\t\tfields[\"remote_addr\"] = r.RemoteAddr\n+\t}",
+    "answers": []
+  },
+  {
+    "id": "hf-33",
+    "kind": "coding",
+    "folder": "/home/lu/projects/blog",
+    "prompt": "set up github actions to run eslint and npm test on every PR. node 20, and cache the npm install",
+    "answers": []
+  },
+  {
+    "id": "hf-34",
+    "kind": "vault",
+    "folder": "/home/nadia/work/lantern-api",
+    "prompt": "write this cursor gotcha up in the team notes so the next person doesnt lose an afternoon to it",
+    "answers": []
+  },
+  {
+    "id": "hf-35",
+    "kind": "answers",
+    "folder": "/home/omar/src/price-alerts",
+    "prompt": "this new worker reads prices from quartz. what read timeout, retry count and pool size should the client use so it behaves the same as lantern-api and the gateway?",
+    "answers": [
+      "Projects/quartz-cache/Client settings.md"
+    ]
+  },
+  {
+    "id": "hf-36",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "how do i undo my last commit but keep the changes in my working tree",
+    "answers": []
+  }
+]

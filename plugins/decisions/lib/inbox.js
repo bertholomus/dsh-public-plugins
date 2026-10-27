@@ -20,7 +20,7 @@
 import { clip, errorText, isRecord, later } from './shared/safe.js';
 import { cutOff, plainError } from './shared/words.js';
 import { APPROVAL_ANSWERS, Holds, approvalProof, approvalWords, lateAnswerProof, questionProof } from './holds.js';
-import { ANSWER_MAX, answerMessage, answerWords, askCard, byUrgency, checkAnswers, coordinatorView, handbacksOf, headline, lead, questionCards, readable, replyCard, threadCards, threadsOf } from './cards.js';
+import { ANSWER_MAX, answerMessage, answerWords, askCard, byUrgency, checkAnswers, coordinatorView, handbacksOf, headline, lead, ownThreadCard, questionCards, readable, replyCard, threadCards, threadsOf } from './cards.js';
 
 /** Ids kept per list in the store (the newest). */
 const KEEP = 600;
@@ -30,6 +30,20 @@ const NOTIFY_EACH = 3;
 
 /** How long an answer may take to show in the session's log before it is reported unconfirmed. */
 const PROOF_MS = 10 * 60 * 1000;
+
+/**
+ * How long a coordinator thread's own question stands before it is listed,
+ * when its turn did not hand back: the coordinator nudges such a thread at
+ * once ("Finish the task and call thread_handback"), and the handback that
+ * follows is the card.
+ */
+const THREAD_SETTLE_MS = 5000;
+
+/** How long reading a reply's text from its session's log may take (a restart leaves it out of the saved state). */
+const READ_MS = 15000;
+
+/** The most of a reply kept for its card's lines and pick, from its end. */
+const TEXT_KEEP = 8000;
 
 /** A stored id list: `{ [cardId]: ms }`, only well-formed entries. */
 function idMap(value) {
@@ -78,6 +92,14 @@ function saidMap(value) {
     return out;
 }
 
+/** Each setting's hash when Decisions last ran (lib/config.js settingHashes), or undefined. */
+function settingsMap(value) {
+    if (!isRecord(value)) return undefined;
+    const out = {};
+    for (const [key, hash] of Object.entries(value).slice(0, 40)) if (key.length <= 60 && typeof hash === 'string' && hash.length <= 64) out[key] = hash;
+    return out;
+}
+
 /** Make a stored value safe. */
 export function parseData(value) {
     return {
@@ -93,6 +115,8 @@ export function parseData(value) {
         said: saidMap(value?.said),
         // When the mirror's messages of the last hour went (sent ones only), for its hourly limit.
         sent: Array.isArray(value?.sent) ? value.sent.filter((at) => Number.isFinite(at)).slice(-500) : [],
+        // Each setting's hash when Decisions last ran, so a start can say what an edit of DSH's profile changed.
+        ...(settingsMap(value?.settings) ? { settings: settingsMap(value.settings) } : {}),
     };
 }
 
@@ -230,6 +254,12 @@ export class Inbox {
         this.again = false;
         this.queued = false;
         this.print = '';
+        /** Replies read from cold sessions' logs, by session: `{ turn, text }` (text undefined when it could not be read). */
+        this.texts = new Map();
+        /** "<session>:<turn>" being read now. */
+        this.reading = new Set();
+        /** Reads go one at a time. */
+        this.reads = Promise.resolve();
     }
 
     changed() {
@@ -357,6 +387,8 @@ export class Inbox {
         const handbacks = [];
         // Which chat coordinates each thread session, so a card from inside a thread says whose thread it is.
         const chats = new Map();
+        // Coordinator threads' own questions, made the thread's cards once every chat is read.
+        const own = [];
         // A held request's title as DSH lists it now (a new session's title may come after its first request).
         for (const card of this.holds.cards()) {
             if (config[card.kind === 'approval' ? 'approvals' : 'questions'] === false) continue;
@@ -398,14 +430,15 @@ export class Inbox {
                         add(card);
                     }
                 }
-                // The reply itself is not in a row: the watcher's full state has it while the session is loaded.
-                const full = row.state?.ask ? this.watch.stateOf?.(row.sessionId) : undefined;
-                const reply = typeof full?.text === 'string' ? { text: full.text, turn: full.textTurn } : undefined;
-                add(replyCard(row, { replies: config.replies, windowMs, now, reply }));
                 const projection = this.watch.projection?.(row.sessionId, 'coordinatorSession');
+                const asked = this.replyCardOf(row, { replies: config.replies, windowMs, now });
+                // A coordinator thread's own question is the thread's card, under the id its handback takes.
+                const view = asked && config.threads ? coordinatorView(projection?.value) : undefined;
+                if (view?.role === 'thread') own.push({ card: asked, view });
+                else add(asked);
                 for (const thread of threadsOf(row, projection)) chats.set(thread.session, thread.chat);
                 if (config.threads) {
-                    for (const card of threadCards(row, projection, byId)) add(card);
+                    for (const card of threadCards(row, projection, byId, (id) => coordinatorView(this.watch.projection?.(id, 'coordinatorSession')?.value))) add(card);
                     handbacks.push(...handbacksOf(row, projection));
                 }
             } catch (error) {
@@ -413,6 +446,28 @@ export class Inbox {
             }
         }
         for (const ask of this.watch.asks?.() ?? []) add(askCard(ask, byId));
+        // A thread's own question and its handback, for the same turn, are one card under one id: the handback's
+        // words (they are written for the person), the reply's pick when it has one (so it never changes when the
+        // handback lands late). Asked without a handback, it stands a few seconds first: the coordinator nudges such
+        // a thread to hand back at once, and the handback is the card.
+        for (const { card, view } of own) {
+            const chat = chats.get(card.sessionId) ?? (typeof view.coordinator === 'string' && byId.has(view.coordinator) ? { sessionId: view.coordinator, title: byId.get(view.coordinator).title || 'Untitled session' } : undefined);
+            const thread = ownThreadCard(card, view, chat);
+            const handback = found.get(thread.id);
+            if (handback) {
+                if (thread.recommendation) handback.recommendation = thread.recommendation;
+                if (thread.reading) handback.reading = true;
+                continue;
+            }
+            const left = THREAD_SETTLE_MS - (now - (thread.at || now));
+            if (!thread.handedBack && left > 0) {
+                this.soon(left + 50);
+                continue;
+            }
+            add(thread);
+        }
+        // Thread cards were keyed by their handback's time before: what was seen, dismissed or answered under that id carries over.
+        for (const card of found.values()) if (card.legacy) this.carry(card.legacy, card.id);
         // A thread's handback, its own last reply and its coordinating chat's relay of it say the same
         // thing: keep the handback's card, with any recommendation. Once the handback is answered (here,
         // in the thread or in the chat), the chat's relay of it asks nothing new: it is not listed again.
@@ -435,8 +490,9 @@ export class Inbox {
             if (Object.hasOwn(data.answered, card.id) && !this.errors.has(card.id)) continue;
             // How long it has waited: from when it was first seen, which a re-raise or a restart does not move.
             const first = Math.min(card.at || Infinity, data.seen[card.id] || Infinity);
+            const { legacy, ...shown } = card;
             const item = {
-                ...card,
+                ...shown,
                 at: Number.isFinite(first) ? first : now,
                 ...(this.errors.has(card.id) ? { error: this.errors.get(card.id) } : {}),
                 ...(this.answering.has(card.id) ? { sending: true } : {}),
@@ -448,6 +504,68 @@ export class Inbox {
         waiting.sort(byUrgency);
         dismissed.sort((a, b) => b.dismissedAt - a.dismissedAt);
         return { waiting, dismissed, rows: byId };
+    }
+
+    /**
+     * A session's reply card, with the reply's lines and pick: the reply's
+     * text is not in a row; the watcher's state has it while the session is
+     * loaded. A session that is not (after a restart, say) has it only in its
+     * log, which is read once per turn, in the background: until then the card
+     * says `reading`, and is not announced.
+     */
+    replyCardOf(row, options) {
+        const bare = replyCard(row, options);
+        if (!bare) return undefined;
+        const turn = row.state.ask.turn;
+        let full;
+        try { full = this.watch.stateOf?.(row.sessionId); } catch { full = undefined; }
+        if (typeof full?.text === 'string' && full.textTurn === turn) return replyCard(row, { ...options, reply: { text: full.text, turn } });
+        const kept = this.texts.get(row.sessionId);
+        if (kept?.turn === turn) return typeof kept.text === 'string' ? replyCard(row, { ...options, reply: kept }) : bare;
+        if (typeof this.watch.fullState !== 'function') return bare;
+        this.readReply(row.sessionId, turn);
+        return { ...bare, reading: true };
+    }
+
+    /** Read a cold session's reply from its log, once per turn, then scan again. */
+    readReply(sessionId, turn) {
+        const key = `${sessionId}:${turn}`;
+        if (this.reading.has(key)) return;
+        this.reading.add(key);
+        this.reads = this.reads.then(async () => {
+            let timer;
+            const signal = typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(READ_MS) : undefined;
+            const late = new Promise((resolve) => {
+                timer = setTimeout(resolve, READ_MS + 1000);
+                timer.unref?.();
+            });
+            let state;
+            try {
+                state = await Promise.race([this.watch.fullState(sessionId, signal), late]);
+            } catch (error) {
+                this.logger?.warn?.(`decisions: could not read the reply of ${sessionId}: ${errorText(error)}`);
+            } finally {
+                clearTimeout(timer);
+            }
+            const text = typeof state?.text === 'string' && state.textTurn === turn ? state.text.slice(-TEXT_KEEP) : undefined;
+            this.texts.set(sessionId, { turn, text });
+            if (this.texts.size > 300) this.texts.delete(this.texts.keys().next().value);
+            this.reading.delete(key);
+            this.soon(30);
+        });
+    }
+
+    /** What was seen, dismissed or answered under a card's old id goes with its new one. */
+    carry(from, to) {
+        const data = this.store.data;
+        let changed = false;
+        for (const name of ['seen', 'dismissed', 'answered']) {
+            if (Object.hasOwn(data[name], from) && !Object.hasOwn(data[name], to)) {
+                data[name][to] = data[name][from];
+                changed = true;
+            }
+        }
+        if (changed) this.store.change();
     }
 
     /**
@@ -526,8 +644,11 @@ export class Inbox {
             if (Object.keys(this.store.data.held).length) await this.settleHeld(rows);
             const data = this.store.data;
             const now = this.now();
-            const fresh = waiting.filter((card) => !Object.hasOwn(data.seen, card.id));
-            for (const card of [...fresh, ...dismissed.filter((c) => !Object.hasOwn(data.seen, c.id))]) data.seen[card.id] = card.at || now;
+            // A card whose reply is still being read from its log is announced once it is read, with its lines and
+            // pick; on the first look after install everything that waits is only listed, read or not.
+            const unseen = (card) => !Object.hasOwn(data.seen, card.id) && (!card.reading || !data.seeded);
+            const fresh = waiting.filter(unseen);
+            for (const card of [...fresh, ...dismissed.filter(unseen)]) data.seen[card.id] = card.at || now;
             if (fresh.length) data.seen = trimmed(data.seen);
             if (!data.seeded) {
                 // The first look after install: what waits already is listed, not announced.
@@ -537,7 +658,8 @@ export class Inbox {
                 this.store.change();
                 this.announce(fresh);
             }
-            const print = waiting.map((c) => `${c.id}|${c.running ? 1 : 0}|${c.error ?? ''}`).join('\n');
+            // What the page shows of each card: a card's words change when its reply is read, or its thread's handback lands.
+            const print = waiting.map((c) => `${c.id}|${c.running ? 1 : 0}|${c.error ?? ''}|${c.reading ? 1 : 0}|${String(c.question ?? '').length}|${String(c.context ?? '').length}|${c.recommendation ?? ''}`).join('\n');
             if (print !== this.print) {
                 this.print = print;
                 this.changed();
@@ -568,8 +690,9 @@ export class Inbox {
             });
         }
         if (this.config.notify) {
-            // Plugins' questions and threads' handbacks are announced by the plugin that raised them, and so are a thread's approvals.
-            const notable = cards.filter((card) => card.kind !== 'ask' && card.kind !== 'thread' && !(card.kind === 'approval' && this.inThread(card.sessionId)));
+            // Plugins' questions and threads' handbacks are announced by the plugin that raised them, and so are a thread's
+            // approvals. A thread's own question that came without a handback is Decisions' to announce.
+            const notable = cards.filter((card) => card.kind !== 'ask' && !(card.kind === 'thread' && (card.handback || card.handedBack)) && !(card.kind === 'approval' && this.inThread(card.sessionId)));
             if (notable.length > NOTIFY_EACH) {
                 this.say({ title: 'Decisions', body: `${notable.length} things wait on you. Open Decisions to answer them.`, kind: 'decision' }, { count: notable.length });
             } else {

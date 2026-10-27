@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Discord",
+    "description": "A Discord bot for your own channels: each conversation gets a thread and its own DSH session, and the agent answers in that thread."
+  }
+}

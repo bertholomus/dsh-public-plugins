@@ -25,7 +25,7 @@ import { join } from 'node:path';
 import z from '@deepseek-ai/schemastery';
 import { dshHomePath } from '@deepseek-ai/dsh-home-paths';
 import { Inbox, parseData } from './inbox.js';
-import { LIVE_SETTINGS, WEBHOOK_KEY, checkConfig, savedEntry } from './config.js';
+import { LIVE_SETTINGS, WEBHOOK_KEY, checkConfig, savedEntry, settingHashes, startEntry } from './config.js';
 import { Mirror } from './mirror.js';
 import { DecisionsRemote, SERVICE } from './remote.js';
 import { JsonStore } from './shared/files.js';
@@ -99,6 +99,19 @@ export function apply(ctx, config) {
         const bump = () => watch.hub?.bump?.('decisions');
         const store = new JsonStore(join(dir, 'state.json'), { parse: parseData, logger });
         const journal = new Journal(join(dir, 'events.jsonl'), { logger, onChange: bump });
+        // An edit of DSH's profile restarts Decisions when it changes a setting its page cannot (DSH applies the file
+        // when it is saved): the log says which settings changed, and what is wrong when one is.
+        const remember = () => {
+            store.data.settings = settingHashes(settings);
+            store.change();
+        };
+        try {
+            const entry = startEntry(check, store.data.settings, settingHashes(settings), settings);
+            if (entry) journal.add(entry);
+            remember();
+        } catch (error) {
+            logger?.warn?.(`decisions: could not compare its settings: ${errorText(error)}`);
+        }
 
         // System notifications through the notifications plugin, when it runs; one that fails never stops Decisions.
         let notifications;
@@ -163,6 +176,7 @@ export function apply(ctx, config) {
         const saved = (paths) => {
             const entry = savedEntry(check, paths);
             if (entry) journal.add(entry);
+            remember();
             if (!working()) {
                 if (inbox.started) inbox.stop();
             } else {

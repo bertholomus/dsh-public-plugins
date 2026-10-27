@@ -1,0 +1,558 @@
+[
+  {
+    "id": "hc-01",
+    "kind": "coding",
+    "folder": "/home/devi/work/lantern-api",
+    "prompt": "rename the GetAcct helper in internal/store to GetAccount and update all the callers",
+    "answers": []
+  },
+  {
+    "id": "hc-02",
+    "kind": "coding",
+    "folder": "/srv/checkout-app",
+    "prompt": "add rate limiting to the /login route in this flask app - 5 tries per minute per ip, then 429",
+    "answers": []
+  },
+  {
+    "id": "hc-03",
+    "kind": "answers",
+    "folder": "/home/devi/work/lantern-api",
+    "prompt": "northwind's nightly sync keeps getting `429 Too Many Requests` (Retry-After: 1). bump their key (id 7f3a9c) to 300 req/s with bursts up to 600",
+    "answers": [
+      "Projects/lantern-api/Rate limits.md"
+    ]
+  },
+  {
+    "id": "hc-04",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "need a regex to check a semver string like 1.4.2 or 2.0.0-rc.1. no leading v, no build metadata",
+    "answers": []
+  },
+  {
+    "id": "hc-05",
+    "kind": "answers",
+    "folder": "/home/marta/src/pricing-service",
+    "prompt": "how long does quartz keep a key before it expires now? i had it in my head it was an hour but the prices we read back look fresher than that",
+    "answers": [
+      "Decisions/2026-06 Quartz eviction policy.md"
+    ]
+  },
+  {
+    "id": "hc-06",
+    "kind": "coding",
+    "folder": "/home/ines/projects/lantern-web",
+    "prompt": "write tests for formatRelativeTime in src/utils/time.ts: cover \"just now\", a few minutes ago, yesterday, and a date in the future",
+    "answers": []
+  },
+  {
+    "id": "hc-07",
+    "kind": "coding",
+    "folder": "/home/hiro/scratch",
+    "prompt": "npm run dev dies with this, how do i see whats holding the port?\n\nError: listen EADDRINUSE: address already in use :::3000\n    at Server.setupListenHandle [as _listen2] (node:net:1908:16)",
+    "answers": []
+  },
+  {
+    "id": "hc-08",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "ci jobs on runner ci-04 keep dying at the docker build step with\n\nfailed to register layer: write /var/lib/docker/overlay2/9f2c1e/diff/usr/lib/libicu.so.74: no space left on device\n\nwhat do i do",
+    "answers": [
+      "Runbooks/Disk full on a build agent.md"
+    ]
+  },
+  {
+    "id": "hc-09",
+    "kind": "coding",
+    "folder": "/home/olu/repos/quartz-cache",
+    "prompt": "humanBytes(1024) returns \"1024 B\" instead of \"1.0 KiB\". fix it and add a test for the boundary",
+    "answers": []
+  },
+  {
+    "id": "hc-10",
+    "kind": "project",
+    "folder": "/home/sol/work/quartz-cache",
+    "prompt": "back on quartz-cache today. where were we",
+    "answers": []
+  },
+  {
+    "id": "hc-11",
+    "kind": "coding",
+    "folder": "/opt/services/notify-worker",
+    "prompt": "add an alembic migraton that adds a nullable last_seen_at timestamptz column to users, with a downgrade",
+    "answers": []
+  },
+  {
+    "id": "hc-12",
+    "kind": "answers",
+    "folder": "/home/tariq/code/lantern-api",
+    "prompt": "add a background job that sends the weekly usage digest email. enqueue it from the sunday cron the same way we queue the invoice jobs",
+    "answers": [
+      "Decisions/2026-03 Lantern job queue on NATS JetStream.md"
+    ]
+  },
+  {
+    "id": "hc-13",
+    "kind": "coding",
+    "folder": "/home/bea/work/harbor-gateway",
+    "prompt": "parseForwardedFor in internal/headers/xff.go is 60 lines of nested ifs. refactor it so its readable, behaviour has to stay exactly the same (xff_test.go covers it)",
+    "answers": []
+  },
+  {
+    "id": "hc-14",
+    "kind": "answers",
+    "folder": "/home/lena/infra-scripts",
+    "prompt": "the tls certs expire next friday. rotate them for me, ive never done it here",
+    "answers": [
+      "Runbooks/Rotating TLS certificates.md"
+    ]
+  },
+  {
+    "id": "hc-15",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "review this, anything wrong?\n\n```diff\n func (s *Store) Save(ctx context.Context, u User) error {\n \t_, err := s.db.ExecContext(ctx, q, u.ID, u.Name)\n-\tif err != nil {\n-\t\treturn err\n-\t}\n+\tif err != nil {\n+\t\tlog.Println(\"save failed:\", err)\n+\t}\n \treturn nil\n }\n```",
+    "answers": []
+  },
+  {
+    "id": "hc-16",
+    "kind": "coding",
+    "folder": "/home/sol/work/storefront",
+    "prompt": "add a GET /health endpoint to the express app that returns { status: 'ok', uptime } - the load balancer needs something cheap to hit",
+    "answers": []
+  },
+  {
+    "id": "hc-17",
+    "kind": "answers",
+    "folder": "/home/rafa/projects/harbor-gateway",
+    "prompt": "move the gateway's https listener from 8443 to 8444 and restart it, the lb folks want 8443 freed up",
+    "answers": [
+      "Projects/harbor-gateway/Gateway ports.md",
+      "People/Owners.md"
+    ]
+  },
+  {
+    "id": "hc-18",
+    "kind": "coding",
+    "folder": "/home/kwame/src/tide-ledger",
+    "prompt": "write a small function that splits an amount into n installments that add back up to the exact cent, e.g. 100.00 / 3 -> 33.34, 33.33, 33.33. amounts are decimal strings, no floats",
+    "answers": []
+  },
+  {
+    "id": "hc-19",
+    "kind": "chat",
+    "folder": "/home/tariq/code/lantern-api",
+    "prompt": "nice, that did it. thanks",
+    "answers": []
+  },
+  {
+    "id": "hc-20",
+    "kind": "coding",
+    "folder": "/home/marta/src/pricing-service",
+    "prompt": "sql question: for each user get their latest order and its total. postgres, orders(id, user_id, created_at, total). if two orders have the same created_at take the higher id",
+    "answers": []
+  },
+  {
+    "id": "hc-21",
+    "kind": "answers",
+    "folder": "/home/ines/projects/lantern-web",
+    "prompt": "put the new invoices page behind a feature flag, off everywhere except staging for now",
+    "answers": [
+      "Projects/lantern-web/Feature flags.md"
+    ]
+  },
+  {
+    "id": "hc-22",
+    "kind": "coding",
+    "folder": "/home/yusuf/src/lantern-web",
+    "prompt": "how do i fix this without just slapping a ! on it\n\nsrc/components/AccountMenu.tsx:42:11 - error TS2322: Type 'string | undefined' is not assignable to type 'string'.",
+    "answers": []
+  },
+  {
+    "id": "hc-23",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "is it ok to ship lantern-api 2.14.1 friday afternoon? its a one line fix",
+    "answers": [
+      "Projects/lantern-api/Release checklist.md"
+    ]
+  },
+  {
+    "id": "hc-24",
+    "kind": "coding",
+    "folder": "/home/noor/dev/dotfiles",
+    "prompt": "set up a github actions workflow that runs shellcheck on every .sh file, on push and on PRs",
+    "answers": []
+  },
+  {
+    "id": "hc-25",
+    "kind": "answers",
+    "folder": "/home/kai/src/lantern-api",
+    "prompt": "when one quartz node is slow our requets just hang. wrap the cache reads in internal/cache/reader.go with a timeout and a couple of retries",
+    "answers": [
+      "Projects/quartz-cache/Client settings.md"
+    ]
+  },
+  {
+    "id": "hc-26",
+    "kind": "coding",
+    "folder": "/home/olu/repos/quartz-cache",
+    "prompt": "go build ./... is broken on main after my merge:\n\n./cmd/quartzctl/main.go:14:2: \"strings\" imported and not used\n\njust fix it pls",
+    "answers": []
+  },
+  {
+    "id": "hc-27",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "python keeps blowing up reading a csv someone exported from excel:\n\nUnicodeDecodeError: 'utf-8' codec can't decode byte 0xff in position 0: invalid start byte\n\nwhats the right way to open it",
+    "answers": []
+  },
+  {
+    "id": "hc-28",
+    "kind": "answers",
+    "folder": "/home/bea/work/harbor-gateway",
+    "prompt": "how do i page whoever's on call for the gateway right now? want a second person on this before i touch prod",
+    "answers": [
+      "People/On-call.md"
+    ]
+  },
+  {
+    "id": "hc-29",
+    "kind": "coding",
+    "folder": "/home/lena/infra-scripts",
+    "prompt": "add a --dry-run flag to prune_branches.py so it just prints the list of branches it would delete",
+    "answers": []
+  },
+  {
+    "id": "hc-30",
+    "kind": "project",
+    "folder": "",
+    "prompt": "ok switching over to tide-ledger for a bit",
+    "answers": []
+  },
+  {
+    "id": "hc-31",
+    "kind": "answers",
+    "folder": "/home/kwame/src/tide-ledger",
+    "prompt": "write a migration adding an index on entries (account_id, posted_at), the monthly reports are crawling. want it out first thing monday nov 2",
+    "answers": [
+      "Projects/tide-ledger/Schema migrations.md",
+      "Projects/tide-ledger/Month-end close.md"
+    ]
+  },
+  {
+    "id": "hc-32",
+    "kind": "coding",
+    "folder": "/home/zara/src/receipt-scanner",
+    "prompt": "bump pillow to 11. dependabot opened the PR but CI is red, figure out what broke",
+    "answers": []
+  },
+  {
+    "id": "hc-33",
+    "kind": "coding",
+    "folder": "/home/tariq/code/lantern-api",
+    "prompt": "exporting invoices with an empty date range panics:\n\npanic: runtime error: index out of range [0] with length 0\n\ngoroutine 41 [running]:\nlantern-api/internal/export.firstDay(...)\n\t/src/internal/export/range.go:27 +0x1d4\n\nwhats going on, and can you fix it",
+    "answers": []
+  },
+  {
+    "id": "hc-34",
+    "kind": "answers",
+    "folder": "/home/yusuf/src/lantern-web",
+    "prompt": "we still call /v1/accounts from the web app. how long will lantern-api keep v1 around once v2 ships?",
+    "answers": [
+      "Decisions/2026-04 Lantern API versioning.md"
+    ]
+  },
+  {
+    "id": "hc-35",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "one-liner to find evry file changed in the last 24h under the current dir, skipping node_modules and .git",
+    "answers": []
+  },
+  {
+    "id": "hc-36",
+    "kind": "vault",
+    "folder": "/home/kwame/src/tide-ledger",
+    "prompt": "save what we figured out about the flaky rounding test to the team notes so nobody loses a day on it again",
+    "answers": []
+  },
+  {
+    "id": "hd-01",
+    "kind": "coding",
+    "folder": "/home/mira/src/lantern-api",
+    "prompt": "ListKeys and ListKeysByOwner in internal/keys/store.go are the same query copy-pasted with one extra WHERE. pull the shared part into a helper, dont change behaviour",
+    "answers": []
+  },
+  {
+    "id": "hd-02",
+    "kind": "answers",
+    "folder": "/home/mira/src/lantern-api",
+    "prompt": "northwind's nightly sync keeps getting 429s from us. bump their key to 300 req/s",
+    "answers": [
+      "Projects/lantern-api/Rate limits.md"
+    ]
+  },
+  {
+    "id": "hd-03",
+    "kind": "coding",
+    "folder": "/srv/app",
+    "prompt": "flask won't start:\n\n    OSError: [Errno 98] Address already in use\n\nsomething is still sitting on port 5000. one-liner to find it and kill it?",
+    "answers": []
+  },
+  {
+    "id": "hd-04",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "what does `fatal: refusing to merge unrelated histories` mean? got it running `git pull origin main` in a repo i just made with git init",
+    "answers": []
+  },
+  {
+    "id": "hd-05",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "what port is the harbor gateway listening on these days? an old compose file has 9443 and nothing answers on it",
+    "answers": [
+      "Projects/harbor-gateway/Gateway ports.md"
+    ]
+  },
+  {
+    "id": "hd-06",
+    "kind": "coding",
+    "folder": "/home/tess/code/lantern-web",
+    "prompt": "first render blows up when the user has no projects yet:\n\n```\nTypeError: Cannot read properties of undefined (reading 'map')\n    at ProjectList (ProjectList.tsx:42:18)\n```\n\nfix it and show an empty state instead",
+    "answers": []
+  },
+  {
+    "id": "hd-07",
+    "kind": "coding",
+    "folder": "/home/dana/code/scratch",
+    "prompt": "python regex to grab the yyyy-mm-dd date out of every line in a log file like `2026-10-17T08:12:44Z job=sync took 3.2s`",
+    "answers": []
+  },
+  {
+    "id": "hd-08",
+    "kind": "answers",
+    "folder": "/home/oskar/src/payments-worker",
+    "prompt": "my PR's build died on ci-linux-04 with\n\n```\nERROR: failed to solve: failed to copy: write /var/lib/docker/tmp/buildkit-mount4211/app.tar: no space left on device\n```\n\nnothing to do with my change. how do I fix the agent?",
+    "answers": [
+      "Runbooks/Disk full on a build agent.md"
+    ]
+  },
+  {
+    "id": "hd-09",
+    "kind": "coding",
+    "folder": "/home/hal/src/tide-ledger",
+    "prompt": "ToCents(19.99) returns 1998 :( float rounding. rewrite it to parse the decimal string instead of multiplying a float64, and add a table test with negatives, whole numbers and 3 decimal places",
+    "answers": []
+  },
+  {
+    "id": "hd-10",
+    "kind": "project",
+    "folder": "",
+    "prompt": "ok, tide-ledger today",
+    "answers": []
+  },
+  {
+    "id": "hd-11",
+    "kind": "answers",
+    "folder": "/home/mira/src/lantern-api",
+    "prompt": "add a background job that emails every key owner a weekly usage summary, monday 8am pacific. put it on the job queue",
+    "answers": [
+      "Decisions/2026-03 Lantern job queue on NATS JetStream.md"
+    ]
+  },
+  {
+    "id": "hd-12",
+    "kind": "coding",
+    "folder": "/home/ben/code/scratch",
+    "prompt": "add a small rate limiter to this express server: 60 requests a minute per ip, send a 429 when they go over. in memory is fine, its a toy",
+    "answers": []
+  },
+  {
+    "id": "hd-13",
+    "kind": "coding",
+    "folder": "/home/lee/src/harbor-gateway",
+    "prompt": "long-polling clients get cut off after about a minute idle. raise the upstream idle timeout in proxy/config.go to 90s and let us set it from an env var",
+    "answers": []
+  },
+  {
+    "id": "hd-14",
+    "kind": "answers",
+    "folder": "/home/mira/src/lantern-api",
+    "prompt": "the prices i cache in quartz vanish after ~15 min. i thought quartz kept keys for an hour? bug on our side or expected",
+    "answers": [
+      "Decisions/2026-06 Quartz eviction policy.md"
+    ]
+  },
+  {
+    "id": "hd-15",
+    "kind": "coding",
+    "folder": "/home/rui/src/blog",
+    "prompt": "set up a github actions workflow that runs eslint and the vitest suite on every pull request. node 20, npm ci, cache the npm dir",
+    "answers": []
+  },
+  {
+    "id": "hd-16",
+    "kind": "coding",
+    "folder": "/home/nik/src/quartz-cache",
+    "prompt": "add a String() method to NodeState so the logs print \"syncing\" instead of 2, plus a quick test",
+    "answers": []
+  },
+  {
+    "id": "hd-17",
+    "kind": "answers",
+    "folder": "/home/lee/src/harbor-gateway",
+    "prompt": "add a route that sends /status/ to the new status-page service. who needs to sign off on it?",
+    "answers": [
+      "Projects/harbor-gateway/Routing rules.md",
+      "People/Owners.md"
+    ]
+  },
+  {
+    "id": "hd-18",
+    "kind": "coding",
+    "folder": "/srv/app",
+    "prompt": "write an alembic migration that adds a nullable deleted_at timestamptz to orders, with the downgrade too",
+    "answers": []
+  },
+  {
+    "id": "hd-19",
+    "kind": "chat",
+    "folder": "/home/tess/code/lantern-web",
+    "prompt": "perfect, that worked. thx",
+    "answers": []
+  },
+  {
+    "id": "hd-20",
+    "kind": "coding",
+    "folder": "/home/tess/code/lantern-web",
+    "prompt": "convert src/components/UserMenu.jsx to tsx. keep the props the same and type them properly, no `any`",
+    "answers": []
+  },
+  {
+    "id": "hd-21",
+    "kind": "answers",
+    "folder": "/home/kim/src/billing-api",
+    "prompt": "hooking billing-api up to quartz-cache for the invoice lookups. what port do the nodes take client traffic on, and what read timeout / retry count / pool size should our client use?",
+    "answers": [
+      "Projects/quartz-cache/Quartz ports.md",
+      "Projects/quartz-cache/Client settings.md"
+    ]
+  },
+  {
+    "id": "hd-22",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "this takes forever on 2M rows of order data, can you vectorize it?\n\n```python\nfor i, row in df.iterrows():\n    df.at[i, \"total\"] = row[\"qty\"] * row[\"unit_price\"]\n```",
+    "answers": []
+  },
+  {
+    "id": "hd-23",
+    "kind": "answers",
+    "folder": "/home/hal/src/tide-ledger",
+    "prompt": "write a migraton that adds a nullable `memo` text column to entries",
+    "answers": [
+      "Projects/tide-ledger/Schema migrations.md"
+    ]
+  },
+  {
+    "id": "hd-24",
+    "kind": "coding",
+    "folder": "/home/oskar/src/payments-worker",
+    "prompt": "bump axios from 0.27 to 1.7 and update whatever breaks, probably the interceptors",
+    "answers": []
+  },
+  {
+    "id": "hd-25",
+    "kind": "coding",
+    "folder": "/home/jonah/work/lantern-api",
+    "prompt": "rename the internal/util package to internal/strutil and fix every import. its only string helpers anyway",
+    "answers": []
+  },
+  {
+    "id": "hd-26",
+    "kind": "answers",
+    "folder": "/home/nik/src/quartz-cache",
+    "prompt": "the importer wrote garbage into the prices namespace this morning. flush it",
+    "answers": [
+      "Runbooks/Flushing the quartz cache.md"
+    ]
+  },
+  {
+    "id": "hd-27",
+    "kind": "coding",
+    "folder": "/home/kim/src/billing-api",
+    "prompt": "add GET /healthz that checks the db connection and returns the build sha and uptime as json, 503 if the db ping fails",
+    "answers": []
+  },
+  {
+    "id": "hd-28",
+    "kind": "project",
+    "folder": "/home/nik/src/quartz-cache",
+    "prompt": "back on quartz-cache today",
+    "answers": []
+  },
+  {
+    "id": "hd-29",
+    "kind": "answers",
+    "folder": "/home/jonah/work/lantern-api",
+    "prompt": "rename `owner` to `owner_id` in the GET /v2/keys response, it's confusing next to `owner_email`",
+    "answers": [
+      "Decisions/2026-04 Lantern API versioning.md"
+    ]
+  },
+  {
+    "id": "hd-30",
+    "kind": "coding",
+    "folder": "/home/lee/src/harbor-gateway",
+    "prompt": "go vet is failing the build:\n\n    routes/match.go:57:3: unreachable code\n\nclean that up",
+    "answers": []
+  },
+  {
+    "id": "hd-31",
+    "kind": "coding",
+    "folder": "/home/hal/src/tide-ledger",
+    "prompt": "postgres query: accounts with no entries in the last 90 days, with each one's last entry date, newest first",
+    "answers": []
+  },
+  {
+    "id": "hd-32",
+    "kind": "answers",
+    "folder": "/home/tess/code/lantern-web",
+    "prompt": "just merged the cart button fix to main. how long until users actually get it, and can i push it out any faster?",
+    "answers": [
+      "Projects/lantern-web/Deploying lantern-web.md"
+    ]
+  },
+  {
+    "id": "hd-33",
+    "kind": "coding",
+    "folder": "",
+    "prompt": "review this, anything wrong?\n\n```diff\n-\tif err := tx.Commit(); err != nil {\n-\t\treturn err\n-\t}\n+\tif err := tx.Commit(); err != nil {\n+\t\tlog.Println(\"commit failed:\", err)\n+\t}\n \treturn nil\n```",
+    "answers": []
+  },
+  {
+    "id": "hd-34",
+    "kind": "vault",
+    "folder": "/home/hal/src/tide-ledger",
+    "prompt": "put the ToCents float thing in the shared notes so the next person doesnt trip on it",
+    "answers": []
+  },
+  {
+    "id": "hd-35",
+    "kind": "coding",
+    "folder": "/home/lee/src/infra-scripts",
+    "prompt": "add a --dry-run flag to cleanup.py that only prints what it would delete. default behaviour stays the same",
+    "answers": []
+  },
+  {
+    "id": "hd-36",
+    "kind": "answers",
+    "folder": "",
+    "prompt": "harbor gateway is 502ing on every request. tried `pagectl page --team gateway` and got `unknown team \"gateway\"`. who do i page?",
+    "answers": [
+      "People/On-call.md"
+    ]
+  }
+]

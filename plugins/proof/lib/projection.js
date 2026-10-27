@@ -27,6 +27,7 @@
  *   { v: 1,
  *     turn: { n, seq, at, items: Item[], calls: { [callId]: { name, args } }, text, textSeq, work, ask } | null,
  *     prev: { n, items: Item[], ask } | null,
+ *     carry?: Item[],
  *     claims: Claim[],
  *     check?: true,
  *     first?: number }
@@ -36,6 +37,11 @@
  * `ask` is the person's message that started the turn (clipped): a bare
  * "Done" after "add the flag" needs a change to back it.
  *
+ * `carry` holds the runs and changes of turns that ended without a reply
+ * (DSH cut them, or the model stopped before it wrote one): the next turn
+ * starts with them, each marked with the turn it came from, so "I changed it
+ * to add the two arguments" after a cut turn that made the change is shown.
+ *
  * `check` marks one of Proof's own check threads (its first message, from
  * Proof, starts with CHECK_LINE): its replies are verdicts on another
  * session's claim, so none of its turns is judged. `first` is that first
@@ -44,7 +50,7 @@
  * @module dsh-plugin-proof/projection
  */
 import { claimsIn } from './claims.js';
-import { asksForWork, itemOf, judge, looksOnly, quotedBy } from './evidence.js';
+import { asksForChange, asksForWork, itemOf, judge, looksOnly, quotedBy } from './evidence.js';
 
 /** The projection key; the browser half reads the same name. */
 export const KEY = 'proofClaims';
@@ -100,8 +106,13 @@ function judged(turn, prev, at) {
     if (claims.length === 0) return [];
     // A summary turn that ran nothing, or only looked (a registry read, a status read), rests on the turn before.
     const lean = (turn.items.length === 0 || turn.items.every(looksOnly)) && !turn.work && prev && prev.items.length > 0;
-    return claims.map((claim, index) => {
+    // A turn that asked for no change ("run the tests once more and say what you fixed") may rest on the turn before for it.
+    const changeBefore = !asksForChange(turn.ask) && prev && prev.items.some((i) => (i.change || i.kind === 'change') && i.ok !== false);
+    const out = [];
+    claims.forEach((claim, index) => {
         let result = judge(claim, turn.items, { prompt: turn.ask });
+        // "Only 1 passed" in the run's own count: a failure report, not a claim.
+        if (result.verdict === 'none') return;
         // No tool ran, and the person asked for new work: an earlier turn's runs do not show it.
         if (turn.items.length === 0 && turn.work && prev && prev.items.length > 0 && result.verdict === 'unbacked') {
             result = { ...result, why: 'No tool ran in this turn, and it was asked for new work, so the runs before it do not show this.' };
@@ -124,7 +135,16 @@ function judged(turn, prev, at) {
                 from = prev.n;
             }
         }
-        return {
+        // A fix or a change made in the turn before, and this turn's run after it.
+        if (result.verdict === 'unbacked' && from === undefined && changeBefore && turn.items.length > 0 && (claim.kind === 'fixed' || claim.kind === 'done')) {
+            const before = prev.items.map((i) => ({ ...i, text: `turn ${prev.n}: ${i.text}` }));
+            const both = judge(claim, [...before, ...turn.items], { prompt: turn.ask });
+            if (both.verdict === 'backed') {
+                result = both;
+                from = prev.n;
+            }
+        }
+        out.push({
             id: `${turn.n}:${index}`,
             turn: turn.n,
             seq: turn.textSeq,
@@ -138,8 +158,9 @@ function judged(turn, prev, at) {
             evidence: result.evidence.slice(0, 3).map((e) => str(e, 200)),
             why: str(result.why, 300),
             ...(from !== undefined ? { from } : {}),
-        };
+        });
     });
+    return out;
 }
 
 /** One committed event folded into the state. Never throws; the same state when nothing changed. */
@@ -153,7 +174,9 @@ export function applyEvent(state, event) {
             case 'turn/start': {
                 const n = Number.isSafeInteger(data.turn) ? data.turn : (s.turn?.n ?? 0) + 1;
                 const prev = s.turn && s.turn.items.length > 0 ? { n: s.turn.n, items: s.turn.items, ask: s.turn.ask ?? '' } : s.prev;
-                return { ...s, prev, turn: { n, seq: event.seq ?? 0, at: event.time ?? 0, items: [], calls: {}, text: '', textSeq: 0, work: false, ask: '' } };
+                // The runs and changes of turns that ended without a reply start this turn's evidence.
+                const { carry, ...rest } = s;
+                return { ...rest, prev, turn: { n, seq: event.seq ?? 0, at: event.time ?? 0, items: Array.isArray(carry) ? carry : [], calls: {}, text: '', textSeq: 0, work: false, ask: '' } };
             }
             case 'user/message': {
                 const kind = data.source?.kind;
@@ -199,10 +222,17 @@ export function applyEvent(state, event) {
                 if (!s.turn) return s;
                 const turn = s.turn;
                 const finished = (data.reason?.kind ?? 'completed') === 'completed';
-                const fresh = finished ? judged(turn, s.prev, event.time ?? 0) : [];
-                const prev = turn.items.length > 0 ? { n: turn.n, items: turn.items, ask: turn.ask ?? '' } : s.prev;
+                const replied = finished && turn.text.trim() !== '';
+                const fresh = replied ? judged(turn, s.prev, event.time ?? 0) : [];
                 const claims = fresh.length ? [...s.claims, ...fresh].slice(-MAX_CLAIMS) : s.claims;
-                return { ...s, turn: null, prev, claims };
+                const { carry: _carried, ...rest } = s;
+                if (!replied) {
+                    // No reply: its runs and changes go on to the next turn, marked with the turn they came from.
+                    const own = turn.items.map((i) => (/^turn \d+: /.test(i.text) ? i : { ...i, text: `turn ${turn.n}: ${i.text}` }));
+                    return { ...rest, turn: null, ...(own.length ? { carry: capItems(own) } : {}), claims };
+                }
+                const prev = turn.items.length > 0 ? { n: turn.n, items: turn.items, ask: turn.ask ?? '' } : s.prev;
+                return { ...rest, turn: null, prev, claims };
             }
             default:
                 return s;
@@ -236,11 +266,12 @@ function parseClaim(c) {
 function parseItems(items) {
     if (!Array.isArray(items)) return [];
     return items.filter((i) => isRecord(i) && typeof i.kind === 'string' && typeof i.text === 'string').slice(-MAX_ITEMS).map((i) => {
-        const { lines, pairs, checks, ...rest } = i;
+        const { lines, pairs, checks, failLines, ...rest } = i;
         const kept = Array.isArray(lines) ? lines.filter((l) => typeof l === 'string').slice(0, 8).map((l) => l.slice(0, 120)) : [];
+        const fails = Array.isArray(failLines) ? failLines.filter((l) => typeof l === 'string').slice(0, 6).map((l) => l.slice(0, 120)) : [];
         const hashes = Array.isArray(pairs) ? pairs.filter((p) => isRecord(p) && typeof p.h === 'string' && typeof p.f === 'string').slice(0, 8) : [];
         const names = Array.isArray(checks) ? checks.filter((c) => typeof c === 'string').slice(0, 16).map((c) => c.slice(0, 60)) : [];
-        return { ...rest, ...(kept.length ? { lines: kept } : {}), ...(hashes.length ? { pairs: hashes } : {}), ...(names.length ? { checks: names } : {}) };
+        return { ...rest, ...(kept.length ? { lines: kept } : {}), ...(fails.length ? { failLines: fails } : {}), ...(hashes.length ? { pairs: hashes } : {}), ...(names.length ? { checks: names } : {}) };
     });
 }
 
@@ -264,7 +295,8 @@ export function parseState(value) {
         const prev = isRecord(p) ? { n: Number.isSafeInteger(p.n) ? p.n : 0, items: parseItems(p.items), ask: str(p.ask, MAX_ASK) } : null;
         const claims = Array.isArray(value.claims) ? value.claims.map(parseClaim).filter(Boolean).slice(-MAX_CLAIMS) : [];
         if (value.check === true) return { v: 1, turn: null, prev: null, claims: [], check: true, ...(Number.isSafeInteger(value.first) ? { first: value.first } : {}) };
-        return { v: 1, turn, prev, claims };
+        const carry = parseItems(value.carry);
+        return { v: 1, turn, prev, ...(carry.length ? { carry } : {}), claims };
     } catch {
         return INITIAL;
     }

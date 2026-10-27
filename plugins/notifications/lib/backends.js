@@ -11,13 +11,14 @@
  *   Notifications API), for the `web` profile served to a browser. The host
  *   queues the notification and the window shows it; this module only
  *   carries the payload.
- * - cli: a command-line sender (osascript, notify-send, PowerShell toast)
- *   when no DSH window is around to show one. A clean fallback, never a
- *   second copy: it only runs when no browser half has polled recently.
- *   Where the platform takes one, the sender carries the plugin's DeepSeek
- *   whale — osascript cannot set a per-notification icon, so there the
- *   notification shows the posting app's own (DSH's when the Desktop app
- *   sends it).
+ * - cli: a command-line sender (notify-send, PowerShell toast) when no DSH
+ *   window is around to show one. A clean fallback, never a second copy: it
+ *   only runs when no browser half has polled recently. Where the platform
+ *   takes one, the sender carries the plugin's DeepSeek whale. macOS has no
+ *   command-line sender here: osascript cannot set a per-notification icon,
+ *   so its notifications show Script Editor's icon — the exact bug this
+ *   plugin exists to fix — and macOS returns null instead of sending one.
+ *   (On macOS the Desktop app's renderer is the sender; see notifier.js.)
  *
  * @module dsh-plugin-notifications/backends
  */
@@ -52,9 +53,6 @@ export function desktopSend(runtime, notification) {
     runtime.notifyAttention({ title: notification.title, body: notification.body });
 }
 
-/** An AppleScript string literal. */
-const appleLiteral = (text) => `"${String(text).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-
 /** A PowerShell single-quoted string literal, on one line. */
 const psLiteral = (text) => `'${oneLine(text).replace(/'/g, "''")}'`;
 
@@ -65,17 +63,15 @@ const toastFileUrl = (path) => `file:///${encodeURI(String(path).replace(/\\/g, 
  * The command that shows one notification on this platform, or null when
  * the platform has none here. Windows takes a text toast through the
  * PowerShell WinRT projection (with the plugin's logo when an icon is
- * given); Linux takes notify-send; macOS takes osascript, which has no
- * icon of its own. Nothing is run through a shell: every word is its own
- * argument.
+ * given); Linux takes notify-send. macOS takes nothing: osascript cannot
+ * set a per-notification icon, so its notifications would show Script
+ * Editor's icon — the posting app is not ours and cannot be made ours.
+ * Nothing is run through a shell: every word is its own argument.
  * @param {NodeJS.Platform} platform
  * @param {{title: string, body: string}} notification
  * @param {{path: string} | undefined} [icon] - what iconFor says for the platform.
  */
 export function cliCommand(platform, { title, body }, icon) {
-    if (platform === 'darwin') {
-        return { command: 'osascript', args: ['-e', `display notification ${appleLiteral(body)} with title ${appleLiteral(title)}`] };
-    }
     if (platform === 'linux') {
         const args = ['--app-name=DSH'];
         if (icon?.path) args.push(`--icon=${icon.path}`);
@@ -103,8 +99,9 @@ export function cliCommand(platform, { title, body }, icon) {
 
 /**
  * Send one notification through the platform's command. Fire and forget:
- * a stuck child is killed after timeoutMs, a missing command is reported
- * once through onError, and neither throws into the caller.
+ * a stuck child is killed after timeoutMs, and a missing command, a
+ * non-zero exit or the kill is reported once through onError; none of it
+ * throws into the caller.
  * @param {NodeJS.Platform} platform
  * @param {{title: string, body: string}} notification
  * @param {object} [options]
@@ -118,11 +115,21 @@ export function cliSend(platform, notification, { spawnImpl = spawn, timeoutMs =
         const child = spawnImpl(cmd.command, cmd.args, { stdio: 'ignore' });
         const timer = setTimeout(() => child.kill(), timeoutMs);
         timer.unref?.();
+        let reported = false;
+        const report = (error) => {
+            if (reported) return;
+            reported = true;
+            onError(error);
+        };
         child.on('error', (error) => {
             clearTimeout(timer);
-            onError(error);
+            report(error);
         });
-        child.on('close', () => clearTimeout(timer));
+        child.on('close', (code, signal) => {
+            clearTimeout(timer);
+            if (signal) report(new Error(`${cmd.command} was stopped after ${Math.round(timeoutMs / 1000)} s`));
+            else if (typeof code === 'number' && code !== 0) report(new Error(`${cmd.command} exited with code ${code}`));
+        });
         return true;
     } catch (error) {
         onError(error);

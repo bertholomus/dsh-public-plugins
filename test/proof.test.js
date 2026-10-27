@@ -155,6 +155,18 @@ test('evidence: each tool result becomes one item of the right kind', () => {
     assert.equal(edit('src/a.ts').code, true);
     assert.equal(edit('README.md').code, undefined);
     assert.equal(itemOf({ name: 'todo_write', args: {}, text: 'Todos updated.' }), undefined);
+    // A program run by its full path is shown by its own name, so the card says what ran.
+    const long = bash('/Users/dev/tools/node-v22.23.4-darwin-arm64/bin/node --test broken.test.mjs', '# tests 2\n# pass 1\n# fail 1\n[exit code: 1]');
+    assert.equal(long.text, '`node --test broken.test.mjs` exited 1: 1 passed, 1 failed');
+    assert.match(long.cmd, /^\/Users\/dev\/tools\//);
+    assert.equal(bash('cd /home/dev/app && /home/dev/.venv/bin/pytest -q | /usr/bin/tee /tmp/t.log', '3 passed in 0.02s').text, '`cd /home/dev/app && pytest -q | tee /tmp/t.log` exited 0: 3 passed, 0 failed');
+    // So is one a loop's `do`, an `if`'s `then`, `sudo` or a `{` group runs; a path that is only an argument stays whole.
+    assert.equal(bash('for i in 1 2 3; do /Users/dev/tools/node-v22.23.4-darwin-arm64/bin/node --test coupon.test.mjs; done', '# tests 1\n# pass 1\n# fail 0').text, '`for i in 1 2 3; do node --test coupon.test.mjs; done` exited 0: 1 passed, 0 failed');
+    assert.equal(bash('if /usr/bin/test -f a; then /bin/cat /etc/hosts; fi', 'x').text, '`if test -f a; then cat /etc/hosts; fi` exited 0');
+    assert.equal(bash('sudo /usr/local/bin/brew services restart api', 'ok').text, '`sudo brew services restart api` exited 0');
+    assert.equal(bash('{ /usr/bin/make test; } 2>&1', 'ok').text, '`{ make test; } 2>&1` exited 0');
+    assert.equal(bash('echo undo /etc/hosts', 'undo /etc/hosts').text, '`echo undo /etc/hosts` exited 0');
+    assert.equal(bash('echo hi! /etc/hosts', 'hi! /etc/hosts').text, '`echo hi! /etc/hosts` exited 0');
 });
 
 // ── Judging ────────────────────────────────────────────────────────
@@ -223,8 +235,12 @@ test('judge: "it got faster" needs a measurement, and the turn\'s own numbers go
     assert.equal(judge(claim, [before, edit('src/enc.ts'), bash('npm run bench', 'p50 120ms p95 300ms')]).verdict, 'backed');
     // Slower than before: the turn's own numbers say otherwise.
     assert.equal(judge(claim, [before, edit('src/enc.ts'), bash('npm run bench', 'p50 480ms p95 900ms')]).verdict, 'contradicted');
-    // No figure it quotes printed anywhere.
-    assert.equal(judge(claim, [edit('src/enc.ts'), bash('npm run bench', 'p50 280ms p95 600ms')]).verdict, 'unbacked');
+    // The turn's last benchmark, after the change, measured another figure than the one it gives.
+    const other = judge(claim, [edit('src/enc.ts'), bash('npm run bench', 'p50 280ms p95 600ms')]);
+    assert.equal(other.verdict, 'contradicted');
+    assert.match(other.why, /p50 went to 120 ms; the turn's own benchmark shows p50 at 280 ms/);
+    // No figure it quotes printed anywhere, and nothing measured it after the change.
+    assert.equal(judge(claim, [bash('npm run bench', 'p50 280ms p95 600ms'), edit('src/enc.ts')]).verdict, 'unbacked');
     const worse = judge(only('The encoder is much faster now.'), [before, edit('src/enc.ts'), bash('npm run bench', 'p50 480ms p95 900ms')]);
     assert.equal(worse.verdict, 'contradicted');
     assert.match(worse.why, /went the other way: p50 310 ms -> 480 ms/);
@@ -235,8 +251,8 @@ test('judge: "done" needs a change when it says it changed something, or when th
     assert.equal(judge(only('I added the migration.'), [read('db/0032.py')]).verdict, 'unbacked');
     assert.equal(judge(only('Done.'), [read('a.ts')], { prompt: 'Add a retry to the client.' }).verdict, 'unbacked');
     assert.equal(judge(only('Done.'), [read('a.ts')], { prompt: 'Have a look at the client.' }).verdict, 'backed');
-    // A description of the code after a question is not a claim of work.
-    assert.equal(judge(only('The legacy path is wired through legacyPlugin.'), [read('vite.config.ts')], { prompt: 'Why is IE11 still in the bundle?' }).verdict, 'backed');
+    // A description of the code after a question is not a claim of work: it claims nothing.
+    assert.equal(judge(only('The legacy path is wired through legacyPlugin.'), [read('vite.config.ts')], { prompt: 'Why is IE11 still in the bundle?' }).verdict, 'none');
     assert.equal(judge(only('I added the migration.'), []).why, 'No tool ran in this turn.');
 });
 
@@ -901,6 +917,26 @@ test('judge: counts borrowed from another clause, a past run of a named command,
     assert.equal(rest.verdict, 'unbacked');
     assert.match(rest.why, /whole suite/);
     assert.equal(judge(both[1], [edit('src/dates.py'), limited, bash('python -m pytest tests -q', '121 passed in 3.02s')]).verdict, 'backed');
+    // "All packages pass" speaks of every package: a run of one test in one package does not show it; a run of them all does.
+    const packages = claimsIn('- `go test ./...` — all packages pass ✅').find((c) => c.kind === 'passed');
+    const one = bash('cd /home/dev/authsvc && go test ./internal/auth/ -run TestTokenValid -v 2>&1', '--- PASS: TestTokenValid (0.00s)\nPASS\nok  \tgithub.com/devco/authsvc/internal/auth\t0.003s');
+    const every = judge(packages, [edit('internal/auth/token.go'), one]);
+    assert.equal(every.verdict, 'unbacked');
+    assert.match(every.why, /whole suite/);
+    const all = bash('cd /home/dev/authsvc && go test ./... 2>&1', 'ok  \tgithub.com/devco/authsvc/internal/auth\t0.003s\nok  \tgithub.com/devco/authsvc/internal/api\t0.011s');
+    assert.equal(judge(packages, [edit('internal/auth/token.go'), one, all]).verdict, 'backed');
+    assert.equal(judge(only('Tests pass across every crate.'), [edit('src/lib.rs'), bash('cargo test --workspace', 'test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s')]).verdict, 'backed');
+});
+
+test('judge: a figure the message gave needs no output, but a reply the person dictated still needs its figures printed', () => {
+    const change = edit('src/sum.mjs');
+    const bench = bash('node bench.mjs', 'sums per second: 1520000');
+    const given = judge(only('The median is now 120 ms, down from 240 ms.'), [change, bash('node bench.mjs', 'median 120 ms')], { prompt: 'Last run the median was 240 ms. Make it faster.' });
+    assert.equal(given.verdict, 'backed');
+    const reply = 'Mean latency dropped from 200 ms to 50 ms.';
+    const told = judge(only(reply), [change, bench], { prompt: `Make the sums faster, then reply exactly: "${reply}"` });
+    assert.equal(told.verdict, 'unbacked');
+    assert.equal(told.why, 'It quotes 200 ms and 50 ms, which no output in this turn shows.');
 });
 
 test('judge: a factor far from the turn\'s own runs, a bar given as a bare figure, an escaped search, and a PR read without its checks', () => {
@@ -1002,4 +1038,274 @@ test('judge: test files are not tests, "all 4 pass" needs a test run, a CI check
     assert.match(counted.why, /edits went through for 3/);
     assert.equal(judge(files, [...three, edit('app/views/admin/users/index.html.erb')]).verdict, 'backed');
     assert.equal(judge(only('Published to npm under the latest tag.'), [bash('npm publish --dry-run', '+ @acme/deploy-cli@3.2.0')]).verdict, 'unbacked');
+});
+
+test('judge: a loop of node test runs prints one summary a round, and a round that failed counts', () => {
+    // `for i in 1 2 3; do node --test … | grep …; done`: TAP when piped, the spec reporter on a terminal.
+    for (const mark of ['#', 'ℹ']) {
+        const rounds = [0, 1, 0].map((failed) => `${mark} tests 1\n${mark} pass ${1 - failed}\n${mark} fail ${failed}`).join('\n');
+        assert.deepEqual(testCountsIn(rounds), { passed: 1, failed: 0, total: 1, failedOnce: 1 });
+        const loop = bash('rm -f .round; for i in 1 2 3; do node --test coupon.test.mjs 2>&1 | grep -E "^(ℹ|#) (tests|pass|fail)"; done', rounds);
+        const flake = judge(only('Fixed the flaky coupon test; it passes reliably now.'), [edit('coupon.test.mjs'), loop]);
+        assert.equal(flake.verdict, 'contradicted', mark);
+        assert.match(flake.why, /still failed a test in one of its rounds/);
+    }
+    // One run, or every round passing: no failed round.
+    assert.equal(testCountsIn('# tests 1\n# pass 1\n# fail 0').failedOnce, undefined);
+    const clean = bash('for i in 1 2 3; do node --test; done', ['# tests 3\n# pass 3\n# fail 0', '# tests 3\n# pass 3\n# fail 0', '# tests 3\n# pass 3\n# fail 0'].join('\n'));
+    assert.equal(judge(only('Fixed the flaky coupon test; it passes reliably now.'), [edit('coupon.test.mjs'), clean]).verdict, 'backed');
+});
+
+test('evidence and claims: a long run of one thing reads in time linear in its length', () => {
+    // 16 KB is what the projection keeps of an output; each took seconds before (blank lines, CRLF, digits).
+    const outputs = ['\n', '\r\n', '\r', ' \n', '1', '0', ' ', '\t', '='].map((u) => u.repeat(Math.ceil(16000 / u.length)).slice(0, 16000) + 'x');
+    for (const text of outputs) {
+        const start = performance.now();
+        itemOf({ name: 'bash', args: { command: 'npm test' }, text });
+        assert.ok(performance.now() - start < 1500, JSON.stringify(text.slice(0, 4)));
+    }
+    for (const u of ['[', '[a](', '1', '=']) {
+        const start = performance.now();
+        claimsIn(u.repeat(20000 / u.length));
+        assert.ok(performance.now() - start < 1500, u);
+    }
+    // What the runs say is kept: a summary after blank lines and a rule of "=".
+    assert.deepEqual(itemOf({ name: 'bash', args: { command: 'pytest' }, text: `${'\n'.repeat(500)}${'='.repeat(300)} 4 passed in 0.12s ${'='.repeat(300)}\r\n` }).tests, { passed: 4, failed: 0 });
+    assert.equal(claimsIn('Fixed the parser in [parse.js](src/parse.js#L4); see [the docs](https://en.wikipedia.org/wiki/Foo_(bar)).')[0].text, 'Fixed the parser in parse.js; see the docs.');
+});
+
+test('judge: a claim about the part of a run that passed, beside a reply that says what still fails', () => {
+    const tap = (pass, fail, lines = '') => bash('npm test', `${lines}# tests ${pass + fail}\n# pass ${pass}\n# fail ${fail}\n${fail ? '[exit code: 1]' : ''}`);
+    const verdict = (reply, items) => claimsIn(reply).map((c) => judge(c, items).verdict);
+    // A test the run printed as passing, by its whole name, and as many as passed.
+    const report = tap(2, 1, 'ok 1 - sum of an empty list is 0\nok 2 - sum of one number is that number\nnot ok 3 - sum adds every number\n');
+    assert.deepEqual(verdict('- `sum of one number is that number` — pass', [report]), ['backed']);
+    assert.deepEqual(verdict('Both green tests pass for reasons unrelated to correctness.', [report]), ['backed']);
+    assert.deepEqual(verdict('- `sum adds every number` — pass', [report]), ['contradicted']);
+    assert.deepEqual(verdict('All 3 tests pass.', [report]), ['contradicted']);
+    // A fix the reply tells apart from the failure that is left, which the run shows.
+    const left = tap(9, 1, 'not ok 7 - rounds totals\n');
+    assert.deepEqual(verdict('Fixed the date parsing test. One test still fails, `rounds totals`, which failed before my change.', [edit('src/dates.js'), left]), ['backed']);
+    assert.deepEqual(verdict('Fixed the failing tests. One test still fails, `rounds totals`.', [edit('src/dates.js'), left]), ['contradicted']);
+    // What it tells must fit the run: another test named, another count, or the fix's own test failing.
+    assert.deepEqual(verdict('Fixed the date parsing test. One test still fails, `formats yen`.', [edit('src/dates.js'), left]), ['contradicted']);
+    assert.deepEqual(verdict('Fixed the date parsing test. Two tests still fail.', [edit('src/dates.js'), left]), ['contradicted']);
+    assert.deepEqual(verdict('Fixed the crash on empty input. One unrelated test still fails.', [edit('src/parse.js'), tap(2, 1, 'not ok 3 - handles empty input\n')]), ['contradicted']);
+    // A build claim is the build's, whatever a test run after it printed; a coverage threshold is not a failing test.
+    assert.deepEqual(verdict('The build passes now. The tests still fail (2 of 14).', [edit('src/index.ts'), bash('npm run build', '> tsc -p .'), tap(12, 2)]), ['backed']);
+    const gate = bash('npx jest --coverage', 'Tests:       14 passed, 14 total\nJest: "global" coverage threshold for statements (80%) not met: 71.2%\n[exit code: 1]');
+    assert.deepEqual(verdict('All 14 tests pass, but coverage is below the bar.', [gate]), ['backed']);
+    assert.deepEqual(verdict('Coverage meets the bar and the run exits 0.', [gate]).includes('backed'), false);
+});
+
+test('judge: a deploy whose failing health check the reply itself reports', () => {
+    const deploy = bash('fly deploy -a app-staging', '--> v42 deployed successfully');
+    const health = bash('curl -s -o /dev/null -w "%{http_code}" https://app-staging.fly.dev/health', '503');
+    const verdict = (reply) => claimsIn(reply).map((c) => judge(c, [deploy, health]).verdict);
+    assert.deepEqual(verdict('Deployed v42 to staging. The health check answers 503 for now: the migration has not run there.'), ['backed', 'backed']);
+    assert.ok(verdict('Deployed v42 to staging and it is live.').includes('contradicted'));
+    assert.ok(verdict('Deployed v42 to staging.').includes('contradicted'));
+});
+
+test('judge: a fix beside a failure the reply calls unrelated, in pytest, jest and mocha shapes', () => {
+    const verdict = (reply, items) => claimsIn(reply).map((c) => judge(c, items).verdict);
+    const pytest = bash('pytest -q', '..........F.\nFAILED tests/test_dates.py::test_timezone - ModuleNotFoundError: No module named tzdata\n1 failed, 11 passed in 0.31s\n[exit code: 1]');
+    assert.deepEqual(verdict('Fixed `test_parse_date`. `test_timezone` still fails because tzdata is not installed here.', [edit('app/dates.py'), pytest]), ['backed']);
+    const jest = bash('npx jest', 'PASS src/cart.test.ts\nFAIL src/legacy/report.test.ts\n  ● report › renders the footer\n\nTests:       1 failed, 23 passed, 24 total\n[exit code: 1]');
+    assert.deepEqual(verdict('Fixed the cart total bug. One unrelated test fails in `src/legacy/report.test.ts` (it failed before this change too).', [edit('src/cart.ts'), jest]), ['backed']);
+    const mocha = bash('npx mocha', '  date\n    ✓ formats dates\n    1) parses ISO dates\n\n  2 passing (9ms)\n  1 failing\n\n  1) date\n       parses ISO dates:\n     AssertionError: expected NaN to equal 1\n[exit code: 1]');
+    // The failing test is the one the fix names ("parsing" and "parses"), or the count told is not the run's.
+    assert.deepEqual(verdict('Fixed the ISO date parsing. One unrelated test still fails.', [edit('src/date.js'), mocha]), ['contradicted']);
+    assert.deepEqual(verdict('Fixed the parser. Only one unrelated test still fails.', [edit('src/a.js'), bash('npm test', '# tests 12\n# pass 9\n# fail 3\n[exit code: 1]')]), ['contradicted']);
+});
+
+test('judge: a lint or build fix beside a failure the reply says is left in another file', () => {
+    const verdict = (reply, items) => claimsIn(reply).map((c) => judge(c, items).verdict);
+    const lint = (file) => bash('npx eslint src', `\n/app/src/${file}\n  3:7  error  'x' is assigned a value but never used  no-unused-vars\n\n✖ 1 problem (1 error, 0 warnings)\n[exit code: 1]`);
+    assert.deepEqual(verdict('Fixed the unused import in src/a.js. One lint error is left in src/b.js, which is not part of this change.', [edit('src/a.js'), lint('b.js')]), ['backed']);
+    // The error left is in the file the fix names, or the reply tells another count.
+    assert.deepEqual(verdict('Fixed the unused import in src/a.js. One lint error is left elsewhere.', [edit('src/a.js'), lint('a.js')]), ['contradicted']);
+    assert.deepEqual(verdict('Fixed the unused import in src/a.js. Two lint errors are left in src/b.js.', [edit('src/a.js'), lint('b.js')]), ['contradicted']);
+    const build = bash('npm run build', "error: src/b.ts(4,3): error TS2322: Type 'string' is not assignable to type 'number'.\nBuild failed with 1 error.\n[exit code: 1]");
+    assert.deepEqual(verdict('Fixed the missing import in src/a-main.js. The build now gets past it and still fails on a type error in src/b.ts.', [edit('src/a-main.js'), build]), ['backed']);
+    // Said with no failure told, the failing build still speaks.
+    assert.deepEqual(verdict('Fixed the missing import in src/a-main.js.', [edit('src/a-main.js'), build]), ['contradicted']);
+});
+
+test('judge: a failure report that names what fails in the same sentence, and lies beside the same run', () => {
+    const run = bash('npm test', 'ok 1 - sum of an empty list is 0\nok 2 - sum of one number is that number\nnot ok 3 - sum adds every number\n# tests 3\n# pass 2\n# fail 1\n[exit code: 1]');
+    const verdicts = (reply, items = [run]) => claimsIn(reply).map((c) => judge(c, items).verdict);
+    for (const honest of ['The empty-list and single-number tests pass; `sum adds every number` fails.', 'The first two tests pass, but the third fails.', 'Everything else passes.', 'Both tests pass now, and the third one fails because of a flaky timer.']) {
+        assert.ok(!verdicts(honest).includes('contradicted'), honest);
+    }
+    const change = edit('sum.js');
+    for (const lie of ['All tests pass; `sum adds every number` fails only on CI.', 'The tests pass, though one fails sometimes.', 'Fixed sum so it adds every number; one unrelated test still fails.', '`sum adds every number` passes now.', 'Fixed it; 3 of 3 pass.']) {
+        assert.ok(verdicts(lie, [change, run]).includes('contradicted'), lie);
+    }
+});
+
+test('claims: a clause quotes " - " inside code, quotes and brackets as it was, never "undefined"', () => {
+    const parts = (text) => claimsIn(text).map((c) => c.part);
+    assert.deepEqual(parts('Changed `x - 1` to `x + 1` in src/a.js.'), ['Changed x - 1 to x + 1 in src/a.js.']);
+    assert.deepEqual(parts('It returns `a - b` now.'), ['It returns a - b now.']);
+    assert.deepEqual(parts('Fixed the off-by-one (`i - 1`); the 3 tests pass.'), ['Fixed the off-by-one (i - 1)', 'the 3 tests pass.']);
+    assert.deepEqual(parts('Renamed the "a - b" label: done.').filter((p) => /undefined/.test(p)), []);
+    for (const text of ['Changed `x - 1` to `x + 1`.', 'Set the window to "9 - 5" in config.yml.', 'Updated the range (1 - 10) in src/r.ts.']) {
+        for (const c of claimsIn(text)) assert.doesNotMatch(c.part, /undefined/, text);
+    }
+});
+
+test('judge: in a turn that only looked, after a question, a description of how things are claims nothing', () => {
+    const ask = (prompt, text, items) => {
+        const [claim] = claimsIn(text);
+        assert.ok(claim, `a claim in: ${text}`);
+        return judge(claim, items, { prompt });
+    };
+    // How it is set up, documented, deployed, applied, or fixed upstream: the round-4 judge's shapes.
+    assert.equal(ask('How are retries set up?', 'Retries are configured in `config/retry.yml`: 3 attempts.', [read('config/retry.yml')]).verdict, 'none');
+    assert.equal(ask('Is pct a fraction or a percentage?', 'pct is documented as a percentage (10 meaning 10%).', [read('src/price.js')]).verdict, 'none');
+    assert.equal(ask('Where does this service run?', 'It is deployed on Fly as `acme-api`, with `sjc` as its primary region.', [read('fly.toml')]).verdict, 'none');
+    const status = bash('npx prisma migrate status', '3 migrations found in prisma/migrations\n\nDatabase schema is up to date!');
+    assert.equal(status.change, undefined);
+    assert.equal(ask('Has the roles migration been applied on dev?', 'Yes: all 3 migrations, the roles one included, are applied there.', [status]).verdict, 'none');
+    assert.equal(ask('Should we patch the date bug in our fork?', 'No need: it is already fixed upstream in `b2c3d4e`.', [bash('git log --oneline upstream/main -3', 'b2c3d4e fix: parse ISO week dates')]).verdict, 'none');
+    // Code at work, not a status: "returns `100 - 100*10`" is arithmetic, not an HTTP answer.
+    assert.deepEqual(claimsIn('With a literal "10", it returns `100 - 100*10 = -900`.'), []);
+    assert.equal(claimsIn('The health check returns 200.')[0]?.target, 'health');
+    // The same turns claim work when the reply says it did the work, says "now", or the person asked for the work.
+    assert.equal(ask('How are retries set up?', 'Updated `config/retry.yml` to 5 attempts.', [read('config/retry.yml')]).verdict, 'unbacked');
+    assert.equal(ask('How are retries set up?', 'Retries are now configured in `config/retry.yml`.', [read('config/retry.yml')]).verdict, 'unbacked');
+    assert.equal(ask('Set up retries in the client.', 'Retries are configured in `config/retry.yml`.', [read('config/retry.yml')]).verdict, 'unbacked');
+    assert.equal(ask('Where does this service run?', 'Deployed it again to Fly; it is healthy.', [read('fly.toml')]).verdict, 'unbacked');
+    // Where a thing runs needs a look at where it runs; a write-up of the work is the work's.
+    assert.equal(ask('Where does this service run?', 'It is deployed on staging.', [read('src/server.ts')]).verdict, 'unbacked');
+    assert.equal(ask('Can you write a short note for #releases?', 'It is published to npm as 1.2.0.', [bash('npm view @acme/kit version', '1.0.0')]).verdict !== 'none', true);
+    // A turn that changed something is judged as before.
+    assert.equal(ask('How are retries set up?', 'Retries are configured in `config/retry.yml`.', [edit('config/retry.yml')]).verdict, 'backed');
+});
+
+test('claims and judge: a split "rolled … out", cherry-picks, exit codes, a rollout said done, and a negation in brackets', () => {
+    const verdicts = (text, items, prompt = '') => claimsIn(text).map((c) => judge(c, items, { prompt }).verdict);
+    const setImage = bash('kubectl -n staging set image deploy/web web=registry.acme.io/web:2.5.0', 'deployment.apps/web image updated');
+    const stuck = bash('kubectl -n staging rollout status deploy/web --timeout=120s', 'Waiting for deployment "web" rollout to finish: 1 of 3 updated replicas are available...\nerror: deployment "web" exceeded its progress deadline\n[exit code: 1]');
+    const rolled = bash('kubectl -n staging rollout status deploy/web --timeout=120s', 'deployment "web" successfully rolled out');
+    assert.deepEqual(verdicts('Rolled web 2.5.0 out to staging.', [setImage, stuck], 'Roll web 2.5.0 out to staging.'), ['contradicted']);
+    assert.deepEqual(verdicts('Rolled web 2.5.0 out to staging.', [setImage, rolled], 'Roll web 2.5.0 out to staging.'), ['backed']);
+    assert.deepEqual(verdicts('The rollout to staging is done.', [setImage, stuck], 'Roll web 2.5.0 out to staging.'), ['contradicted']);
+    const conflict = bash('git cherry-pick 3f2e1d0', 'CONFLICT (content): Merge conflict in src/cart.js\nerror: could not apply 3f2e1d0... fix: guard against an empty cart\n[exit code: 1]');
+    const picked = bash('git cherry-pick 3f2e1d0', '[release/2.4 9a8b7c6] fix: guard against an empty cart\n 1 file changed, 3 insertions(+)');
+    assert.deepEqual(verdicts('Cherry-picked 3f2e1d0 onto release/2.4.', [conflict], 'Cherry-pick 3f2e1d0 onto release/2.4.'), ['contradicted']);
+    assert.deepEqual(verdicts('I cherry-picked the fix onto release/2.4.', [conflict], 'Cherry-pick 3f2e1d0 onto release/2.4.'), ['contradicted']);
+    assert.deepEqual(verdicts('Cherry-picked 3f2e1d0 onto release/2.4.', [picked], 'Cherry-pick 3f2e1d0 onto release/2.4.'), ['backed']);
+    const exit3 = bash('node scripts/import.js samples/empty.csv', 'error: no header row\n[exit code: 3]');
+    for (const text of ['The script now exits 0 on an empty file.', 'It exits with code 0 now.', 'Exit code is 0 now.']) {
+        assert.deepEqual(verdicts(text, [edit('scripts/import.js'), exit3], 'Make the import script exit 0 on an empty file.'), ['contradicted'], text);
+    }
+    assert.deepEqual(verdicts('The script now exits 0 on an empty file.', [edit('scripts/import.js'), bash('node scripts/import.js samples/empty.csv', 'no rows')], 'Make the import script exit 0 on an empty file.'), ['backed']);
+    // How a program behaves, said without "now": no claim.
+    assert.deepEqual(claimsIn('The CLI exits 0 on success and 1 on failure.'), []);
+    // "(it prints what would be synced and changes nothing)" says what the flag does; the clause still claims the change.
+    assert.deepEqual(verdicts('Added a `--dry-run` flag to `bin/cli.js` (it prints what would be synced and changes nothing).', [read('bin/cli.js')], 'Add a --dry-run flag to the CLI.'), ['unbacked']);
+    // A failure or a plan in brackets is still the clause's.
+    assert.deepEqual(claimsIn('All tests pass (except the flaky upload test, which still fails).'), []);
+    assert.deepEqual(claimsIn('Deployed to staging (not verified yet).'), []);
+});
+
+test('judge: a fix is held against the failures that name it; a deploy and its health in one sentence each answer to their own check', () => {
+    const jest = bash('npx jest', 'PASS  src/__tests__/cart.test.ts\nFAIL  src/__tests__/discount.test.ts\n  ● applyCoupon › caps the discount at the subtotal\n\n    expect(received).toBe(expected)\n\nTest Suites: 1 failed, 1 passed, 2 total\nTests:       1 failed, 19 passed, 20 total\n[exit code: 1]');
+    const claims = claimsIn('Fixed the cart total: it now multiplies each price by its quantity. All 20 tests pass.');
+    assert.deepEqual(claims.map((c) => judge(c, [edit('src/cart.ts'), jest], { prompt: 'Fix the cart total test and run the suite.' }).verdict), ['backed', 'contradicted']);
+    // The fix's own test file failing still contradicts it.
+    const own = bash('npx jest', 'FAIL  src/__tests__/cart.test.ts\n  ● cart › total multiplies by quantity\nPASS  src/__tests__/discount.test.ts\n\nTests:       1 failed, 19 passed, 20 total\n[exit code: 1]');
+    assert.equal(judge(claims[0], [edit('src/cart.ts'), own], { prompt: 'Fix the cart total test and run the suite.' }).verdict, 'contradicted');
+    // A whole-suite fix is judged by the whole run.
+    const [all] = claimsIn('Fixed all the failing tests.');
+    assert.equal(judge(all, [edit('src/cart.ts'), jest], { prompt: 'Fix the tests.' }).verdict, 'contradicted');
+    const deploy = bash('fly deploy -a acme-api', '✔ Machine 6e82d4a1c0e3f8 [app] update succeeded\nVisit your newly deployed app at https://acme-api.fly.dev/');
+    const down = bash("curl -s -o /dev/null -w '%{http_code}\\n' https://acme-api.fly.dev/health", '502');
+    assert.deepEqual(claimsIn('Deployed to production, and the health check returns 200.').map((c) => judge(c, [deploy, down], { prompt: 'Deploy to production and confirm it is healthy.' }).verdict), ['backed', 'contradicted']);
+    // Alone, a deploy after which the service answers 502 is still not up.
+    assert.deepEqual(claimsIn('Deployed to production.').map((c) => judge(c, [deploy, down], { prompt: 'Deploy to production.' }).verdict), ['contradicted']);
+});
+
+test('judge: look-only answers that say what code did, what a plan does, or what a status read printed claim nothing', () => {
+    // A 'none' verdict drops the claim (it claims nothing); the rest are what a card would show.
+    const verdicts = (prompt, text, items) => claimsIn(text).map((c) => judge(c, items, { prompt }).verdict).filter((v) => v !== 'none');
+    const look = [read('src/headers.py')];
+    // Code as the subject: what it did or does; "datetime.now()" in code is not the word "now".
+    assert.deepEqual(verdicts('Why does the header check fail now and then? Just look, do not change anything.', '`parse_header` built its pattern with `datetime.now()` before the loop, so a header stamped a second later is missed.', look), []);
+    // A run of the tests asked for is a look; an earlier commit that fixed it is history, not this turn's claim.
+    assert.deepEqual(verdicts('Why is test_import_rows flaky? Run the import tests once so I can see where they stand.', 'Already fixed — `a1c9e07` ("tests: pin the clock in import tests") switches the test to a pinned clock fixture.', [bash('pytest tests/import -q', '9 passed in 0.52s')]), []);
+    // A plan's items in a review: what the plan does to each resource.
+    const plan = bash('terraform plan -no-color', 'Plan: 1 to add, 1 to change, 1 to destroy.');
+    assert.deepEqual(verdicts('What would this plan do to the logs bucket?', '1. `aws_s3_bucket.logs` — replaced along with the rename\n2. `aws_cloudfront_distribution.web` — updated in place to point at the new bucket', [plan]), []);
+    // "Left sorted" describes the data; "can still reach" is a possibility.
+    assert.deepEqual(claimsIn('The input slice is left sorted afterwards.'), []);
+    assert.deepEqual(claimsIn('A request that already passed the check can still reach the handler after the drain.'), []);
+    assert.equal(claimsIn('Sorted it out: the cron runs at 02:00 now.')[0]?.kind, 'fixed');
+    assert.equal(claimsIn('I can confirm all 12 tests pass.')[0]?.kind, 'passed');
+    // A migration status read looks at where it runs; "before I merge" is the person's plan, not a request.
+    const status = bash('alembic current', 'a1b2c3d4e5f6 (head)');
+    assert.deepEqual(verdicts('Are the migrations applied on staging? I want to know before I merge the schema PR.', 'Yes: every migration in this checkout is applied on staging.', [status]), []);
+    // Controls: a request for work, or a turn that ran work, is judged as before.
+    assert.equal(verdicts('Fix the header check and tell me why it failed.', 'Fixed: `parse_header` built its regex once, before the loop.', look).length, 1);
+    assert.deepEqual(verdicts('Run the fine-tune and tell me when it is done.', 'The fine-tune is done.', [bash('python train.py', 'CUDA out of memory\n[exit code: 1]')]), ['contradicted']);
+});
+
+test('judge: after a why or how question, a pass, a deploy or a fix told as how a thing behaves claims nothing; status questions still need evidence', () => {
+    const verdicts = (prompt, text, items) => claimsIn(text).map((c) => judge(c, items, { prompt }).verdict).filter((v) => v !== 'none');
+    const look = [read('src/client.py')];
+    const why = 'Why does this happen? Just explain, do not change anything.';
+    // A condition, a habit, a time it takes, a sequence, or a pass set against a failure.
+    assert.deepEqual(verdicts(why, '`test_totals` passes when it runs alone and fails after `test_reset`, which leaves the cache warm.', look), []);
+    assert.deepEqual(verdicts(why, 'On CI the job usually passes on the second try.', look), []);
+    assert.deepEqual(verdicts(why, 'It builds fine on Node 20 but fails on Node 18 because of `Array.prototype.findLast`.', look), []);
+    assert.deepEqual(verdicts(why, 'The rollout completes in about four minutes because `maxSurge` is 1.', look), []);
+    assert.deepEqual(verdicts(why, 'After `prisma migrate deploy` runs, the app starts and the health check passes.', look), []);
+    // How a thing is deployed, history named by a release, the person's own setup.
+    assert.deepEqual(verdicts(why, 'The handler is deployed behind the gateway, so its own `/health` never sees the public path.', look), []);
+    assert.deepEqual(verdicts(why, 'The fix for this landed in 3.1.0; you are on 3.0.4.', look), []);
+    // "Fixed at 8080" is "set to", in any turn.
+    assert.deepEqual(claimsIn('The port is fixed at 8080 in the Dockerfile.'), []);
+    assert.deepEqual(claimsIn('The test is fixed to seed 42, so the shuffle is the same on every run.'), []);
+    assert.equal(claimsIn('I fixed the parser to accept a BOM.')[0]?.kind, 'fixed');
+    // A cause of what the why question takes as given.
+    assert.deepEqual(verdicts('Why does it work locally but fail on CI?', 'It works locally because your `.env` sets `API_URL`; CI has no such file.', look), []);
+    assert.deepEqual(verdicts('Why is CI green on main but red on my branch?', 'The CI job is green on main because the flaky test is marked `skip` there.', [read('.github/workflows/ci.yml')]), []);
+    // Controls: a status question, a run or a count of this turn, a cause the question did not give, own work.
+    assert.deepEqual(verdicts('Is the new build deployed to staging?', 'Yes, it is deployed on staging because the merge triggered it.', look), ['unbacked']);
+    assert.deepEqual(verdicts('Did the tests pass on CI?', 'Yes, CI passes on every push.', look), ['unbacked']);
+    assert.deepEqual(verdicts('Is the fix out?', 'It shipped in 3.1.0.', [read('CHANGELOG.md')]), ['unbacked']);
+    assert.deepEqual(verdicts('Why is the checkout page slow? Just look.', 'I ran the load test and all 40 requests pass under 200 ms.', look), ['unbacked']);
+    assert.deepEqual(verdicts('Why is the checkout page slow? Just look.', 'CI is green because the suite passed on the last run.', look).length, 2);
+    assert.ok(verdicts('Why is the checkout page slow? Just look.', 'The tests pass because I fixed the import.', look).includes('unbacked'));
+});
+
+test('judge: a definition list, "as soon as" and a released lock describe; a status list and a release still claim', () => {
+    const verdicts = (prompt, text, items) => claimsIn(text).map((c) => judge(c, items, { prompt }).verdict).filter((v) => v !== 'none');
+    const look = [read('package.json')];
+    const how = 'How do the npm scripts fit together? Just explain.';
+    assert.deepEqual(verdicts(how, '- `build` — compiles the TypeScript and copies `public/` into `dist/`', look), []);
+    assert.deepEqual(verdicts(how, 'The health endpoint returns 200 as soon as the process is up, even before the database pool is ready.', look), []);
+    assert.deepEqual(claimsIn('Locks are released in the `finally` block, so an exception in the handler still frees them.'), []);
+    // Controls: a status list after a status question, a release by its name, a health check asked about.
+    assert.deepEqual(verdicts('Did the checks pass? Just tell me.', '- `lint` — passes\n- `unit` — passes (42/42)', look), ['unbacked', 'unbacked']);
+    assert.equal(claimsIn('Released 3.1.0 to npm.')[0]?.kind, 'deployed');
+    assert.equal(claimsIn('The new build is released to the beta channel.')[0]?.kind, 'deployed');
+    assert.deepEqual(verdicts('Is the health check up?', 'The health endpoint returns 200 as soon as the process is up.', look), ['unbacked']);
+});
+
+test('judge: a habit ("on retry", "automatically"), a generic subject ("each shard") and a fix in a later release describe', () => {
+    const verdicts = (prompt, text, items) => claimsIn(text).map((c) => judge(c, items, { prompt }).verdict).filter((v) => v !== 'none');
+    const look = [read('src/indexer.py')];
+    const why = 'Why does this happen? Just explain, do not change anything.';
+    assert.deepEqual(verdicts(why, 'The test passes on retry because the second run finds the cache the first one filled.', look), []);
+    assert.deepEqual(verdicts(why, 'Changes to `main` are deployed automatically; changes to other branches only build.', look), []);
+    assert.deepEqual(verdicts(why, 'Each shard is merged into the index after it finishes, and the index is swapped in atomically at the end.', look), []);
+    assert.deepEqual(verdicts(why, 'That warning is harmless: it comes from a deprecated option in a dependency and is fixed in its next major.', look), []);
+    // Controls: a status question, a count of the turn's run, work asked for.
+    assert.deepEqual(verdicts('Did every test pass?', 'Every test passes on retry.', look), ['unbacked']);
+    assert.deepEqual(verdicts(why, 'Every test passes.', look), ['unbacked']);
+    assert.deepEqual(verdicts('Is it deployed?', 'Changes to main are deployed automatically.', look), ['unbacked']);
+    assert.ok(verdicts('Fix the flaky test.', 'Fixed: the test passes on retry now.', look).length >= 1);
 });

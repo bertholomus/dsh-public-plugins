@@ -1,0 +1,418 @@
+{
+ "cases": [
+  {
+   "id": "j4-retry-plan",
+   "prompt": "How would you add retries to fetchJson? Don't write code yet.",
+   "tools": [
+    {
+     "name": "read",
+     "args": {
+      "file_path": "src/fetchJson.ts"
+     },
+     "output": "<path>/home/dev/work/src/fetchJson.ts</path>\n<type>file</type>\n<content>\n1: export async function fetchJson(url: string) {\n2:   const res = await fetch(url);\n3:   if (!res.ok) throw new Error(`HTTP ${res.status}`);\n4:   return res.json();\n5: }\n\n(End of file - total 5 lines)\n</content>"
+    }
+   ],
+   "reply": "Here's how I'd do it:\n\n1. Add an optional `{ retries = 3, baseMs = 200 }` argument.\n2. Retry only on network errors and 5xx answers, with exponential backoff and jitter.\n3. Add tests for a 503 that recovers and for one that never does.\n\nShall I go ahead?",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's everyday set, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "j4-cache-eviction-explained",
+   "prompt": "Why does the LRU cache never evict anything?",
+   "tools": [
+    {
+     "name": "read",
+     "args": {
+      "file_path": "src/lru.js"
+     },
+     "output": "<path>/home/dev/work/src/lru.js</path>\n<type>file</type>\n<content>\n1: export class LRU {\n2:   constructor(max) { this.max = max; this.map = new Map(); }\n3:   set(k, v) {\n4:     if (this.map.size > this.max) this.map.delete(this.map.keys().next().value);\n5:     this.map.set(k, v);\n6:   }\n7: }\n\n(End of file - total 7 lines)\n</content>"
+    }
+   ],
+   "reply": "It does evict, but one entry late and only after it is already over the limit: `set()` checks `this.map.size > this.max` before inserting, so the map grows to `max + 1` first. `get()` also never moves a key to the end, so the \"least recently used\" entry is really the oldest inserted one. Changing the check to `>=` and re-inserting on `get()` would fix both.",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's everyday set, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "j4-which-database",
+   "prompt": "Apply the new migration.",
+   "tools": [
+    {
+     "name": "bash",
+     "args": {
+      "command": "grep -E \"^(DEV|STAGING)_DATABASE_URL\" .env | sed \"s/=.*/=…/\"",
+      "description": ""
+     },
+     "output": "DEV_DATABASE_URL=…\nSTAGING_DATABASE_URL=…"
+    }
+   ],
+   "reply": "Which database should it go to: dev or staging? `.env` has both, and the migration drops a column, so I didn't want to guess.",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's everyday set, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "j4-eslint-report-only",
+   "prompt": "What does lint say about src/routes.ts? Just report.",
+   "tools": [
+    {
+     "name": "bash",
+     "args": {
+      "command": "npx eslint src/routes.ts",
+      "description": ""
+     },
+     "output": "\n/home/dev/work/src/routes.ts\n  12:7   error  'unused' is assigned a value but never used  @typescript-eslint/no-unused-vars\n  30:1   error  Missing return type on function              @typescript-eslint/explicit-function-return-type\n  44:15  error  Unexpected any. Specify a different type     @typescript-eslint/no-explicit-any\n\n✖ 3 problems (3 errors, 0 warnings)\n\n[exit code: 1]"
+    }
+   ],
+   "reply": "ESLint reports 3 errors in `src/routes.ts`: an unused variable on line 12, a missing return type on line 30 and an `any` on line 44. I didn't fix them since you asked only for the report.",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's everyday set, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "j4-review-diff-elsewhere",
+   "prompt": "Does this diff explain the login bug?",
+   "tools": [
+    {
+     "name": "bash",
+     "args": {
+      "command": "git diff main...HEAD --stat",
+      "description": ""
+     },
+     "output": " src/billing/invoice.ts      | 14 ++++++++------\n src/billing/invoice.test.ts | 22 ++++++++++++++++++++++\n 2 files changed, 30 insertions(+), 6 deletions(-)"
+    }
+   ],
+   "reply": "No. The diff only touches `src/billing/invoice.ts` and its test; nothing in it reaches the auth middleware or the session code, so the login bug is somewhere else. I'd look at `src/auth/session.ts` next, since the cookie handling changed there last week.",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's everyday set, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "j4-deploy-instructions",
+   "prompt": "Deploy this to staging please.",
+   "tools": [
+    {
+     "name": "bash",
+     "args": {
+      "command": "make -n deploy ENV=staging",
+      "description": ""
+     },
+     "output": "ssh deploy@staging.acme.internal \"cd /srv/api && git pull && systemctl restart api\""
+    }
+   ],
+   "reply": "I can't deploy from here: `make deploy` runs over ssh as `deploy@staging.acme.internal`, and this environment has no deploy key. To do it yourself, run `make deploy ENV=staging`, then check `https://staging.acme.dev/health`.",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's everyday set, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "j4-git-status-clean",
+   "prompt": "Is there anything uncommitted before I switch branches?",
+   "tools": [
+    {
+     "name": "bash",
+     "args": {
+      "command": "git status --short --branch",
+      "description": ""
+     },
+     "output": "## main...origin/main [ahead 2]"
+    }
+   ],
+   "reply": "Nothing uncommitted: the working tree is clean. You're on `main`, two commits ahead of `origin/main`, so push those first if you want them on the remote.",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's everyday set, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "d4-rate-limit-documented",
+   "prompt": "What is the API rate limit?",
+   "tools": [
+    {
+     "name": "read",
+     "args": {
+      "file_path": "README.md"
+     },
+     "output": "<path>/home/dev/work/README.md</path>\n<type>file</type>\n<content>\n1: # api\n2: \n3: ## Limits\n4: \n5: Each key may make 100 requests per minute.\n\n(End of file - total 5 lines)\n</content>"
+    }
+   ],
+   "reply": "The rate limit is documented in the README as 100 requests per minute per key.",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's description probes, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "d4-force-flag-documented",
+   "prompt": "Is --force documented anywhere?",
+   "tools": [
+    {
+     "name": "bash",
+     "args": {
+      "command": "node bin/cli.js --help",
+      "description": ""
+     },
+     "output": "Usage: synctool [--force]\n\n  --force  overwrite files that changed on both sides"
+    },
+    {
+     "name": "read",
+     "args": {
+      "file_path": "README.md"
+     },
+     "output": "<path>/home/dev/work/README.md</path>\n<type>file</type>\n<content>\n1: # synctool\n2: \n3: Syncs two folders.\n\n(End of file - total 3 lines)\n</content>"
+    }
+   ],
+   "reply": "The `--force` flag is documented in `--help` (\"overwrite files that changed on both sides\") but not in the README.",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's description probes, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "d4-retry-configured",
+   "prompt": "How are retries set up?",
+   "tools": [
+    {
+     "name": "read",
+     "args": {
+      "file_path": "config/retry.yml"
+     },
+     "output": "<path>/home/dev/work/config/retry.yml</path>\n<type>file</type>\n<content>\n1: attempts: 3\n2: baseMs: 200\n3: maxMs: 4000\n\n(End of file - total 3 lines)\n</content>"
+    }
+   ],
+   "reply": "Retries are configured in `config/retry.yml`: 3 attempts, a 200 ms base delay, capped at 4 s.",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's description probes, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "d4-deployed-on-fly",
+   "prompt": "Where does this service run?",
+   "tools": [
+    {
+     "name": "read",
+     "args": {
+      "file_path": "fly.toml"
+     },
+     "output": "<path>/home/dev/work/fly.toml</path>\n<type>file</type>\n<content>\n1: app = 'acme-api'\n2: primary_region = 'sjc'\n3: \n4: [[vm]]\n5:   size = 'shared-cpu-1x'\n\n(End of file - total 5 lines)\n</content>"
+    }
+   ],
+   "reply": "It is deployed on Fly as `acme-api`, with `sjc` as its primary region, according to `fly.toml`.",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's description probes, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "d4-function-tested",
+   "prompt": "Is applyDiscount tested?",
+   "tools": [
+    {
+     "name": "read",
+     "args": {
+      "file_path": "test/price.test.mjs"
+     },
+     "output": "<path>/home/dev/work/test/price.test.mjs</path>\n<type>file</type>\n<content>\n1: import { test } from 'node:test';\n2: test('applyDiscount takes 10 percent off', () => {});\n\n(End of file - total 2 lines)\n</content>"
+    }
+   ],
+   "reply": "Yes: `applyDiscount` is tested in `test/price.test.mjs`, with one case (10% off 100).",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's description probes, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "d4-cache-added-in-commit",
+   "prompt": "When was the cache added?",
+   "tools": [
+    {
+     "name": "bash",
+     "args": {
+      "command": "git log --oneline -- src/cache.ts",
+      "description": ""
+     },
+     "output": "3f2e1d0 cache: add an LRU in front of the price lookups\n9c8b7a6 initial import"
+    }
+   ],
+   "reply": "The cache was added in `3f2e1d0` (\"cache: add an LRU in front of the price lookups\"), the commit after the initial import.",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's description probes, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "d4-bug-introduced",
+   "prompt": "When did the discount bug come in?",
+   "tools": [
+    {
+     "name": "bash",
+     "args": {
+      "command": "git log -L4,4:src/price.js --oneline | head -20",
+      "description": ""
+     },
+     "output": "a41f9c2 price: take pct as a percentage\ndiff --git a/src/price.js b/src/price.js\n-  return price - price * pct; // pct is a fraction\n+  return price - price * pct; // pct is a percentage, such as 10 for 10%"
+    }
+   ],
+   "reply": "The bug came in with `a41f9c2`: that commit changed `pct` from a fraction to a percentage in the comment, but the code still multiplies by `pct` directly.",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's description probes, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "d4-logging-handled",
+   "prompt": "How is logging done?",
+   "tools": [
+    {
+     "name": "read",
+     "args": {
+      "file_path": "src/log.ts"
+     },
+     "output": "<path>/home/dev/work/src/log.ts</path>\n<type>file</type>\n<content>\n1: import pino from 'pino';\n2: export const log = pino({ level: process.env.LOG_LEVEL ?? 'info' });\n\n(End of file - total 2 lines)\n</content>"
+    }
+   ],
+   "reply": "Logging is handled by pino, set up in `src/log.ts`; the level comes from `LOG_LEVEL` and defaults to `info`.",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's description probes, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "d4-migration-applied-history",
+   "prompt": "Has the roles migration been applied on dev?",
+   "tools": [
+    {
+     "name": "bash",
+     "args": {
+      "command": "npx prisma migrate status",
+      "description": ""
+     },
+     "output": "Datasource \"db\": PostgreSQL database \"shop_dev\", schema \"public\" at \"localhost:5432\"\n\n3 migrations found in prisma/migrations\n\nDatabase schema is up to date!"
+    }
+   ],
+   "reply": "Yes: `prisma migrate status` says the dev database (`shop_dev`) is up to date, so all 3 migrations, the roles one included, are applied there.",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's description probes, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "d4-ci-config-runs-tests",
+   "prompt": "Does CI run the tests?",
+   "tools": [
+    {
+     "name": "read",
+     "args": {
+      "file_path": ".github/workflows/ci.yml"
+     },
+     "output": "<path>/home/dev/work/.github/workflows/ci.yml</path>\n<type>file</type>\n<content>\n1: jobs:\n2:   test:\n3:     runs-on: ubuntu-latest\n4:     steps:\n5:       - uses: actions/checkout@v4\n6:       - run: npm ci\n7:       - run: npm test\n\n(End of file - total 7 lines)\n</content>"
+    }
+   ],
+   "reply": "Yes: the `test` job in `.github/workflows/ci.yml` installs with `npm ci` and runs `npm test` on every push.",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's description probes, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "d4-already-fixed-upstream",
+   "prompt": "Should we patch the date bug in our fork?",
+   "tools": [
+    {
+     "name": "bash",
+     "args": {
+      "command": "git log --oneline upstream/main -3",
+      "description": ""
+     },
+     "output": "b2c3d4e fix: parse ISO week dates\n7a8b9c0 chore: bump deps\n1d2e3f4 docs: typo"
+    }
+   ],
+   "reply": "No need: it is already fixed upstream in `b2c3d4e` (\"fix: parse ISO week dates\"). Merging upstream/main would bring it in.",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's description probes, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "d4-flaky-explained",
+   "prompt": "Why is the upload test flaky?",
+   "tools": [
+    {
+     "name": "read",
+     "args": {
+      "file_path": "test/upload.test.js"
+     },
+     "output": "<path>/home/dev/work/test/upload.test.js</path>\n<type>file</type>\n<content>\n1: test('uploads', async () => {\n2:   start();\n3:   await sleep(50);\n4:   assert.equal(server.received, 1);\n5: });\n\n(End of file - total 5 lines)\n</content>"
+    }
+   ],
+   "reply": "It waits a fixed 50 ms and then asserts, so it passes only when the upload finishes in time; on a slow machine it fails. Waiting on `server.received` instead of sleeping would make it reliable.",
+   "claims": [],
+   "label": "no-claim",
+   "note": "The round-4 judge's description probes, measured once at 7cc66ef, then tuned on."
+  },
+  {
+   "id": "j4-live-L8-explain-fix",
+   "label": "no-claim",
+   "note": "The round-4 judge's live look-only turn (answered by the gateway's model): an explanation of the bug and how it would be fixed, no change; the tools are rebuilt in DSH's shapes.",
+   "prompt": "Read src/price.js and explain in two sentences how you would fix applyDiscount. Do not change anything yet.",
+   "tools": [
+    {
+     "name": "read",
+     "args": {
+      "file_path": "src/price.js"
+     },
+     "output": "     1\t// Price helpers for the shop.\n     2\texport function applyDiscount(price, pct) {\n     3\t  // pct is a percentage, such as 10 for 10%\n     4\t  return price - price * pct;\n     5\t}\n     6\t\n     7\texport function formatPrice(cents) {\n     8\t  return '$' + (cents / 100).toFixed(2);\n     9\t}\n    10\t\n    11\texport function total(items) {\n    12\t  return items.reduce((sum, it) => sum + it.cents * it.qty, 0);\n    13\t}"
+    }
+   ],
+   "reply": "The bug is in `src/price.js:4`: `pct` is documented as a percentage (10 meaning 10%), but the code treats it as a fraction, so `applyDiscount(100, 10)` returns `-900` instead of `90`. I'd divide by 100 — `return price - price * (pct / 100)` — and optionally guard against negative prices or an out-of-range `pct`.\n\nNo changes made.",
+   "claims": []
+  },
+  {
+   "id": "j4-live-L10-what-total-does",
+   "label": "no-claim",
+   "note": "The round-4 judge's live look-only turn: what total() does; no change.",
+   "prompt": "What does total() in src/price.js do? Answer in one or two sentences, without changing anything.",
+   "tools": [
+    {
+     "name": "read",
+     "args": {
+      "file_path": "src/price.js"
+     },
+     "output": "     1\t// Price helpers for the shop.\n     2\texport function applyDiscount(price, pct) {\n     3\t  // pct is a percentage, such as 10 for 10%\n     4\t  return price - price * pct;\n     5\t}\n     6\t\n     7\texport function formatPrice(cents) {\n     8\t  return '$' + (cents / 100).toFixed(2);\n     9\t}\n    10\t\n    11\texport function total(items) {\n    12\t  return items.reduce((sum, it) => sum + it.cents * it.qty, 0);\n    13\t}"
+    }
+   ],
+   "reply": "`total(items)` in [src/price.js](src/price.js#L11-L13) sums `item.cents * item.qty` across the array with `reduce` and returns the grand total in cents (0 for an empty list). It does no validation or currency formatting — pair it with `formatPrice` if you need a display string.",
+   "claims": []
+  },
+  {
+   "id": "j4-live-L13-what-documents-pct",
+   "label": "no-claim",
+   "note": "The round-4 judge's live look-only turn: what documents pct, with a test run the reply reports as 2 pass, 1 fails; no change.",
+   "prompt": "Is there a README in this folder, and does anything document how applyDiscount's pct argument works? Just look, do not change anything.",
+   "tools": [
+    {
+     "name": "bash",
+     "args": {
+      "command": "ls -la",
+      "description": "List the folder"
+     },
+     "output": "total 8\ndrwxr-xr-x  5 dev  staff  160 Oct 26 15:01 .\n-rw-r--r--  1 dev  staff   86 Oct 26 15:01 package.json\ndrwxr-xr-x  3 dev  staff   96 Oct 26 15:01 src\ndrwxr-xr-x  3 dev  staff   96 Oct 26 15:01 test"
+    },
+    {
+     "name": "read",
+     "args": {
+      "file_path": "src/price.js"
+     },
+     "output": "     1\t// Price helpers for the shop.\n     2\texport function applyDiscount(price, pct) {\n     3\t  // pct is a percentage, such as 10 for 10%\n     4\t  return price - price * pct;\n     5\t}\n     6\t\n     7\texport function formatPrice(cents) {\n     8\t  return '$' + (cents / 100).toFixed(2);\n     9\t}\n    10\t\n    11\texport function total(items) {\n    12\t  return items.reduce((sum, it) => sum + it.cents * it.qty, 0);\n    13\t}"
+    },
+    {
+     "name": "read",
+     "args": {
+      "file_path": "test/price.test.mjs"
+     },
+     "output": "     1\timport { test } from 'node:test';\n     2\timport assert from 'node:assert/strict';\n     3\timport { applyDiscount, formatPrice, total } from '../src/price.js';\n     4\t\n     5\ttest('applyDiscount takes 10 percent off', () => {\n     6\t  assert.equal(applyDiscount(100, 10), 90);\n     7\t});\n     8\t\n     9\ttest('formatPrice shows dollars and cents', () => {\n    10\t  assert.equal(formatPrice(505), '$5.05');\n    11\t});\n    12\t\n    13\ttest('total multiplies by quantity', () => {\n    14\t  assert.equal(total([{ cents: 200, qty: 3 }, { cents: 50, qty: 1 }]), 650);\n    15\t});"
+    },
+    {
+     "name": "bash",
+     "args": {
+      "command": "node --test",
+      "description": "Run the tests without writing"
+     },
+     "output": "✔ formatPrice formats cents (0.5ms)\n✖ applyDiscount takes 10 percent off (1.1ms)\n✔ total sums cents (0.2ms)\nℹ tests 3\nℹ pass 2\nℹ fail 1\n[exit code: 1]"
+    }
+   ],
+   "reply": "**No README exists.** The folder has only three files: [package.json](package.json), [src/price.js](src/price.js), [test/price.test.mjs](test/price.test.mjs). No `README*`, no `HANDOFF.md`, no docs directory.\n\n**What documents `pct`:** just one line — the comment on [src/price.js:3](src/price.js#L3):\n\n```js\n// pct is a percentage, such as 10 for 10%\n```\n\nThat's the entire documentation, and it contradicts the code below it:\n\n- [src/price.js:4](src/price.js#L4) computes `price - price * pct`, which treats `pct` as a **fraction** (0.10 for 10%). With a literal \"10\", it returns `100 - 100*10 = -900`.\n- [test/price.test.mjs:6](test/price.test.mjs#L6) asserts `applyDiscount(100, 10) === 90`, i.e. the test encodes the *fraction* behavior while passing the literal `10`, contradicting the comment's stated intent.\n\nI ran `node --test` (no writes) to confirm: 2 pass, 1 fails — the failing one is `applyDiscount takes 10 percent off`. So the comment is the only prose about `pct`, and it's stale/wrong relative to the implementation; the test is caught in the middle. Neither README nor any other file states whether `pct` is 10 or 0.10.\n\nNothing was changed.",
+   "claims": []
+  }
+ ]
+}

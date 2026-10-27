@@ -98,6 +98,14 @@ export class AgentTerminalsRemote {
         });
     }
 
+    /** Send again a message that failed or was not proven: its whole text, as a new message. */
+    async resend(key, id) {
+        return this.run(async () => {
+            this.off();
+            return this.agents.resend(key, id);
+        });
+    }
+
     /** Take back a message not typed in yet. */
     async cancel(key, id) {
         return this.run(async () => {
@@ -127,4 +135,4 @@ function markRemote(Class, names) {
         });
     }
 }
-markRemote(AgentTerminalsRemote, ['state', 'marks', 'start', 'startAgain', 'stop', 'forget', 'send', 'cancel', 'screen']);
+markRemote(AgentTerminalsRemote, ['state', 'marks', 'start', 'startAgain', 'stop', 'forget', 'send', 'resend', 'cancel', 'screen']);

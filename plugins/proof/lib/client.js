@@ -40,6 +40,10 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
     const isRecord = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
     const win = typeof window === 'undefined' ? undefined : window;
     const doc = typeof document === 'undefined' ? undefined : document;
+    /** Choices made with the keyboard and not yet applied, by control id (see Choice). */
+    const pendingChoices = new Map();
+    /** Where and when the last press of a pointer was while a choice waited, so a blur toward an empty spot can be told from a redraw. */
+    const lastPointerDown = { at: 0, target: null };
 
     const css = [
         `:is(.${P}-page,.${P}-pane,.${P}-pop){--${P}-glass:rgba(14,18,17,var(--wp-tint,.55));--${P}-conv:rgba(10,13,12,calc(var(--wp-tint,.55) + .2));--${P}-fill:rgba(255,255,255,.04);--${P}-text-2:color-mix(in srgb,var(--dsw-alias-label-secondary) 80%,var(--dsw-alias-label-primary));--${P}-glyph:color-mix(in srgb,var(--dsw-alias-label-tertiary) 75%,var(--dsw-alias-label-primary));--${P}-error:color-mix(in srgb,var(--dsw-alias-state-error-primary) 85%,var(--dsw-alias-label-primary));--${P}-link:color-mix(in srgb,var(--dsw-alias-link,var(--dsw-alias-state-business-primary)) 85%,var(--dsw-alias-label-primary));--${P}-ok:color-mix(in srgb,var(--dsw-alias-state-success-primary) 60%,var(--dsw-alias-label-primary));--${P}-warn:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 40%,var(--dsw-alias-label-primary));--${P}-ring:var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))}`,
@@ -94,7 +98,10 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         `.${P}-set-hint{margin-top:2px;font:var(--dsw-font-xs-13);color:var(--dsw-alias-label-secondary)}`,
         `.${P}-set-control{flex:0 0 auto;display:flex;align-items:center;gap:10px}`,
         `.${P}-choice{display:inline-flex}.${P}-seg-none>[aria-hidden="true"]{visibility:hidden}`,
-        `.${P}-set-reset{padding:0;border:0;background:none;font:var(--dsw-font-xs-13);color:var(--dsw-alias-link,var(--dsw-alias-state-business-primary));text-decoration:underline;text-underline-offset:2px;cursor:pointer}`,
+        // "Changed" and "Use the default" as DSH's own field draws them beside a typed value: one look for every row.
+        `.${P}-set-badges{display:inline-flex;align-items:center;gap:8px}`,
+        `.${P}-set-reset{padding:0;border:0;background:none;font:inherit;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-secondary);cursor:pointer}`,
+        `.${P}-set-reset:hover:not(:disabled){color:var(--dsw-alias-label-primary)}.${P}-set-reset:disabled{cursor:default}`,
         `.${P}-set-reset:focus-visible{outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:1px;border-radius:var(--dsw-radius-xs)}`,
         `.${P}-set-note{margin:10px 0 0;font:var(--dsw-font-xs-13);color:var(--dsw-alias-label-secondary);max-width:72ch}`,
         `.${P}-set-group{margin:14px 0 2px;font:var(--dsw-font-xs-strong-13);color:var(--dsw-alias-label-secondary)}`,
@@ -106,8 +113,17 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         `:is(.${P}-page,.${P}-pane,.${P}-pop) .${P}-tag[data-tone="danger"]{color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 75%,var(--dsw-alias-label-primary))}`,
         `:is(.${P}-page,.${P}-pane,.${P}-pop) .${P}-tag[data-tone="success"]{color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 50%,var(--dsw-alias-label-primary))}`,
         `:is(.${P}-page,.${P}-pane,.${P}-pop) .${P}-tag[data-tone="info"]{color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 65%,var(--dsw-alias-label-primary))}`,
+        // DSH tints a tag's ground with its tone over nothing (see-through), so over a picture at a low tint its words
+        // lose contrast. On the suite's pages the same tint lies over the card's own colour instead: a solid chip.
+        `:is(.${P}-page,.${P}-pane,.${P}-pop){--${P}-chip:rgb(14,18,17)}body:not([data-ds-dark-theme]) :is(.${P}-page,.${P}-pane,.${P}-pop){--${P}-chip:rgb(250,250,246)}`,
+        `:is(.${P}-page,.${P}-pane,.${P}-pop) .${P}-tag[data-tone="warning"]{background-color:color-mix(in srgb,var(--dsw-alias-state-warn-primary) 12%,var(--${P}-chip))}`,
+        `:is(.${P}-page,.${P}-pane,.${P}-pop) .${P}-tag[data-tone="danger"]{background-color:color-mix(in srgb,var(--dsw-alias-state-error-primary) 10%,var(--${P}-chip))}`,
+        `:is(.${P}-page,.${P}-pane,.${P}-pop) .${P}-tag[data-tone="success"]{background-color:color-mix(in srgb,var(--dsw-alias-state-success-primary) 10%,var(--${P}-chip))}`,
+        `:is(.${P}-page,.${P}-pane,.${P}-pop) .${P}-tag[data-tone="info"]{background-color:color-mix(in srgb,var(--dsw-alias-state-business-primary) 10%,var(--${P}-chip))}`,
         // Quiet and neutral words ("idle", "stopped") would be drawn in DSH's glyph colour, which is for glyphs, not small text.
         `:is(.${P}-page,.${P}-pane,.${P}-pop) .${P}-tag:is([data-tone="quiet"],[data-tone="neutral"]){color:var(--${P}-text-2)}`,
+        // The settings form sits on DSH's Plugins page, outside the page's colours: the same secondary text, said here.
+        `.${P}-settings .${P}-tag:is([data-tone="quiet"],[data-tone="neutral"]){color:color-mix(in srgb,var(--dsw-alias-label-secondary) 80%,var(--dsw-alias-label-primary))}`,
         `.${P}-choice{display:inline-flex;flex-direction:column;align-items:inherit;gap:4px;min-width:0}`,
         `.${P}-choice-hint{font:var(--dsw-font-xxs-12);color:var(--${P}-text-2)}`,
         `.${P}-choice[aria-busy="true"]{cursor:progress}`,
@@ -250,9 +266,31 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
     // ── One open request per window, for every suite plugin ───────────
     const HUB_KEY = 'dsh-plugin-session-watch/hub/v1';
     const HUB_NS = 'dsh-plugin-session-watch';
+    /** How often a window looks at DSH's plugin list while Session Watch is not running. */
+    const HUB_DOWN_MS = 4000;
+
+    /**
+     * Whether Session Watch runs, from DSH's own list of plugins (what its
+     * Plugins page reads): 'on'; 'off' (switched off, starting, stopping,
+     * failed, or not installed); or 'unknown' when this DSH gives no list.
+     * Asking the list rather than Session Watch's own endpoint keeps the
+     * window's console free of failed requests while it is off.
+     */
+    async function watchRuns(c) {
+        let result;
+        try {
+            result = await c.rpc.call('/api', 'pluginManager/listPlugins', { args: {} });
+        } catch {
+            return 'unknown';
+        }
+        if (!isRecord(result) || result.ok !== true || !Array.isArray(result.value)) return 'unknown';
+        const rows = result.value.filter((row) => isRecord(row) && row.moduleName === HUB_NS);
+        if (rows.length === 0) return 'off';
+        return rows.some((row) => row.enabled !== false && row.fiberPhase === 'active') ? 'on' : 'off';
+    }
 
     function createHub() {
-        const state = { providers: new Set(), subs: new Set(), since: undefined, running: false, failures: 0 };
+        const state = { providers: new Set(), subs: new Set(), since: undefined, running: false, failures: 0, down: false, watch: 'unknown' };
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const hidden = () => Boolean(doc && doc.visibilityState === 'hidden');
         const visible = () => new Promise((resolve) => {
@@ -296,6 +334,18 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                         await sleep(1000);
                         continue;
                     }
+                    if (state.down) {
+                        // Session Watch did not answer: DSH's plugin list says whether it runs, so the window never
+                        // asks an endpoint that is not there. While it is off, nothing else is asked.
+                        state.watch = await watchRuns(c);
+                        if (state.watch === 'off') {
+                            state.failures = 0;
+                            await sleep(HUB_DOWN_MS);
+                            continue;
+                        }
+                        // It runs but did not answer, or this DSH has no list: ask again after a few seconds (at most 10).
+                        if (state.failures > 0) await sleep(Math.min(10000, 2000 * 2 ** Math.min(state.failures, 3)));
+                    }
                     let result;
                     try {
                         result = await c.rpc.call('/api', `${HUB_NS}/wait`, { args: { since: state.since, timeoutMs: 25000 } });
@@ -305,9 +355,13 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                     if (isRecord(result) && result.ok === true && isRecord(result.value)) {
                         const next = result.value;
                         const prev = state.since;
+                        const wasDown = state.down;
                         state.since = next;
                         state.failures = 0;
-                        if (!prev || prev.epoch !== next.epoch) notify('all');
+                        state.down = false;
+                        state.watch = 'on';
+                        // Back after a stop (or the first answer): every page reads again.
+                        if (!prev || prev.epoch !== next.epoch || wasDown) notify('all');
                         else {
                             const changed = new Set();
                             const was = prev.versions ?? {};
@@ -316,11 +370,13 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                         }
                         continue;
                     }
-                    // The watcher is not running (or failed): read again every few seconds (at most 10), so a page that
-                    // says so comes back soon after it runs again.
+                    // The watcher stopped (or did not answer): pages read once, so each can say what it needs (a page
+                    // that opened before any answer has read already); then the loop above waits for it to run.
                     state.failures += 1;
-                    notify('all');
-                    await sleep(Math.min(10000, 2000 * 2 ** Math.min(state.failures, 3)));
+                    if (!state.down) {
+                        state.down = true;
+                        if (state.since) notify('all');
+                    }
                 }
             } finally {
                 state.running = false;
@@ -340,6 +396,8 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                 return () => state.subs.delete(sub);
             },
             get since() { return state.since; },
+            /** What the hub last knew of Session Watch: 'on', 'off' (DSH's plugin list says it is not running) or 'unknown'. */
+            get watch() { return state.down ? state.watch : state.since ? 'on' : state.watch; },
         };
     }
 
@@ -357,7 +415,9 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
     /**
      * Data from `read`, read again whenever the hub moves on one of `channels`
      * (gathered over `delayMs`). A failed read keeps the last good data and
-     * says so in `error`.
+     * says so in `error`. On a slow host reads can finish out of order: a read
+     * that finishes after a newer one has landed is old news and is dropped,
+     * so the page never goes back to what was true before.
      */
     function useLive(read, channels, { delayMs = 250 } = {}) {
         const [state, setState] = React.useState({ data: undefined, error: undefined, code: undefined, loading: true });
@@ -365,12 +425,20 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         readRef.current = read;
         const timer = React.useRef(undefined);
         const alive = React.useRef(true);
+        const asked = React.useRef(0);
+        const landed = React.useRef(0);
         const refresh = React.useCallback(async () => {
+            const n = ++asked.current;
+            const fresh = () => {
+                if (!alive.current || n < landed.current) return false;
+                landed.current = n;
+                return true;
+            };
             try {
                 const data = await readRef.current();
-                if (alive.current) setState({ data, error: undefined, code: undefined, loading: false });
+                if (fresh()) setState({ data, error: undefined, code: undefined, loading: false });
             } catch (error) {
-                if (alive.current) setState((s) => ({ data: s.data, error: String(error?.message ?? error), code: typeof error?.code === 'string' ? error.code : undefined, loading: false }));
+                if (fresh()) setState((s) => ({ data: s.data, error: String(error?.message ?? error), code: typeof error?.code === 'string' ? error.code : undefined, loading: false }));
             }
         }, []);
         const key = channels.join(',');
@@ -542,39 +610,70 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
      * A choice between a few values that commits only when the person means
      * it: a click commits at once; with the keyboard, the arrow keys move
      * between the values and Enter or Space commits the one in focus (Escape,
-     * or leaving the control, goes back to the saved one). It is never
-     * disabled while a change is on its way, so focus stays where it was; a
-     * choice made meanwhile is applied next. `onChoose(value)` may return a
-     * promise of false when the change did not go through: the control then
-     * shows the saved value again.
+     * or leaving the control for another place, goes back to the saved one).
+     * It is never disabled while a change is on its way, so focus stays where
+     * it was; a choice made meanwhile is applied next. `onChoose(value)` may
+     * return a promise of false when the change did not go through: the
+     * control then shows the saved value again.
+     *
+     * A choice not yet applied outlives a redraw of its list (the row moved,
+     * or was drawn anew): it is kept by the control's id, and the focus comes
+     * back to it, so the next Enter still applies it.
      */
     function Choice({ id, label, value, options, busy = false, onChoose, className = '' }) {
-        const [shown, setShown] = React.useState(value);
+        const kept = pendingChoices.get(id);
+        // A kept choice counts only while the saved value is the one it was made against.
+        if (kept && kept.from !== value) pendingChoices.delete(id);
+        const [shown, setShownState] = React.useState(kept && kept.from === value ? kept.value : value);
         const sent = React.useRef(undefined);
         const queued = React.useRef(undefined);
         const valueRef = React.useRef(value);
+        const box = React.useRef(null);
+        const mounted = React.useRef(false);
         valueRef.current = value;
+        /** Show a value; one that is not the saved one is kept by id until it is applied or dropped. */
+        const setShown = (next, focused) => {
+            setShownState(next);
+            if (next === valueRef.current) pendingChoices.delete(id);
+            else pendingChoices.set(id, { value: next, from: valueRef.current, focused: focused ?? pendingChoices.get(id)?.focused ?? true });
+        };
         React.useEffect(() => {
+            // The first run is the mount: a kept choice stays. Later, a new saved value replaces what is shown.
+            if (!mounted.current) {
+                mounted.current = true;
+                return;
+            }
             setShown(value);
             sent.current = undefined;
         }, [value]);
+        // Drawn anew, or moved, with its choice kept and the focus lost to the page: the focus comes back.
+        React.useEffect(() => {
+            const entry = pendingChoices.get(id);
+            if (!entry?.focused || entry.value !== shown || shown === value || !doc || !box.current) return;
+            const active = doc.activeElement;
+            if (active && active !== doc.body && active !== doc.documentElement) return;
+            const tab = box.current.querySelector?.('[role="tab"][aria-selected="true"]') ?? box.current.querySelector?.('[role="tab"]');
+            tab?.focus?.({ preventScroll: true });
+        });
         const commit = (next) => {
             if (!options.some((o) => o.value === next && o.disabled !== true)) return;
             if (busy) {
                 queued.current = next;
-                setShown(next);
+                setShownState(next);
+                pendingChoices.delete(id);
                 return;
             }
+            pendingChoices.delete(id);
             if (next === valueRef.current || next === sent.current) return;
             sent.current = next;
-            setShown(next);
+            setShownState(next);
             void Promise.resolve(onChoose(next)).then((ok) => {
                 if (ok !== false || sent.current !== next) return;
                 sent.current = undefined;
-                setShown(valueRef.current);
+                setShownState(valueRef.current);
             }, () => {
                 sent.current = undefined;
-                setShown(valueRef.current);
+                setShownState(valueRef.current);
             });
         };
         React.useEffect(() => {
@@ -584,12 +683,31 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             commit(next);
         }, [busy]);
         const pending = shown !== value && shown !== sent.current && shown !== queued.current;
+        // While a choice waits, note where the pointer goes down (and nothing after it is applied or this control goes).
+        React.useEffect(() => {
+            if (!pending || !doc?.addEventListener) return undefined;
+            const note = (event) => {
+                lastPointerDown.at = Date.now();
+                lastPointerDown.target = event.target;
+            };
+            doc.addEventListener('pointerdown', note, true);
+            return () => {
+                doc.removeEventListener('pointerdown', note, true);
+                lastPointerDown.at = 0;
+                lastPointerDown.target = null;
+            };
+        }, [pending]);
         const shownLabel = options.find((o) => o.value === shown)?.label ?? shown;
         const tabValue = (target) => {
             const tab = target?.closest?.('[role="tab"]');
             return tab && typeof tab.id === 'string' && tab.id.startsWith(`${id}-`) ? tab.id.slice(id.length + 1) : undefined;
         };
+        const drop = () => {
+            pendingChoices.delete(id);
+            setShownState(valueRef.current);
+        };
         return h('div', {
+            ref: box,
             className: `${P}-choice${className ? ` ${className}` : ''}`,
             'aria-busy': busy ? 'true' : undefined,
             'data-suite-choice': id,
@@ -605,14 +723,27 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                     commit(shown);
                 } else if (event.key === 'Escape' && pending) {
                     event.preventDefault();
-                    setShown(value);
+                    drop();
                 }
             },
+            onFocusCapture: () => {
+                const entry = pendingChoices.get(id);
+                if (entry) entry.focused = true;
+            },
             onBlurCapture: (event) => {
-                if (pending && !event.currentTarget.contains(event.relatedTarget)) setShown(value);
+                if (!pending) return;
+                const to = event.relatedTarget;
+                if (to && !event.currentTarget.contains(to)) {
+                    // The person went to another place on the page.
+                    drop();
+                    return;
+                }
+                // The focus went nowhere: a click on an empty spot drops the choice; a redraw that moved the row
+                // (no click) keeps it, and the focus comes back on the next draw.
+                if (!to && Date.now() - lastPointerDown.at < 600 && !event.currentTarget.contains(lastPointerDown.target)) drop();
             },
         },
-        h(ui.SegmentedControl, { id, label, value: shown, options, onChange: setShown }),
+        h(ui.SegmentedControl, { id, label, value: shown, options, onChange: (next) => setShown(next, true) }),
         h('span', { className: pending ? `${P}-choice-hint` : `${P}-sr`, role: 'status', 'aria-live': 'polite' }, pending ? `Press Enter to apply ${shownLabel}.` : ''));
     }
 
@@ -620,6 +751,17 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
 
     const WATCH_PACKAGE = 'dsh-plugin-session-watch';
     const watchLink = link(WATCH_PACKAGE, { name: 'Session Watch' });
+
+    /** Whether Session Watch runs: DSH's plugin list first (no request to an endpoint that is not there), else its status. */
+    async function watchRunning() {
+        const c = connections.current ?? await whenConnected();
+        if (c) {
+            const runs = await watchRuns(c);
+            if (runs !== 'unknown') return runs === 'on';
+        }
+        const result = await watchLink.call('status');
+        return result.ok || result.error?.code !== 'not-running';
+    }
 
     /**
      * What the page shows when its plugin cannot be read: not running (with
@@ -632,7 +774,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         React.useEffect(() => {
             if (code !== 'not-running' || !needsWatch) return undefined;
             let alive = true;
-            void watchLink.call('status').then((result) => { if (alive) setWatchUp(result.ok || result.error?.code !== 'not-running'); });
+            void watchRunning().then((up) => { if (alive) setWatchUp(up); }, () => {});
             return () => { alive = false; };
         }, [code, needsWatch, text]);
         const button = (label, target) => (typeof nav.current?.openBundle === 'function'
@@ -669,9 +811,11 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
     /**
      * A setting is wrong, so the plugin does no work: which setting, what it
      * must be, and where to change it (its settings in Plugins when the
-     * person can change it there, else DSH's profile).
+     * person can change it there, else DSH's profile). `profileApplies`: the
+     * plugin restarts with its new settings when DSH's profile is saved, so
+     * no restart of DSH is needed (else the line says to restart DSH).
      */
-    function SettingsProblem({ name, packageName, problem }) {
+    function SettingsProblem({ name, packageName, problem, profileApplies = false }) {
         const live = problem?.live === true;
         const its = whose(name);
         return h('div', { className: `${P}-trouble`, role: 'alert', 'data-suite-trouble': 'setting' },
@@ -679,7 +823,9 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             h('p', { className: `${P}-trouble-text` }, `${String(problem?.text ?? 'A setting is wrong').replace(/\.$/, '')}.`),
             h('p', { className: `${P}-trouble-text` }, live
                 ? `Change it in ${its} settings in Plugins. ${name} starts working again as soon as you save.`
-                : `Change it in ${its} entry in DSH's profile (cordis.patch.yml), then restart DSH.`),
+                : profileApplies
+                    ? `Change it in ${its} entry in DSH's profile (cordis.patch.yml). DSH applies the file when you save it.`
+                    : `Change it in ${its} entry in DSH's profile (cordis.patch.yml), then restart DSH.`),
             live && typeof nav.current?.openBundle === 'function'
                 ? h('div', { className: `${P}-actions` }, h(ui.Button, { variant: 'primary', size: 'sm', onClick: () => openPlugin(packageName, { focus: problem?.key }) }, `Open ${its} settings`)) : null);
     }
@@ -696,15 +842,18 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         const whole = (text) => (/^\d+$/.test(text) ? Number(text) : undefined);
         // A stored value of the wrong kind shows as it is, so the form can flag it rather than show it as empty.
         const raw = (v) => (v === undefined || v === null ? '' : typeof v === 'string' ? v : JSON.stringify(v));
+        // Where text is the wrong kind (a number, a list or a switch saved in quotes), it shows with its quotes: the
+        // form flags it as it opens, and the value typed without them counts as a change, so Save stores it.
+        const quoted = (v) => (typeof v === 'string' ? JSON.stringify(v) : raw(v));
         switch (f.kind) {
             case 'switch':
-                return { field: f.name, format: (v) => (v === true ? 'on' : v === false ? 'off' : raw(v)), parse: (t) => (t === 'on' ? { kind: 'set', value: true } : t === 'off' ? { kind: 'set', value: false } : t === '' ? clear : undefined) };
+                return { field: f.name, format: (v) => (v === true ? 'on' : v === false ? 'off' : quoted(v)), parse: (t) => (t === 'on' ? { kind: 'set', value: true } : t === 'off' ? { kind: 'set', value: false } : t === '' ? clear : undefined) };
             case 'choice':
                 return { field: f.name, format: raw, parse: (t) => (t === '' ? clear : f.options.some((o) => o.value === t) ? { kind: 'set', value: t } : undefined) };
             case 'number':
                 return {
                     field: f.name,
-                    format: (v) => (Number.isFinite(v) ? String(v) : raw(v)),
+                    format: (v) => (Number.isFinite(v) ? String(v) : quoted(v)),
                     parse: (t) => {
                         const text = String(t).trim();
                         if (text === '') return clear;
@@ -715,7 +864,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             case 'numbers':
                 return {
                     field: f.name,
-                    format: (v) => (Array.isArray(v) ? v.join(', ') : raw(v)),
+                    format: (v) => (Array.isArray(v) && v.every((n) => Number.isFinite(n)) ? v.join(', ') : Array.isArray(v) ? JSON.stringify(v) : quoted(v)),
                     parse: (t) => {
                         const text = String(t).trim();
                         if (text === '') return clear;
@@ -737,8 +886,15 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         }
     }
 
-    /** The words under a value that does not fit: what does. */
-    function invalidWords(f) {
+    /** Whether a setting's text is a value saved in quotes (text where a number or a list of numbers belongs). */
+    const inQuotes = (text) => typeof text === 'string' && text.length >= 2 && text.startsWith('"') && text.endsWith('"');
+
+    /** The words under a value that does not fit: what does (and, for one saved in quotes, that the quotes are what is wrong). */
+    function invalidWords(f, text) {
+        if (inQuotes(text) && (f.kind === 'number' || f.kind === 'numbers')) {
+            const what = f.kind === 'number' ? `a whole number from ${f.min} to ${f.max}` : `up to ${f.maxItems ?? 10} whole numbers from ${f.min} to ${f.max}, with commas between them`;
+            return `It is saved as text, in quotes. Type ${what}, without the quotes, then save.`;
+        }
         if (f.invalid) return f.invalid;
         if (f.kind === 'number') return `A whole number from ${f.min} to ${f.max}, or empty for the default (${f.default}).`;
         if (f.kind === 'numbers') return `Up to ${f.maxItems ?? 10} whole numbers from ${f.min} to ${f.max}, with commas between them, or empty for the default (${(f.default ?? []).join(', ')}).`;
@@ -781,7 +937,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         };
         return h('div', { className: `${P}-set-row`, 'data-suite-setting': f.name, 'data-suite-secret': info.configured ? (fromEnvironment ? 'env' : 'set') : 'unset' },
             h('div', { className: `${P}-set-text` },
-                h(ui.SettingsSecretField, { id: `${P}-set-${f.name}`, label: f.title, hint: fromEnvironment ? (f.envHint ?? f.hint) : f.hint, disabled: disabled || info.writable === false, text: draft, configured: info.configured === true, stateLabel, onEdit }),
+                h(ui.SettingsSecretField, { id: `${P}-set-${f.name}`, label: f.title, hint: fromEnvironment ? (f.envHint ?? f.hint) : info.configured ? (f.setHint ?? f.hint) : f.hint, disabled: disabled || info.writable === false, text: draft, configured: info.configured === true, stateLabel, onEdit }),
                 problem ? h('p', { className: `${P}-set-error`, role: 'alert' }, problem) : null,
                 info.configured && !fromEnvironment && info.writable !== false && keeper
                     ? h('button', { type: 'button', className: `${P}-set-reset`, disabled: disabled || removing, onClick: () => void remove() }, f.removeLabel ?? 'Remove it') : null));
@@ -835,14 +991,18 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
     function SettingRow({ f, state, disabled, actions }) {
         const id = `${P}-set-${f.name}`;
         const edit = (text) => actions.edit(f.name, text);
+        // As DSH's own field marks a typed value: "Changed", then "Use the default".
         const reset = state.overridden
-            ? h('button', { type: 'button', className: `${P}-set-reset`, disabled, onClick: () => actions.resetField(f.name), 'aria-label': `Use the default for ${f.title}` }, 'Use the default') : null;
+            ? h('span', { className: `${P}-set-badges` },
+                h(ui.Tag, { tone: 'neutral', className: `${P}-tag` }, 'Changed'),
+                h('button', { type: 'button', className: `${P}-set-reset`, disabled, onClick: () => actions.resetField(f.name), 'aria-label': `Use the default for ${f.title}` }, 'Use the default'))
+            : null;
         if (f.kind === 'switch' || f.kind === 'choice') {
             return h('div', { className: `${P}-set-row`, 'data-suite-setting': f.name, ...(state.invalid ? { 'data-suite-invalid': '' } : {}) },
                 h('div', { className: `${P}-set-text` },
                     h('div', { className: `${P}-set-title`, id: `${id}-label` }, f.title),
                     h('div', { className: `${P}-set-hint` }, f.hint),
-                    state.invalid ? h('p', { className: `${P}-set-error`, role: 'alert' }, invalidWords(f)) : null),
+                    state.invalid ? h('p', { className: `${P}-set-error`, role: 'alert' }, invalidWords(f, state.text)) : null),
                 h('div', { className: `${P}-set-control` }, reset,
                     f.kind === 'switch'
                         ? h(ui.Switch, { checked: state.text === 'on', label: f.title, disabled, onChange: (next) => edit(next ? 'on' : 'off') })
@@ -859,7 +1019,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                     invalid: state.invalid,
                     overriddenLabel: 'Changed',
                     resetLabel: 'Use the default',
-                    invalidLabel: invalidWords(f),
+                    invalidLabel: invalidWords(f, state.text),
                     disabled,
                     numeric: f.kind === 'number',
                     onEdit: edit,
@@ -929,8 +1089,11 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             }
             // DSH's form checks only what is typed; a saved value that does not fit (typed into the profile) is
             // flagged too, with what does fit.
-            const wrong = !state.invalid && state.text !== '' && fieldSpec(f).parse(state.text) === undefined;
-            rows.push(h(SettingRow, { key: f.name, f, state: wrong ? { ...state, invalid: true } : state, disabled, actions: form.actions }));
+            const parsed = state.invalid || state.text === '' ? undefined : fieldSpec(f).parse(state.text);
+            const wrong = !state.invalid && state.text !== '' && parsed === undefined;
+            // A value saved in the profile that equals its default is not a change: no "Changed", nothing to reset.
+            const atDefault = state.overridden && parsed?.kind === 'set' && f.default !== undefined && JSON.stringify(parsed.value) === JSON.stringify(f.default);
+            rows.push(h(SettingRow, { key: f.name, f, state: wrong ? { ...state, invalid: true } : atDefault ? { ...state, overridden: false } : state, disabled, actions: form.actions }));
         }
         return h('div', { className: `${P}-settings`, 'data-suite-settings': bundle, ref: root },
             h(ui.SettingsForm, { labels, state: snap, onSave: form.actions.save, onDiscard: form.actions.discard },
@@ -990,7 +1153,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
      * serves them, which is while the plugin runs. Each field:
      * `{ name, kind: 'switch'|'choice'|'number'|'numbers'|'text'|'secret', title, hint, default, min?, max?, options?, group? }`;
      * a secret also takes `keyFrom`, `defaultKey`, `check(text)`, its
-     * labels (`setLabel`, `envLabel`, `unsetLabel`, `envHint`, `removeLabel`)
+     * labels (`setLabel`, `envLabel`, `unsetLabel`, `envHint`, `setHint`, `removeLabel`)
      * and, to log it, `stored(change)` ('set' or 'removed', never the value),
      * and needs DSH's `remote.credentials`.
      * Does nothing on a DSH without settings forms.
@@ -1051,7 +1214,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             disabled: 'Proof is switched off in DSH\'s profile (enabled: false in its entry in cordis.patch.yml), so it reads no claims. To use it, set enabled to true there and restart DSH. To remove it instead, switch it off in Plugins.',
             loading: 'Reading the claims',
             sessions: 'Sessions with claims',
-            sessionsSub: 'Newest first. Pick one to see its ledger.',
+            sessionsSub: 'The one flagged last first, timed by its latest flag. Pick one to see its ledger.',
             noSessions: 'No claims yet',
             noSessionsText: 'When a turn says something is done, passing, fixed or deployed, Proof checks the claim against what the turn ran and lists the session here. Nothing to do until then.',
             ledger: 'Ledger',
@@ -1076,11 +1239,13 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         /** One set of words for a claim's verdict and a check's state, on every surface. */
         const VERDICT_WORD = Object.freeze({ backed: 'shown', unbacked: 'no evidence', contradicted: 'contradicted' });
         const CHECK_WORD = Object.freeze({
-            queued: 'waiting to check', running: 'checking', verified: 'verified', 'not-verified': 'not verified', unclear: 'unclear', failed: 'could not check',
+            queued: 'waiting to check', running: 'checking', verified: 'verified', 'not-verified': 'not verified', unclear: 'unclear', failed: 'could not check', cancelled: 'stopped',
         });
         const TONE = Object.freeze({
             shown: 'success', 'no evidence': 'warning', contradicted: 'danger',
             'waiting to check': 'info', checking: 'info', verified: 'success', 'not verified': 'danger', unclear: 'warning', 'could not check': 'danger',
+            // A check the person switched off before it started is stopped, not an error.
+            stopped: 'neutral',
         });
 
         /** Proof's settings on its page in Plugins: the same names and ranges as its config (lib/config.js). */
@@ -1098,13 +1263,18 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             },
             { name: 'verifierProvider', kind: 'text', title: 'Check with the model from', hint: 'The provider\'s id in DSH\'s profile, such as local-gateway. Proof\'s page names it as DSH\'s model menu does.', default: 'local-gateway', accepts: (t) => ROUTE.test(t), invalid: 'A provider id as DSH\'s profile has it: letters, digits and . _ - : / @ +, such as local-gateway.' },
             { name: 'verifierModel', kind: 'text', title: 'Check with the model', hint: 'The model\'s id in DSH\'s profile. A cheap local model is enough: a check re-runs a command or reads a file, and Proof asks it for low effort when the model offers that. Only the check thread uses it; DSH\'s default model stays as it is.', default: 'glm-5.3-flash', accepts: (t) => ROUTE.test(t), invalid: 'A model id as DSH\'s profile has it, such as glm-5.3-flash.' },
-            { name: 'verifierMinutes', kind: 'number', title: 'Minutes a check may take', hint: 'From 1 to 60. A check still running then is stopped, and its answer is unclear. A quiet local model answers in a minute or two; on a busy shared gateway, where each answer can wait several minutes, allow 30.', default: 15, min: 1, max: 60 },
+            { name: 'verifierMinutes', kind: 'number', title: 'Minutes a check may take', hint: 'From 1 to 60. A check still running then is stopped, and its answer is unclear. A quiet local model answers in a minute or two; a busy shared gateway can take half an hour to answer one check: allow 60 then.', default: 45, min: 1, max: 60 },
             { name: 'verifierPerHour', kind: 'number', title: 'Checks an hour, at most', hint: 'From 1 to 120. More wait their turn and start when the hour allows.', default: 12, min: 1, max: 120 },
         ];
         const SETTINGS_SUMMARY = 'Whether Proof flags claims on their turn, and how the independent check runs.';
         const SETTINGS_NOTE = 'Changes apply as soon as you save. A check thread can read and run commands but never write a file, and Proof refuses edits, commits, pushes, installs and deploys in it.';
 
         const CSS = [
+            // The waiting state's one-press fix of a value in quotes, and what it saved.
+            `.${P}-fix{margin-top:10px}`,
+            // Its button sits as far under its words as the kit's button in the problem box above it.
+            `.${P}-fix .${P}-actions{margin-top:10px}`,
+            `.${P}-fixed{margin:0 0 8px}`,
             // The flag: a card in a chat, drawn like DSH's own cards there (no blur: the chat is glass already). It is a kit
             // pane, for the suite's colours, tag words, focus ring and motion rules; its own ground is DSH's layer 1.
             `.${P}-flag{box-sizing:border-box;margin:6px 0 2px;padding:10px 12px;max-width:100%;min-width:0;background:var(--dsw-alias-bg-layer-1);border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-lg);color:var(--dsw-alias-label-primary);font:var(--dsw-font-xs-13)}`,
@@ -1130,7 +1300,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             `.${P}-dock-bar::before{content:"";position:absolute;inset:0;z-index:-1;border-radius:inherit;background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);pointer-events:none}`,
             `.${P}-dock-glyph{flex:none;display:inline-flex;color:var(--dsw-alias-label-tertiary)}`,
             `.${P}-dock-label{flex:none;font-size:13px;font-weight:500;line-height:24px}`,
-            `.${P}-dock-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;line-height:20px;color:var(--dsw-alias-label-primary-dimmed,var(--dsw-alias-label-secondary))}`,
+            `.${P}-dock-text{flex:1;min-width:0;white-space:normal;overflow-wrap:anywhere;font-size:13px;line-height:20px;color:var(--dsw-alias-label-primary-dimmed,var(--dsw-alias-label-secondary))}`,
             `@container ${P}-dock (max-width:600px){.${P}-dock-bar{flex-wrap:wrap;row-gap:0;padding-bottom:7px}.${P}-dock-label{flex:1 1 auto}.${P}-dock-text{order:1;box-sizing:border-box;flex:1 1 100%;padding-inline:24px 7px;white-space:normal}}`,
             // The page.
             `.${P}-status{margin:10px 0 0;font:var(--dsw-font-xs-13);color:var(--${P}-text-2)}`,
@@ -1250,7 +1420,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             if (check.state === 'running') {
                 const effort = typeof check.effort === 'string' && check.effort ? ` at ${check.effort.toLowerCase()} effort` : '';
                 const limit = Number.isSafeInteger(check.minutes) ? `, for up to ${plural(check.minutes, 'minute')}` : '';
-                return `In a read-only thread on ${check.model || 'the check model'}${effort}${limit}.`;
+                return `In a read-only thread on ${check.model || 'the check model'}${effort}${limit}. It waits on the model's answers; on a busy shared gateway a request can wait and be sent again.`;
             }
             if (check.state === 'queued') return sentence(check.reason) || 'It starts when the check before it ends.';
             return sentence(check.reason) || 'It gave no reason.';
@@ -1320,7 +1490,12 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         /** The session (and claim) the page should show next: set by a flag's "Open in Proof". */
         const spotlight = makeStore(undefined);
         /** DSH's way to open a panel page and a session, set once its workspace is there. */
-        const views = { openPage: () => {}, openSession: () => {} };
+        /**
+         * DSH's way to open a panel page and a session, set once its workspace
+         * is there; and DSH's own settings form for Proof (`settings.set(field,
+         * value)` saves one setting as the form's Save does), while DSH serves it.
+         */
+        const views = { openPage: () => {}, openSession: () => {}, settings: undefined };
 
         /** Do something on the host: `{ value }`, or `{ problem }` in words. */
         async function run(method, args) {
@@ -1357,7 +1532,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             const verified = check?.state === 'verified';
             const evidence = claim.verdict === 'contradicted' && !verified ? newEvidence(claim) : [];
             return h('li', { className: `${P}-flag-item`, 'data-proof-claim': claim.id, 'data-proof-verdict': claim.verdict },
-                h('p', { className: `${P}-flag-claim` }, quotedRich(claim.text)),
+                h('p', { className: `${P}-flag-claim`, title: claim.part && claim.part !== claim.text ? claim.text : undefined }, quotedRich(claim.part || claim.text)),
                 claim.why && !verified ? h('p', { className: `${P}-flag-why` }, richText(sentence(claim.why))) : null,
                 evidence.length ? h('p', { className: `${P}-flag-why` }, 'What the turn shows: ', richText(evidence.join('; '))) : null,
                 check ? h(CheckLine, { check, className: `${P}-flag-line`, tag: headSays !== check.state, onOpen: onOpenCheck, takeFocus, onFocused }) : null,
@@ -1494,7 +1669,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             return h('button', { type: 'button', className: `${P}-link`, onClick: () => views.openSession(sessionId), title: 'Open this session' }, title || 'Untitled session');
         }
 
-        function HeaderCard({ data }) {
+        function HeaderCard({ data, said = '' }) {
             const canOpen = kit.canOpenPlugin();
             const flagged = data.sessions.reduce((n, s) => n + s.flagged, 0);
             const verified = data.sessions.reduce((n, s) => n + (s.verified ?? 0), 0);
@@ -1509,6 +1684,8 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                 actions: canOpen ? h(ui.Button, { variant: 'outline', size: 'sm', onClick: () => kit.openPlugin(BUNDLE) }, TEXT.settings) : null,
                 attrs: { 'data-proof-header': data.enabled ? 'on' : 'off' },
             },
+            // What the waiting state's fix saved, said on the page it comes back to.
+            said ? h('p', { className: `${P}-note ${P}-ok ${P}-fixed`, role: 'status', 'data-proof-fixed': '' }, said) : null,
             status ? h('p', { className: `${P}-status` }, status) : null,
             // How checks run is said once, on Independent checks.
             data.enabled ? h('div', { className: `${P}-lines` },
@@ -1517,17 +1694,65 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                     : 'Flags are off: claims are judged and kept in the ledger, but turns show no card.')) : null);
         }
 
+        /**
+         * A number or true/false written in quotes (text in the profile) that
+         * would be right without them. DSH's settings form shows it as if it
+         * were right, so the waiting state offers to save it without quotes,
+         * through DSH's own settings call, in one press.
+         */
+        function QuotedFix({ problem, onSaved }) {
+            const [busy, setBusy] = React.useState(false);
+            const [failed, setFailed] = React.useState(false);
+            const form = views.settings;
+            if (problem?.live !== true || problem.unquoted === undefined || typeof form?.set !== 'function') return null;
+            const title = SETTINGS.find((f) => f.name === problem.key)?.title ?? problem.key;
+            const value = typeof problem.unquoted === 'boolean' ? (problem.unquoted ? 'on' : 'off') : String(problem.unquoted);
+            const save = async () => {
+                if (busy) return;
+                setBusy(true);
+                setFailed(false);
+                let ok = false;
+                try { ok = (await form.set(problem.key, problem.unquoted)) === true; } catch { ok = false; }
+                setBusy(false);
+                if (ok) onSaved(`Saved “${title}” as ${value}, without quotes. Proof works again.`);
+                else setFailed(true);
+            };
+            return h('div', { className: `${P}-fix`, 'data-proof-fix': problem.key },
+                h('p', { className: `${P}-trouble-text` }, `Without the quotes it is right: Proof can save it as ${value} for you, as the settings form would.`),
+                h('div', { className: `${P}-actions` },
+                    h(ui.Button, { variant: 'primary', size: 'sm', 'aria-disabled': busy ? 'true' : undefined, onClick: () => void save(), 'data-proof-fix-save': '' }, busy ? 'Saving…' : `Save it as ${value}`)),
+                failed ? h('p', { className: `${P}-note ${P}-error ${P}-alert`, role: 'alert' }, 'DSH did not save it. Change it in Proof\'s settings in Plugins instead.') : null);
+        }
+
         /** A session's one state on its row: its flagged claims, else verified, else shown. */
         const rowWord = (s) => (s.flagged > 0 ? (s.contradicted > 0 ? 'contradicted' : 'no evidence') : (s.verified ?? 0) > 0 ? 'verified' : 'shown');
 
+        /**
+         * The sessions list is one stop for Tab: the open session's row (else the first) takes it, and the arrow keys,
+         * Home and End move between rows (DESIGN.md: a composite widget is one stop with arrows inside).
+         */
+        const walkRows = (event) => {
+            if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+            const rows = [...event.currentTarget.querySelectorAll(`button.${P}-row`)];
+            const at = rows.indexOf(event.target);
+            if (at < 0 || rows.length === 0) return;
+            event.preventDefault();
+            const to = event.key === 'Home' ? 0 : event.key === 'End' ? rows.length - 1 : Math.min(rows.length - 1, Math.max(0, at + (event.key === 'ArrowDown' ? 1 : -1)));
+            rows.forEach((row, i) => { row.tabIndex = i === to ? 0 : -1; });
+            rows[to].focus();
+        };
+
         function SessionsCard({ data, selected, onSelect }) {
+            const shown = data.sessions.slice(0, 60);
+            const stop = shown.some((s) => s.sessionId === selected) ? selected : shown[0]?.sessionId;
             return h(kit.Card, { title: TEXT.sessions, sub: data.sessions.length ? TEXT.sessionsSub : undefined, attrs: { 'data-proof-sessions': String(data.sessions.length) } },
                 data.sessions.length === 0
                     ? h(kit.Empty, { title: TEXT.noSessions, text: TEXT.noSessionsText })
-                    : h('ul', { className: `${P}-rows` }, ...data.sessions.slice(0, 60).map((s) => h('li', { key: s.sessionId },
+                    : h('ul', { className: `${P}-rows`, 'aria-label': `${TEXT.sessions}: up and down arrows move between them`, onKeyDown: walkRows }, ...shown.map((s) => h('li', { key: s.sessionId },
                         h('button', {
                             type: 'button',
                             className: `${P}-row`,
+                            tabIndex: s.sessionId === stop ? 0 : -1,
                             'aria-current': s.sessionId === selected ? 'true' : undefined,
                             'data-proof-session': s.sessionId,
                             onClick: () => onSelect(s.sessionId),
@@ -1537,7 +1762,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                             h('span', { className: `${P}-meta ${P}-clip` }, `${plural(s.total, 'claim')}`, s.latest ? ` · latest flagged: ${quoted(String(s.latest.text ?? '').replace(/`/g, ''))}` : '')),
                         h('span', { className: `${P}-row-side` },
                             h(Tag, { word: rowWord(s) }),
-                            h('span', { className: `${P}-meta` }, h(kit.TimeText, { at: s.updatedAt }))))))));
+                            h('span', { className: `${P}-meta` }, h(kit.TimeText, { at: s.at ?? s.updatedAt }))))))));
         }
 
         /**
@@ -1559,7 +1784,8 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                     h('div', { className: `${P}-claim-top` },
                         h('span', { className: `${P}-num` }, `Turn ${claim.turn}`),
                         claim.at ? h(kit.TimeText, { at: claim.at }) : null),
-                    h('p', { className: `${P}-claim` }, quotedRich(claim.text)),
+                    // Its own clause (a sentence can make two claims), the whole sentence on hover.
+                    h('p', { className: `${P}-claim`, title: claim.part && claim.part !== claim.text ? claim.text : undefined }, quotedRich(claim.part || claim.text)),
                     claim.why && !verified ? h('p', { className: `${P}-why` }, richText(sentence(claim.why))) : null,
                     evidence.length ? h('p', { className: `${P}-why` }, flagged ? 'What the turn shows: ' : 'Shown by: ', richText(evidence.join('; '))) : null,
                     claim.ran?.length ? h('details', { className: `${P}-details` },
@@ -1627,7 +1853,8 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             });
             const claims = data?.claims ?? [];
             const open = (c) => (c.verdict !== 'backed' && !isVerified(c)) || kept.has(c.id);
-            const shown = (filter === 'flagged' ? claims.filter(open) : claims).slice().reverse();
+            // The newest turn first; a turn's claims in the order its reply makes them.
+            const shown = (filter === 'flagged' ? claims.filter(open) : claims).map((c, i) => ({ c, i })).sort((a, b) => (b.c.turn ?? 0) - (a.c.turn ?? 0) || (a.c.seq ?? 0) - (b.c.seq ?? 0) || a.i - b.i).map((x) => x.c);
             const counts = data?.counts;
             const verifiedCount = counts?.verified ?? 0;
             return h(kit.Card, {
@@ -1737,6 +1964,10 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             const focus = useStore(spotlight);
             const [picked, setPicked] = React.useState(undefined);
             const data = live.data;
+            // What the waiting state's fix saved, said on the page it comes back to; a new setting problem makes it old news.
+            const [fixed, setFixed] = React.useState('');
+            const problemText = data?.problem?.text;
+            React.useEffect(() => { if (problemText) setFixed(''); }, [problemText]);
             React.useEffect(() => { if (focus?.sessionId) setPicked(focus.sessionId); }, [focus?.n]);
             const down = live.code === 'not-running' || (data === undefined && live.error);
             const sessions = data?.sessions ?? [];
@@ -1753,11 +1984,12 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
                         : data.problem
                             ? [
                                 h(kit.Card, { key: 'head', title: TEXT.title, headingLevel: 1, main: true, sub: TEXT.summary, attrs: { 'data-proof-header': 'problem' } },
-                                    h(kit.SettingsProblem, { name: 'Proof', packageName: BUNDLE, problem: data.problem })),
+                                    h(kit.SettingsProblem, { name: 'Proof', packageName: BUNDLE, problem: data.problem }),
+                                    h(QuotedFix, { key: `fix-${data.problem.key ?? ''}`, problem: data.problem, onSaved: (text) => { setFixed(text); void live.refresh(); } })),
                                 h(HistoryCard, { key: 'history', data, titles }),
                             ]
                             : [
-                                h(HeaderCard, { key: 'head', data }),
+                                h(HeaderCard, { key: 'head', data, said: fixed }),
                                 live.error ? h(kit.ErrorLine, { key: 'refresh', text: live.error, onRetry: live.refresh }) : null,
                                 data.enabled ? h(SessionsCard, { key: 'sessions', data, selected, onSelect: setPicked }) : null,
                                 data.enabled && selected ? h(LedgerCard, { key: `ledger:${selected}`, sessionId: selected, verifier: data.verifier.mode, row }) : null,
@@ -1799,11 +2031,15 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
             });
             // Its settings on its page in Plugins, through DSH's own settings form.
             ctx.inject(['configForms', 'remote', 'remote.session'], (scope) => {
+                let saved;
                 try {
+                    saved = scope.configForms?.get?.('proof');
+                    views.settings = saved;
                     kit.applySettings(scope, { entry: 'proof', name: 'Proof', summary: SETTINGS_SUMMARY, fields: SETTINGS, note: SETTINGS_NOTE });
                 } catch (error) {
                     console?.warn?.('dsh-plugin-proof: settings:', error);
                 }
+                return () => { if (views.settings === saved) views.settings = undefined; };
             });
         }
 
@@ -1834,7 +2070,7 @@ function suiteKit({ prefix: P, bundle, React, ui, h }) {
         // For the plugin's own tests.
         module.exports.internals = {
             kit, TEXT, CSS, SETTINGS, SETTINGS_SUMMARY, SETTINGS_NOTE, VERDICT_WORD, CHECK_WORD, TONE, flagHead, flagState, verifierText, checkWords, richText,
-            flagOf, sameFlag, spotlight, views, ProofFlag, FlagCard, CheckNote, CheckDock, ProofPage, ProofIcon, HeaderCard, SessionsCard, LedgerCard, ChecksCard, HistoryCard, ClaimRow,
+            flagOf, sameFlag, spotlight, views, ProofFlag, FlagCard, CheckNote, CheckDock, ProofPage, ProofIcon, HeaderCard, QuotedFix, SessionsCard, LedgerCard, ChecksCard, HistoryCard, ClaimRow,
         };
         return module.exports;
     },

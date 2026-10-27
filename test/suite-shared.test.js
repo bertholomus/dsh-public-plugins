@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { askIn, asksForAnswer, asksSomeone, blockedIn, count, cutOff, decisionIn, plainError, recommendationIn, spanWords, stateWord, timeWords } from '../shared/host/words.js';
+import { askIn, asksForAnswer, asksSomeone, blockedIn, count, cutOff, decisionIn, holdCode, plainError, plainLine, recommendationIn, spanWords, stateWord, timeWords, unfenced, unholdCode } from '../shared/host/words.js';
 import { Hub } from '../shared/host/hub.js';
 import { Journal } from '../shared/host/journal.js';
 import { JsonStore, ensurePrivateDir, readJson, writeAtomic } from '../shared/host/files.js';
@@ -164,6 +164,78 @@ test('words: what a reply asks a person: a decision line, then a BLOCKED line, t
     assert.equal(blockedIn('UNBLOCKED: fine'), undefined);
 });
 
+test('words: a question keeps its words when a dot sits in it (a file, a version, an address, a number, "e.g."), and nothing in a code span ends it', () => {
+    const asked = (text) => askIn(text)?.question;
+    // Each of these gave only the words after its last dot ("py` first?", "3`?", "com now?").
+    assert.equal(asked('I found two failing tests in the parser suite. Should I fix the bug in `parser.py` first?'), 'Should I fix the bug in `parser.py` first?');
+    assert.equal(asked('Both builds pass. Which do you want to release: `v1.2` or `v1.3`?'), 'Which do you want to release: `v1.2` or `v1.3`?');
+    assert.equal(asked('Should I bump the version to 2.0.0 and tag it?'), 'Should I bump the version to 2.0.0 and tag it?');
+    assert.equal(asked('Should I deploy to https://staging.example.com now?'), 'Should I deploy to https://staging.example.com now?');
+    assert.equal(asked('Do you want a PR against main, e.g. with only the fix?'), 'Do you want a PR against main, e.g. with only the fix?');
+    assert.equal(asked('Want me to run the migration now (it takes about 2.5 minutes)?'), 'Want me to run the migration now (it takes about 2.5 minutes)?');
+    assert.equal(asked('The cache is ready. Should I enable it in config.yaml for production?'), 'Should I enable it in config.yaml for production?');
+    assert.equal(asked('Should I use a managed database, e.g. Postgres on RDS?'), 'Should I use a managed database, e.g. Postgres on RDS?', 'an abbreviation before a capital ends nothing');
+    assert.equal(asked('Tests are green.\n\n**Should I merge `feature/v2.1` into main?**'), 'Should I merge `feature/v2.1` into main?');
+    // A sentence still ends where one ends, and the question is the last one that asks.
+    assert.equal(asked('Which one do you prefer? I can also do both.'), 'Which one do you prefer?');
+    assert.equal(asked('Did the tests pass? No. Should I fix them?'), 'Should I fix them?');
+    assert.equal(asked('The parser is done. Tests pass. Should I also write the docs? I can start now.'), 'Should I also write the docs?');
+    assert.equal(asked('"Use v2." Should I follow that note?'), 'Should I follow that note?');
+    // A question that leans on the one before it is read with that one, or it would not stand alone.
+    assert.equal(asked('Both pass. Should I merge `fix/parser` now? Or wait for the review?'), 'Should I merge `fix/parser` now? Or wait for the review?');
+    assert.equal(asked('Are both builds green? If so, should I tag v1.2?'), 'Are both builds green? If so, should I tag v1.2?');
+    assert.equal(asked('Is the cache warm? Should I deploy?'), 'Should I deploy?', 'a question that stands alone is read alone');
+    assert.equal(asked('Ready. Or not?'), 'Or not?', 'only a question leans on a question');
+    // Nothing inside a code span ends a sentence or asks.
+    assert.equal(asked('Should I run `make build. Then deploy` again?'), 'Should I run `make build. Then deploy` again?');
+    assert.equal(asked('I added `cache?.get()`. Should I keep the old path too?'), 'Should I keep the old path too?');
+    assert.equal(askIn('Use `x ?? y` there. Should I?').question, 'Should I?');
+});
+
+test('words: a fenced code block is shown, not asked: no marker or question in one counts, and a question before one is found', () => {
+    // A rule quoted from a rules file made a card "<question>" with the pick "<pick>".
+    const quoted = 'I added the rule to AGENTS.md:\n```\nDECISION NEEDED: <question> — recommend: <pick>\n```\nThat is all.';
+    assert.equal(decisionIn(quoted), undefined);
+    assert.equal(askIn(quoted), undefined);
+    assert.equal(asksSomeone(quoted), false);
+    assert.equal(askIn('Rules updated:\n~~~md\nBLOCKED: <what is missing>\n~~~'), undefined, 'a tilde fence too');
+    assert.equal(blockedIn('```\nBLOCKED: no key\n```'), undefined);
+    // A "?" in the code is not the question; the one around it is.
+    assert.deepEqual(askIn('The migration is ready.\n```sh\nread -p "Continue? " ok\nnpm run migrate\n```\nShould I run it on staging now?'), { kind: 'question', question: 'Should I run it on staging now?' });
+    assert.deepEqual(askIn('Should I run this on staging?\n```sh\nnpm run migrate\n```'), { kind: 'question', question: 'Should I run this on staging?' }, 'a question before the code that ends the reply');
+    assert.equal(asksForAnswer('Should I run this on staging?\n```sh\nnpm run migrate\n```'), true);
+    // The session's own marker after a block still counts, and so does one after a fence never closed.
+    assert.deepEqual(askIn('```sh\nnpm test\n```\nDECISION NEEDED: Ship it? — recommend: yes'), { kind: 'decision', question: 'Ship it?', recommendation: 'yes' });
+    assert.deepEqual(askIn('```\nDECISION NEEDED: Ship it? — recommend: yes'), { kind: 'decision', question: 'Ship it?', recommendation: 'yes' });
+    // Each line stays in its place (blank), a closing fence must match the opening one, and "```a```" is no fence.
+    assert.equal(unfenced('a\n````md\n```\nb\n````\nc'), 'a\n\n\n\n\nc');
+    assert.equal(unfenced('a\n```x```\nb'), 'a\n```x```\nb');
+    assert.equal(unfenced('a\n```js\nb\n~~~\nc'), 'a\n```js\nb\n~~~\nc', 'a tilde fence does not close a backtick one');
+});
+
+test('words: code spans keep identifiers whole: dunders, double stars and dashes stay in the question, the pick and the lines', () => {
+    assert.deepEqual(decisionIn('DECISION NEEDED: Should I rename `__init__.py` to main.py? — recommend: keep `__init__.py`'), { question: 'Should I rename __init__.py to main.py?', recommendation: 'keep __init__.py' });
+    assert.deepEqual(decisionIn('DECISION NEEDED: delete `__pycache__` and `__init__.py`? — recommend: `__pycache__` only'), { question: 'delete __pycache__ and __init__.py?', recommendation: '__pycache__ only' });
+    assert.deepEqual(decisionIn('DECISION NEEDED: Rename `my__var`? — recommend: `my_var`'), { question: 'Rename my__var?', recommendation: 'my_var' });
+    assert.deepEqual(decisionIn('DECISION NEEDED: Is `a**b` the right power operator here? — recommend: `pow(a, b)`'), { question: 'Is a**b the right power operator here?', recommendation: 'pow(a, b)' });
+    assert.deepEqual(decisionIn('DECISION NEEDED: Pass `**kwargs` on? — recommend: `**kwargs`'), { question: 'Pass **kwargs on?', recommendation: '**kwargs' }, 'a span that starts or ends with marks keeps them');
+    assert.deepEqual(decisionIn('DECISION NEEDED: Push with `--force-with-lease`? — recommend: yes'), { question: 'Push with --force-with-lease?', recommendation: 'yes' }, 'a dash in code is not the dash before the pick');
+    assert.deepEqual(decisionIn('`DECISION NEEDED: Ship it? — recommend: yes`'), { question: 'Ship it?', recommendation: 'yes' }, 'a marker line written in code still counts');
+    assert.equal(decisionIn('Write `DECISION NEEDED: <question>` at the end of a reply.'), undefined, 'a marker inside a sentence is not one, in code or not');
+    assert.equal(blockedIn('BLOCKED: no `__init__.py` in `src/` yet'), 'no __init__.py in src/ yet');
+    assert.deepEqual(recommendationIn('Two configs exist.\nWhich wins? Recommend: `__main__.py`'), { question: 'Two configs exist.\nWhich wins?', recommendation: '__main__.py' });
+    assert.equal(plainLine('Rename `my__var`, keep `__init__.py`, is `a**b` right? my__var and a**b stay; **bold** and __this__ go'),
+        'Rename my__var, keep __init__.py, is a**b right? my__var and a**b stay; bold and this go');
+    assert.equal(plainLine('**DECISION NEEDED:** keep `file_name.py`? — *Monday*'), 'DECISION NEEDED: keep file_name.py? — Monday', 'marks around words still go');
+    assert.equal(plainLine('Use ``a`b`` and ` padded `'), 'Use a`b and padded', 'a span of two backticks, and the padding inside one');
+    // The spans are held while a line is read, and given back as words or as written.
+    const held = holdCode('Use `a.b` or ``c`d``.');
+    assert.equal(held.text, 'Use \u00010\u0002 or \u00011\u0002.');
+    assert.equal(unholdCode(held.text, held.spans), 'Use a.b or c`d.');
+    assert.equal(unholdCode(held.text, held.spans, { written: true }), 'Use `a.b` or ``c`d``.');
+    assert.deepEqual(holdCode('odd \u0001 text `x`'), { text: 'odd \u0001 text `x`', spans: [] }, 'a text with a placeholder\'s mark in it is read as it is');
+});
+
 test('words: a provider\'s error in plain words, its JSON reduced to the message', () => {
     assert.equal(plainError('400: {"message":"The model refused this request.","type":"invalid_request_error"}'), '400: The model refused this request.');
     assert.equal(plainError('429 {"error":{"message":"Rate limit reached for requests","type":"requests"}}'), '429: Rate limit reached for requests');
@@ -183,7 +255,18 @@ test('words: times and spans in plain words', () => {
     assert.equal(spanWords(45000), '45 seconds');
     assert.equal(spanWords(1000), '1 second');
     assert.equal(spanWords(10 * 60000), '10 minutes');
+    // Under two minutes in seconds, so 90 seconds never reads as 2 minutes; minutes and seconds up to ten minutes.
+    assert.equal(spanWords(90000), '90 seconds');
+    assert.equal(spanWords(119000), '119 seconds');
+    assert.equal(spanWords(150000), '2 minutes 30 seconds');
+    assert.equal(spanWords(181000), '3 minutes 1 second');
+    assert.equal(spanWords(5 * 60000), '5 minutes');
     assert.equal(spanWords(3 * 3600000), '3 hours');
+    // Hours and minutes up to ten hours, so 90 minutes never reads as 2 hours.
+    assert.equal(spanWords(90 * 60000), '1 hour 30 minutes');
+    assert.equal(spanWords(121 * 60000), '2 hours 1 minute');
+    assert.equal(spanWords(599 * 60000), '9 hours 59 minutes');
+    assert.equal(spanWords(10 * 3600000), '10 hours');
     assert.equal(spanWords(3 * 86400000), '3 days');
     assert.equal(count(1, 'open todo'), '1 open todo');
     assert.equal(count(2, 'try', 'tries'), '2 tries');
@@ -441,6 +524,77 @@ test('kit: one hub request per window serves every plugin, and moves only the vi
     assert.ok(heard.a >= 3);
 });
 
+test('kit: while Session Watch is off, the window asks DSH\'s plugin list, never its endpoint; pages read once, and all again when it is back', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const shared = {};
+    const kit = kitWith({ window: shared });
+    let on = true;
+    let epoch = 'e1';
+    let hanging;
+    const calls = [];
+    kit.setConnection({ rpc: { call: async (_path, method, payload) => {
+        calls.push(method);
+        if (method === 'pluginManager/listPlugins') {
+            return { ok: true, value: [{ moduleName: 'dsh-plugin-autopilot', enabled: true, fiberPhase: 'active' }, { moduleName: 'dsh-plugin-session-watch', enabled: on, fiberPhase: on ? 'active' : 'pending' }] };
+        }
+        if (method !== 'dsh-plugin-session-watch/wait') throw new Error(`unexpected ${method}`);
+        if (!on) throw new Error('transport failure for /api/dsh-plugin-session-watch/wait: HTTP 404');
+        // The first answer at once (a new window is behind); then the request stays open until something moves.
+        if (payload.args.since?.epoch === epoch) return new Promise((resolve, reject) => { hanging = { resolve, reject }; });
+        return { ok: true, value: { epoch, versions: { decisions: 1 } } };
+    } } });
+    kit.hub.attach();
+    let reads = 0;
+    kit.hub.subscribe(['decisions'], () => { reads += 1; });
+    await settle(10);
+    assert.equal(reads, 1, 'the first answer: every page reads');
+    assert.deepEqual(calls, ['dsh-plugin-session-watch/wait', 'dsh-plugin-session-watch/wait']);
+    // Session Watch is switched off: its open request fails, pages read once (each says what it needs) ...
+    on = false;
+    hanging.reject(new Error('transport failure for /api/dsh-plugin-session-watch/wait: HTTP 404'));
+    await settle(10);
+    assert.equal(reads, 2, 'pages read once when it stops');
+    assert.equal(shared['dsh-plugin-session-watch/hub/v1'].watch, 'off');
+    // ... then for a minute the window asks only DSH's plugin list, every 4 seconds, and no page reads again.
+    calls.length = 0;
+    for (let i = 0; i < 15; i += 1) {
+        t.mock.timers.tick(4000);
+        await settle(10);
+    }
+    assert.ok(calls.length >= 14 && calls.every((m) => m === 'pluginManager/listPlugins'), calls.join(', '));
+    assert.equal(reads, 2, 'no page reads while it is off');
+    // On again (a new start, so a new epoch): within one look at the list the hub asks it again, and every page reads.
+    on = true;
+    epoch = 'e2';
+    calls.length = 0;
+    t.mock.timers.tick(4000);
+    await settle(10);
+    assert.deepEqual(calls.slice(0, 2), ['pluginManager/listPlugins', 'dsh-plugin-session-watch/wait']);
+    assert.equal(reads, 3, 'back on: every page reads again');
+    assert.equal(shared['dsh-plugin-session-watch/hub/v1'].watch, 'on');
+});
+
+test('kit: on a DSH with no plugin list, the window asks Session Watch\'s endpoint again every few seconds, and pages still read only once when it stops', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const kit = kitWith({ window: {} });
+    const calls = [];
+    kit.setConnection({ rpc: { call: async (_path, method) => {
+        calls.push(method);
+        throw new Error(`transport failure for /api/${method}: HTTP 404`);
+    } } });
+    kit.hub.attach();
+    let reads = 0;
+    kit.hub.subscribe(['decisions'], () => { reads += 1; });
+    await settle(10);
+    for (let i = 0; i < 6; i += 1) {
+        t.mock.timers.tick(10000);
+        await settle(10);
+    }
+    const waits = calls.filter((m) => m === 'dsh-plugin-session-watch/wait').length;
+    assert.ok(waits >= 4 && waits <= 8, `asked ${waits} times in a minute`);
+    assert.equal(reads, 0, 'a page that opened before any answer read already; nothing more until it answers');
+});
+
 test('kit: times, tones and the parts every page uses', () => {
     const kit = kitWith();
     assert.equal(kit.toneOf('delivered'), 'success');
@@ -535,6 +689,76 @@ test('kit: state tags write their words at 4.5:1 or more on DSH\'s tag fill, in 
     assert.ok(contrast(rgb(LABELS.light.tertiary), rgb(DSH.light.ground)) < 4.5, 'DSH\'s glyph colour falls short for words in light');
 });
 
+test('kit: a value saved in the profile that equals its default is no change: no "Changed" and nothing to reset, in any kind of row', () => {
+    const kit = kitWith();
+    const fields = [
+        { name: 'same', kind: 'number', title: 'Same', hint: '', default: 2, min: 1, max: 10 },
+        { name: 'sameList', kind: 'numbers', title: 'Same list', hint: '', default: [120, 600], min: 0, max: 86400 },
+        { name: 'sameSwitch', kind: 'switch', title: 'Same switch', hint: '', default: true },
+        { name: 'sameChoice', kind: 'choice', title: 'Same choice', hint: '', default: 'a', options: [{ value: 'a', label: 'Auto' }, { value: 'b', label: 'Ask first' }] },
+        { name: 'fine', kind: 'number', title: 'Fine', hint: '', default: 2, min: 1, max: 10 },
+        { name: 'other', kind: 'switch', title: 'Other switch', hint: '', default: true },
+        { name: 'unset', kind: 'number', title: 'Unset', hint: '', default: 2, min: 1, max: 10 },
+    ];
+    const snap = {
+        writable: true, saving: false,
+        same: { text: '2', overridden: true, invalid: false },
+        sameList: { text: '120, 600', overridden: true, invalid: false },
+        sameSwitch: { text: 'on', overridden: true, invalid: false },
+        sameChoice: { text: 'a', overridden: true, invalid: false },
+        fine: { text: '3', overridden: true, invalid: false },
+        other: { text: 'off', overridden: true, invalid: false },
+        unset: { text: '', overridden: false, invalid: false },
+    };
+    const form = { subscribe: () => () => {}, getSnapshot: () => snap, actions: { edit() {}, resetField() {}, save() {}, discard() {} } };
+    const body = kit.SettingsBody({ form, name: 'X', fields });
+    const row = (name) => elementsOf(body).find((e) => e.props?.['data-suite-setting'] === name);
+    const field = (name) => elementsOf(row(name)).find((e) => e.type === 'SettingsValueField');
+    for (const name of ['same', 'sameList', 'unset']) assert.equal(field(name).props.overridden, false, name);
+    for (const name of ['sameSwitch', 'sameChoice']) {
+        assert.equal(elementsOf(row(name)).find((e) => e.props?.className === 'dshx-set-badges'), undefined, name);
+        assert.doesNotMatch(textIn(row(name)), /Changed|Use the default/, name);
+    }
+    // One that differs is still a change, in DSH's field and in the kit's own rows alike, marked as DSH's own field
+    // marks a typed value: a neutral "Changed", then "Use the default" in DSH's reset style, one look for every row.
+    assert.equal(field('fine').props.overridden, true);
+    const badges = elementsOf(row('other')).find((e) => e.props?.className === 'dshx-set-badges');
+    const tag = elementsOf(badges).find((e) => e.type === 'Tag');
+    assert.equal(tag?.props.tone, 'neutral');
+    assert.equal(textIn(tag), 'Changed');
+    const reset = elementsOf(badges).find((e) => e.type === 'button');
+    assert.equal(textIn(reset), 'Use the default');
+    assert.equal(reset.props['aria-label'], 'Use the default for Other switch');
+    const resetRule = kit.css.find((rule) => rule.startsWith('.dshx-set-reset{'));
+    assert.match(resetRule, /font-size:12px;line-height:1\.5;color:var\(--dsw-alias-label-secondary\)/, 'as DSH draws its own');
+    assert.doesNotMatch(resetRule, /underline|--dsw-alias-link/, 'not a link');
+});
+
+test('kit: a state tag on a suite page stands on a solid chip of its tone, so its words hold 4.5:1 over any picture at any tint', () => {
+    const kit = kitWith();
+    const TOKEN = { warning: 'warn', danger: 'error', success: 'success', info: 'business' };
+    const FILL = { warning: 12, danger: 10, success: 10, info: 10 };
+    // The chip's colour: the cards' own glass colour, solid, in dark and in light.
+    const chips = kit.css.find((r) => r.includes('--dshx-chip:'));
+    assert.equal(chips, ':is(.dshx-page,.dshx-pane,.dshx-pop){--dshx-chip:rgb(14,18,17)}body:not([data-ds-dark-theme]) :is(.dshx-page,.dshx-pane,.dshx-pop){--dshx-chip:rgb(250,250,246)}');
+    const CHIP = { dark: [14, 18, 17], light: [250, 250, 246] };
+    for (const tone of Object.keys(TOKEN)) {
+        const ground = kit.css.find((r) => r.includes(`.dshx-tag[data-tone="${tone}"]{background-color:`));
+        assert.equal(ground, `:is(.dshx-page,.dshx-pane,.dshx-pop) .dshx-tag[data-tone="${tone}"]{background-color:color-mix(in srgb,var(--dsw-alias-state-${TOKEN[tone]}-primary) ${FILL[tone]}%,var(--dshx-chip))}`, tone);
+        const words = kit.css.find((r) => r.includes(`.dshx-tag[data-tone="${tone}"]{color:`));
+        const share = Number(new RegExp(`--dsw-alias-state-${TOKEN[tone]}-primary\\) (\\d+)%`).exec(words)?.[1]) / 100;
+        for (const mode of ['light', 'dark']) {
+            const colours = DSH[mode];
+            // No picture under it: the chip is opaque, so the tint and the picture no longer count.
+            const chip = mix(rgb(colours[tone]), CHIP[mode], FILL[tone] / 100);
+            const ours = contrast(mix(rgb(colours[tone]), rgb(colours.label), share), chip);
+            assert.ok(ours >= 4.5, `${tone} in ${mode}: ${ours.toFixed(2)}:1`);
+        }
+    }
+    // Only on the suite's own pages: DSH's Plugins page keeps DSH's tags as they are.
+    assert.ok(kit.css.filter((r) => r.includes('--dshx-chip)')).every((r) => r.startsWith(':is(.dshx-page,.dshx-pane,.dshx-pop) ')));
+});
+
 test('kit: amber and secondary words on a card people read hold 4.5:1 at Wallpaper\'s tint .2 over a mid picture, light and dark', () => {
     const kit = kitWith();
     const tokens = kit.css.find((r) => r.includes('--dshx-warn:'));
@@ -570,9 +794,43 @@ test('kit: the sidebar badge writes its count at 4.5:1 or more in light and dark
     assert.ok(contrast(rgb('#ffffff'), rgb(DSH.light.danger)) < 4.5, 'white on DSH\'s light error colour is just short too');
 });
 
+test('kit: a read that finishes after a newer one has landed is dropped, so a slow host never puts old data back on the page', async () => {
+    const { react, mount } = statefulReact();
+    const kit = kitWith({ react, document: { body: {}, activeElement: null, addEventListener() {}, removeEventListener() {} } });
+    const reads = [];
+    let live;
+    const view = mount(() => {
+        live = kit.useLive(() => new Promise((resolve, reject) => reads.push({ resolve, reject })), ['x'], { delayMs: 0 });
+        return null;
+    }, {});
+    assert.equal(reads.length, 1, 'the first read starts with the page');
+    const older = live.refresh();
+    const newer = live.refresh();
+    reads[2].resolve({ rule: 'auto' });
+    await newer;
+    assert.deepEqual(live.data, { rule: 'auto' });
+    reads[1].resolve({ rule: 'off' });
+    await older;
+    assert.deepEqual(live.data, { rule: 'auto' }, 'an older read that finishes later is dropped');
+    reads[0].reject(new Error('timed out'));
+    await settle();
+    assert.equal(live.error, undefined, 'and so is an older failure');
+    const failing = live.refresh();
+    reads[3].reject(new Error('Autopilot did not answer.'));
+    await failing;
+    assert.deepEqual([live.data, live.error], [{ rule: 'auto' }, 'Autopilot did not answer.'], 'a newer failure keeps the data and says so');
+    const next = live.refresh();
+    reads[4].resolve({ rule: 'ask' });
+    await next;
+    assert.deepEqual([live.data, live.error], [{ rule: 'ask' }, undefined]);
+    view.unmount();
+});
+
 test('kit: a choice commits on a click or on Enter, never on an arrow key; Escape and leaving go back; it is never disabled', async () => {
     const { react, mount } = statefulReact();
-    const kit = kitWith({ react });
+    const listeners = new Set();
+    const document = { body: {}, activeElement: null, addEventListener: (type, fn) => listeners.add(fn), removeEventListener: (type, fn) => listeners.delete(fn) };
+    const kit = kitWith({ react, document });
     const OPTIONS = [{ value: 'auto', label: 'Auto' }, { value: 'ask', label: 'Ask first' }, { value: 'off', label: 'Off' }];
     const chosen = [];
     let answer = true;
@@ -604,17 +862,41 @@ test('kit: a choice commits on a click or on Enter, never on an arrow key; Escap
     key(' ');
     assert.deepEqual(chosen, ['ask', 'off']);
     view.update({ value: 'off' });
-    // Escape, or leaving the control, goes back to the saved value.
+    // Escape, or leaving the control for another place, goes back to the saved value.
     control().props.onChange('auto');
     key('Escape');
     assert.equal(control().props.value, 'off');
     control().props.onChange('auto');
+    root().props.onBlurCapture({ currentTarget: { contains: () => false }, relatedTarget: {} });
+    assert.equal(control().props.value, 'off');
+    // A press on an empty spot leaves it too: the pointer is noted only while a choice waits.
+    assert.equal(listeners.size, 0);
+    control().props.onChange('auto');
+    assert.equal(listeners.size, 1);
+    for (const fn of listeners) fn({ target: {} });
     root().props.onBlurCapture({ currentTarget: { contains: () => false }, relatedTarget: null });
     assert.equal(control().props.value, 'off');
+    assert.equal(listeners.size, 0, 'nothing left listening once it is dropped');
     // Moving between its own values keeps the choice open.
     control().props.onChange('auto');
     root().props.onBlurCapture({ currentTarget: { contains: () => true }, relatedTarget: {} });
     assert.equal(control().props.value, 'auto');
+    // So does a redraw that moves its row or draws it anew (the focus goes nowhere, with no press): the choice is
+    // kept by the control's id, and Enter on the new one applies it.
+    root().props.onBlurCapture({ currentTarget: { contains: () => false }, relatedTarget: null });
+    assert.equal(control().props.value, 'auto');
+    const redrawn = mount(kit.Choice, { id: 'rule', label: 'Rule', value: 'off', options: OPTIONS, busy: false, onChoose: (value) => { chosen.push(value); return answer; } });
+    assert.equal(redrawn.tree.props['data-suite-pending'], 'auto');
+    assert.match(textIn(redrawn.tree), /Press Enter to apply Auto\./);
+    const other = mount(kit.Choice, { id: 'other', label: 'Other', value: 'off', options: OPTIONS, busy: false, onChoose() {} });
+    assert.equal(other.tree.props['data-suite-pending'], undefined, 'kept for its own control only');
+    redrawn.tree.props.onKeyDownCapture({ key: 'Escape', preventDefault() {} });
+    assert.equal(mount(kit.Choice, { id: 'rule', label: 'Rule', value: 'off', options: OPTIONS, busy: false, onChoose() {} }).tree.props['data-suite-pending'], undefined, 'Escape drops it for good');
+    // A choice kept against a saved value that has changed since (the rule was changed elsewhere) is dropped.
+    const again = mount(kit.Choice, { id: 'rule', label: 'Rule', value: 'off', options: OPTIONS, busy: false, onChoose() {} });
+    elementsOf(again.tree).find((e) => e.type === 'SegmentedControl').props.onChange('ask');
+    assert.equal(mount(kit.Choice, { id: 'rule', label: 'Rule', value: 'auto', options: OPTIONS, busy: false, onChoose() {} }).tree.props['data-suite-pending'], undefined, 'the saved value moved on');
+    assert.equal(mount(kit.Choice, { id: 'rule', label: 'Rule', value: 'off', options: OPTIONS, busy: false, onChoose() {} }).tree.props['data-suite-pending'], undefined, 'and it is gone');
     key('Escape');
     // A click applies at once (DSH's control ignores a click on the value it shows, so the click is read here).
     click('ask');
@@ -681,14 +963,26 @@ test('kit: the settings form flags a saved value that does not fit, with what fi
         { name: 'mode', kind: 'choice', title: 'Mode', hint: '', default: 'a', options: [{ value: 'a', label: 'Auto' }, { value: 'b', label: 'Ask first' }, { value: 'c', label: 'Off' }] },
         { name: 'resume', kind: 'switch', title: 'Resume', hint: '', default: true },
         { name: 'fine', kind: 'number', title: 'Fine', hint: '', default: 2, min: 1, max: 10 },
+        { name: 'quoted', kind: 'number', title: 'Quoted', hint: '', default: 2, min: 1, max: 10 },
     ];
-    // What DSH's form shows for values typed into the profile: each stored value as text, wrong ones included.
+    // What DSH's form shows for values typed into the profile: each stored value as text, wrong ones included; text
+    // where a number, a list or a switch belongs keeps its quotes, so it never reads as a value that fits.
     assert.equal(kit.fieldSpec(fields[0]).format(2), '2');
-    assert.equal(kit.fieldSpec(fields[0]).format('soon'), 'soon');
-    assert.equal(kit.fieldSpec(fields[1]).format('120'), '120');
+    assert.equal(kit.fieldSpec(fields[0]).format('soon'), '"soon"');
+    assert.equal(kit.fieldSpec(fields[0]).format('600'), '"600"');
+    assert.equal(kit.fieldSpec(fields[1]).format('120'), '"120"');
+    assert.equal(kit.fieldSpec(fields[1]).format([120, 600]), '120, 600');
+    assert.equal(kit.fieldSpec(fields[1]).format(['120', 600]), '["120",600]');
     assert.equal(kit.fieldSpec(fields[2]).format(7), '7');
-    assert.equal(kit.fieldSpec(fields[3]).format('yes'), 'yes');
+    assert.equal(kit.fieldSpec(fields[2]).format('b'), 'b');
+    assert.equal(kit.fieldSpec(fields[3]).format('yes'), '"yes"');
+    assert.equal(kit.fieldSpec(fields[3]).format('on'), '"on"');
     assert.equal(kit.fieldSpec(fields[3]).format(undefined), '');
+    // "90" is text, so it does not parse (the form flags it as it opens), and the number typed back is a change it saves.
+    assert.equal(kit.fieldSpec(fields[0]).parse('"90"'), undefined);
+    assert.deepEqual(kit.fieldSpec(fields[0]).parse('90'), { kind: 'set', value: 90 });
+    assert.equal(kit.fieldSpec(fields[1]).format('30, 90'), '"30, 90"');
+    assert.equal(kit.fieldSpec(fields[1]).parse('"30, 90"'), undefined);
     const snap = {
         writable: true, saving: false,
         idle: { text: '2', overridden: true, invalid: false },
@@ -696,6 +990,7 @@ test('kit: the settings form flags a saved value that does not fit, with what fi
         mode: { text: 'maybe', overridden: true, invalid: false },
         resume: { text: 'yes', overridden: true, invalid: false },
         fine: { text: '3', overridden: true, invalid: false },
+        quoted: { text: '"2"', overridden: true, invalid: false },
     };
     const form = { subscribe: () => () => {}, getSnapshot: () => snap, actions: { edit() {}, resetField() {}, save() {}, discard() {} } };
     const body = kit.SettingsBody({ form, name: 'X', fields });
@@ -705,6 +1000,9 @@ test('kit: the settings form flags a saved value that does not fit, with what fi
     assert.equal(field('idle').props.invalidLabel, 'A whole number from 5 to 86400, or empty for the default (600).');
     assert.equal(field('waits').props.invalid, true);
     assert.equal(field('fine').props.invalid, false);
+    // A number saved in quotes is flagged for what it is: text, with what to type instead.
+    assert.equal(field('quoted').props.invalid, true);
+    assert.equal(field('quoted').props.invalidLabel, 'It is saved as text, in quotes. Type a whole number from 1 to 10, without the quotes, then save.');
     assert.equal(row('idle').props['data-suite-invalid'], '');
     assert.equal(row('fine').props['data-suite-invalid'], undefined);
     assert.match(textIn(row('mode')), /The saved value is not one of the choices\. Choose Auto, Ask first or Off, then save\./);
@@ -714,6 +1012,126 @@ test('kit: the settings form flags a saved value that does not fit, with what fi
     assert.equal(control.props.value, '');
     assert.equal(control.props.className, 'dshx-seg-none');
     assert.ok(kit.css.some((rule) => rule.includes('.dshx-seg-none>[aria-hidden="true"]{visibility:hidden}')), 'its pill is hidden');
+    // A changed switch or choice is marked as DSH's own field marks a typed value: "Changed", then "Use the default", one look.
+    for (const name of ['resume', 'mode']) {
+        const badges = elementsOf(row(name)).find((e) => e.props?.className === 'dshx-set-badges');
+        assert.ok(badges, name);
+        const tag = elementsOf(badges).find((e) => e.type === 'Tag');
+        assert.equal(tag?.props.tone, 'neutral', name);
+        assert.equal(textIn(tag), 'Changed', name);
+        const reset = elementsOf(badges).find((e) => e.type === 'button');
+        assert.equal(textIn(reset), 'Use the default', name);
+        assert.equal(reset.props['aria-label'], `Use the default for ${fields.find((f) => f.name === name).title}`);
+    }
+    const resetRule = kit.css.find((rule) => rule.startsWith('.dshx-set-reset{'));
+    assert.match(resetRule, /font-size:12px;line-height:1\.5;color:var\(--dsw-alias-label-secondary\)/, 'as DSH draws its own');
+    assert.doesNotMatch(resetRule, /underline|--dsw-alias-link/);
+    assert.ok(kit.css.includes('.dshx-settings .dshx-tag:is([data-tone="quiet"],[data-tone="neutral"]){color:color-mix(in srgb,var(--dsw-alias-label-secondary) 80%,var(--dsw-alias-label-primary))}'), '"Changed" in the suite\'s secondary text, as on its pages');
+});
+
+test('kit: a number saved in quotes (#32) is flagged as the form opens, says the quotes are what is wrong, and the number typed without them saves', () => {
+    const kit = kitWith();
+    const fields = [
+        { name: 'wait', kind: 'number', title: 'Wait', hint: '', default: 600, min: 10, max: 86400 },
+        { name: 'waits', kind: 'numbers', title: 'Waits', hint: '', default: [120, 600], min: 0, max: 86400 },
+        { name: 'resume', kind: 'switch', title: 'Resume', hint: '', default: true },
+    ];
+    const spec = kit.fieldSpec(fields[0]);
+    // The stored "600" shows as "600" with its quotes: it does not parse, so the form flags it at once.
+    const shown = spec.format('600');
+    assert.equal(spec.parse(shown), undefined);
+    // Typed back without the quotes, it is a change (the text differs from what is stored) and it parses to the number.
+    assert.notEqual('600', shown);
+    assert.deepEqual(spec.parse('600'), { kind: 'set', value: 600 });
+    assert.deepEqual(kit.fieldSpec(fields[1]).parse('120, 600'), { kind: 'set', value: [120, 600] });
+    const snap = {
+        writable: true, saving: false,
+        wait: { text: shown, overridden: true, invalid: false },
+        waits: { text: kit.fieldSpec(fields[1]).format('120, 600'), overridden: true, invalid: false },
+        resume: { text: kit.fieldSpec(fields[2]).format('yes'), overridden: true, invalid: false },
+    };
+    const form = { subscribe: () => () => {}, getSnapshot: () => snap, actions: { edit() {}, resetField() {}, save() {}, discard() {} } };
+    const body = kit.SettingsBody({ form, name: 'X', fields });
+    const row = (name) => elementsOf(body).find((e) => e.props?.['data-suite-setting'] === name);
+    const field = (name) => elementsOf(row(name)).find((e) => e.type === 'SettingsValueField');
+    assert.equal(field('wait').props.invalid, true);
+    assert.equal(field('wait').props.text, '"600"');
+    assert.equal(field('wait').props.invalidLabel, 'It is saved as text, in quotes. Type a whole number from 10 to 86400, without the quotes, then save.');
+    assert.equal(row('wait').props['data-suite-invalid'], '');
+    assert.equal(field('waits').props.invalidLabel, 'It is saved as text, in quotes. Type up to 10 whole numbers from 0 to 86400, with commas between them, without the quotes, then save.');
+    assert.match(textIn(row('resume')), /The saved value is neither on nor off\. Switch it to the one you want, then save\./);
+    // A number out of range keeps its own words.
+    assert.equal(kit.invalidWords(fields[0], '3'), 'A whole number from 10 to 86400, or empty for the default (600).');
+});
+
+test('kit: a number saved in quotes (#32) is flagged as the form opens, says the quotes are what is wrong, and the number typed without them saves', () => {
+    const kit = kitWith();
+    const fields = [
+        { name: 'wait', kind: 'number', title: 'Wait', hint: '', default: 600, min: 10, max: 86400 },
+        { name: 'waits', kind: 'numbers', title: 'Waits', hint: '', default: [120, 600], min: 0, max: 86400 },
+        { name: 'resume', kind: 'switch', title: 'Resume', hint: '', default: true },
+    ];
+    const spec = kit.fieldSpec(fields[0]);
+    // The stored "600" shows as "600" with its quotes: it does not parse, so the form flags it at once.
+    const shown = spec.format('600');
+    assert.equal(spec.parse(shown), undefined);
+    // Typed back without the quotes, it is a change (the text differs from what is stored) and it parses to the number.
+    assert.notEqual('600', shown);
+    assert.deepEqual(spec.parse('600'), { kind: 'set', value: 600 });
+    assert.deepEqual(kit.fieldSpec(fields[1]).parse('120, 600'), { kind: 'set', value: [120, 600] });
+    const snap = {
+        writable: true, saving: false,
+        wait: { text: shown, overridden: true, invalid: false },
+        waits: { text: kit.fieldSpec(fields[1]).format('120, 600'), overridden: true, invalid: false },
+        resume: { text: kit.fieldSpec(fields[2]).format('yes'), overridden: true, invalid: false },
+    };
+    const form = { subscribe: () => () => {}, getSnapshot: () => snap, actions: { edit() {}, resetField() {}, save() {}, discard() {} } };
+    const body = kit.SettingsBody({ form, name: 'X', fields });
+    const row = (name) => elementsOf(body).find((e) => e.props?.['data-suite-setting'] === name);
+    const field = (name) => elementsOf(row(name)).find((e) => e.type === 'SettingsValueField');
+    assert.equal(field('wait').props.invalid, true);
+    assert.equal(field('wait').props.text, '"600"');
+    assert.equal(field('wait').props.invalidLabel, 'It is saved as text, in quotes. Type a whole number from 10 to 86400, without the quotes, then save.');
+    assert.equal(row('wait').props['data-suite-invalid'], '');
+    assert.equal(field('waits').props.invalidLabel, 'It is saved as text, in quotes. Type up to 10 whole numbers from 0 to 86400, with commas between them, without the quotes, then save.');
+    assert.match(textIn(row('resume')), /The saved value is neither on nor off\. Switch it to the one you want, then save\./);
+    // A number out of range keeps its own words.
+    assert.equal(kit.invalidWords(fields[0], '3'), 'A whole number from 10 to 86400, or empty for the default (600).');
+});
+
+test('kit: a number saved in quotes (#32) is flagged as the form opens, says the quotes are what is wrong, and the number typed without them saves', () => {
+    const kit = kitWith();
+    const fields = [
+        { name: 'wait', kind: 'number', title: 'Wait', hint: '', default: 600, min: 10, max: 86400 },
+        { name: 'waits', kind: 'numbers', title: 'Waits', hint: '', default: [120, 600], min: 0, max: 86400 },
+        { name: 'resume', kind: 'switch', title: 'Resume', hint: '', default: true },
+    ];
+    const spec = kit.fieldSpec(fields[0]);
+    // The stored "600" shows as "600" with its quotes: it does not parse, so the form flags it at once.
+    const shown = spec.format('600');
+    assert.equal(spec.parse(shown), undefined);
+    // Typed back without the quotes, it is a change (the text differs from what is stored) and it parses to the number.
+    assert.notEqual('600', shown);
+    assert.deepEqual(spec.parse('600'), { kind: 'set', value: 600 });
+    assert.deepEqual(kit.fieldSpec(fields[1]).parse('120, 600'), { kind: 'set', value: [120, 600] });
+    const snap = {
+        writable: true, saving: false,
+        wait: { text: shown, overridden: true, invalid: false },
+        waits: { text: kit.fieldSpec(fields[1]).format('120, 600'), overridden: true, invalid: false },
+        resume: { text: kit.fieldSpec(fields[2]).format('yes'), overridden: true, invalid: false },
+    };
+    const form = { subscribe: () => () => {}, getSnapshot: () => snap, actions: { edit() {}, resetField() {}, save() {}, discard() {} } };
+    const body = kit.SettingsBody({ form, name: 'X', fields });
+    const row = (name) => elementsOf(body).find((e) => e.props?.['data-suite-setting'] === name);
+    const field = (name) => elementsOf(row(name)).find((e) => e.type === 'SettingsValueField');
+    assert.equal(field('wait').props.invalid, true);
+    assert.equal(field('wait').props.text, '"600"');
+    assert.equal(field('wait').props.invalidLabel, 'It is saved as text, in quotes. Type a whole number from 10 to 86400, without the quotes, then save.');
+    assert.equal(row('wait').props['data-suite-invalid'], '');
+    assert.equal(field('waits').props.invalidLabel, 'It is saved as text, in quotes. Type up to 10 whole numbers from 0 to 86400, with commas between them, without the quotes, then save.');
+    assert.match(textIn(row('resume')), /The saved value is neither on nor off\. Switch it to the one you want, then save\./);
+    // A number out of range keeps its own words.
+    assert.equal(kit.invalidWords(fields[0], '3'), 'A whole number from 10 to 86400, or empty for the default (600).');
 });
 
 test('kit: a choice with no valid saved value can still be reached with Tab; once fixed, DSH\'s selection takes the focus again', () => {

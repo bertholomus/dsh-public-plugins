@@ -79,22 +79,41 @@ function schedule() {
     setImmediate(tick);
 }
 
+// A session DSH said stopped, with no end read for its turn half a minute later, is cut off then: the page hears of it.
+let settleTimer;
+function settleLater() {
+    clearTimeout(settleTimer);
+    const due = engine.graceDue;
+    if (due === undefined || closing) return;
+    settleTimer = setTimeout(() => {
+        const version = engine.version;
+        try { engine.settle(); } catch { /* the next call */ }
+        if (engine.version !== version) report(true);
+        settleLater();
+    }, Math.max(0, due - Date.now()) + 100);
+}
+
 parentPort.on('message', (message) => {
     if (!message || message.type !== 'call') return;
     if (message.op === 'close') {
         closing = true;
         clearInterval(rescans);
+        clearTimeout(settleTimer);
         try { engine.close(); } catch { /* closing anyway */ }
         post({ type: 'reply', id: message.id, ok: true, value: true });
         parentPort.close();
         return;
     }
+    const version = engine.version;
     try {
         const value = engine.handle(message.op, message.args ?? {});
         post({ type: 'reply', id: message.id, ok: true, value });
     } catch (error) {
         post({ type: 'reply', id: message.id, ok: false, error: { message: String(error?.message ?? error).slice(0, 400) } });
     }
+    // DSH's word on which sessions run (or the folders) changed what the page shows: tell it now.
+    if (engine.version !== version) report(true);
+    if (message.op === 'running') settleLater();
     schedule();
 });
 

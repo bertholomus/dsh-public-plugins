@@ -20,7 +20,7 @@ export const SERVICE = 'dshPluginCanonRemote';
 export class CanonRemote {
     /**
      * @param {object} parts - what the page reads (page.js), and Canon's actions:
-     *   `setSession(sessionId, on)`, `promote(path)`, `preview(text, folder)`, `refresh()`.
+     *   `setSession(sessionId, on)`, `promote(path)`, `discard(path)`, `preview(text, folder)`, `refresh()`.
      */
     constructor(parts) {
         this.parts = parts;
@@ -94,6 +94,15 @@ export class CanonRemote {
         });
     }
 
+    /** Discard a draft to the vault's trash (a person pressed Discard). */
+    async discard(path) {
+        return this.run(async () => {
+            this.off();
+            if (typeof path !== 'string' || path === '') throw new Error('Name the draft to discard.');
+            return this.parts.discard(path);
+        });
+    }
+
     /** Read the vault again now. */
     async refresh() {
         return this.run(async () => {
@@ -112,4 +121,4 @@ function markRemote(Class, names) {
         });
     }
 }
-markRemote(CanonRemote, ['state', 'session', 'setSession', 'search', 'promote', 'refresh']);
+markRemote(CanonRemote, ['state', 'session', 'setSession', 'search', 'promote', 'discard', 'refresh']);

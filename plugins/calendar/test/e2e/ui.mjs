@@ -206,6 +206,8 @@ function check(name, ok, detail = '') {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** A toast: DSH's Toast, which it portals straight into <body> as an alert (the plugin's own banner on a DSH without one). */
+const TOAST = 'body > [role=alert], .dshcal-toast';
 
 async function waitFor(fn, what, timeout = 30000) {
     const end = Date.now() + timeout;
@@ -568,12 +570,12 @@ async function settleWindow(page) {
 }
 
 /** The stand-in for the wallpaper plugin, on this test page only: its public contract on <body>, a picture behind DSH. */
-async function wallpaperOn(page) {
-    await page.evaluate(() => {
+async function wallpaperOn(page, flat = '', tint = '0.55') {
+    await page.evaluate(([flat, tint]) => {
         const b = document.body;
         b.classList.add('wp-on');
         b.style.setProperty('--wp-blur', '22px');
-        b.style.setProperty('--wp-tint', '0.55');
+        b.style.setProperty('--wp-tint', tint);
         if (!document.getElementById('test-wall')) {
             const wall = document.createElement('div');
             wall.id = 'test-wall';
@@ -588,8 +590,91 @@ async function wallpaperOn(page) {
                 + 'body.wp-on [data-slot="main"],body.wp-on [data-slot="main.conversation"]>div{background:transparent!important;border:0!important;box-shadow:none!important}';
             document.head.append(style);
         }
-    });
+        if (flat) document.getElementById('test-wall').style.background = flat;
+    }, [flat, tint]);
     await page.waitForTimeout(300);
+}
+
+/**
+ * Text contrast as the window draws it (DESIGN.md section 10): each piece of text of the plugin's own on show, in its
+ * colour over its grounds layered down to an opaque one (the stand-in wall where it shows through, a flat colour,
+ * else DSH's ground), with any dimming on the way. Large text (24px, or 18.66px bold) needs 3:1, the rest 4.5:1.
+ */
+async function contrastSweep(page, scope) {
+    return page.evaluate((scope) => {
+        const parse = (value) => {
+            let m = /^rgba?\(([^)]*)\)$/.exec(value);
+            if (m) {
+                const p = m[1].split(/[,\s/]+/).filter(Boolean).map(Number);
+                return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1];
+            }
+            m = /^color\(srgb ([^)]*)\)$/.exec(value);
+            if (m) {
+                const p = m[1].split(/[\s/]+/).filter(Boolean).map(Number);
+                return [p[0] * 255, p[1] * 255, p[2] * 255, p.length > 3 ? p[3] : 1];
+            }
+            return null;
+        };
+        const over = (top, under) => [0, 1, 2].map((i) => top[i] * top[3] + under[i] * (1 - top[3])).concat(1);
+        const lum = (c) => {
+            const [r, g, b] = c.slice(0, 3).map((v) => {
+                const x = v / 255;
+                return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+            });
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        };
+        const ratio = (a, b) => {
+            const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p);
+            return (x + 0.05) / (y + 0.05);
+        };
+        const wallEl = document.getElementById('test-wall');
+        const wall = wallEl ? parse(getComputedStyle(wallEl).backgroundColor) : null;
+        const bodyGround = parse(getComputedStyle(document.body).backgroundColor);
+        const bottom = wall && wall[3] >= 1 ? wall : bodyGround && bodyGround[3] >= 1 ? bodyGround : [255, 255, 255, 1];
+        const say = (el) => `${el.tagName.toLowerCase()}${[...el.classList].map((c) => `.${c}`).join('')}`;
+        const ratios = [];
+        const onGlass = [];
+        const side = [];
+        const fails = [];
+        for (const root of document.querySelectorAll(scope)) {
+            for (const el of [root, ...root.querySelectorAll('*')]) {
+                if (![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim() !== '')) continue;
+                const box = el.getBoundingClientRect();
+                const css = getComputedStyle(el);
+                if (box.width <= 1 || box.height <= 1 || css.visibility !== 'visible' || box.bottom < 0 || box.top > innerHeight || box.right < 0 || box.left > innerWidth) continue;
+                const grounds = [];
+                let dim = 1;
+                let reached = bottom;
+                let opaque = false;
+                for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+                    const c = getComputedStyle(n);
+                    dim *= Number(c.opacity);
+                    if (n === document.body) break;
+                    const bg = parse(c.backgroundColor);
+                    if (bg && bg[3] >= 1) {
+                        reached = bg;
+                        opaque = true;
+                        break;
+                    }
+                    if (bg && bg[3] > 0) grounds.push(bg);
+                }
+                let ground = reached;
+                for (let i = grounds.length - 1; i >= 0; i--) ground = over(grounds[i], ground);
+                const fg = parse(css.color);
+                if (!fg) continue;
+                const r = ratio(over([fg[0], fg[1], fg[2], fg[3] * dim], ground), ground);
+                const size = parseFloat(css.fontSize);
+                const need = size >= 24 || (Number(css.fontWeight) >= 700 && size >= 18.66) ? 3 : 4.5;
+                ratios.push(r);
+                if (el.closest('[data-calendar-side]')) side.push(r);
+                // Text on glass that reaches the wall (or DSH's own ground under it): the hard case.
+                if (!opaque && grounds.length) onGlass.push(r);
+                if (r < need) fails.push({ what: say(el), text: el.textContent.trim().slice(0, 24), ratio: Math.round(r * 100) / 100, need, color: css.color, ground: ground.slice(0, 3).map(Math.round).join(',') });
+            }
+        }
+        const low = (list) => Math.round(Math.min(...list) * 100) / 100;
+        return { count: ratios.length, min: low(ratios), glass: onGlass.length, glassMin: low(onGlass), side: side.length, sideMin: low(side), wall: Boolean(wall && wall[3] >= 1), failCount: fails.length, fails: [...new Map(fails.map((f) => [`${f.what} ${f.ratio}`, f])).values()].slice(0, 12) };
+    }, scope);
 }
 
 async function wallpaperOff(page) {
@@ -808,31 +893,33 @@ try {
     });
 
     await step('a toast while the event dialog is open', async () => {
-        // An event saved, its toast showing: the next event dialog opened under it keeps its buttons clear (the toast goes to the top).
+        // An event saved, its toast showing: the next event dialog opened under it keeps its buttons clear (DSH's toast is at the top).
         await page.locator('[data-calendar-side-new]').click();
         const form = page.locator('[data-calendar-event-form="new"]');
         await form.waitFor({ state: 'visible' });
         await form.locator('[data-calendar-title]').fill('E2E Toast');
         await page.locator('[data-calendar-save]').click();
         await dialogGone();
-        await page.locator('.dshcal-toast').waitFor({ state: 'visible', timeout: 10000 });
+        await page.locator(TOAST).first().waitFor({ state: 'visible', timeout: 10000 });
         await page.locator('[data-calendar-side-new]').click();
         await form.waitFor({ state: 'visible' });
-        const geo = await page.evaluate(() => {
+        const geo = await page.evaluate((selector) => {
             const box = (el) => {
                 const r = el?.getBoundingClientRect();
                 return r ? { top: Math.round(r.top), bottom: Math.round(r.bottom), left: Math.round(r.left), right: Math.round(r.right) } : null;
             };
-            const toast = document.querySelector('.dshcal-toast');
-            return { toast: box(toast), text: toast?.textContent ?? '', footer: box(document.querySelector('[data-calendar-save]')?.parentElement) };
-        });
+            const toast = [...document.querySelectorAll(selector)].find((el) => /E2E Toast/.test(el.textContent));
+            return { toast: box(toast), text: toast?.textContent ?? '', footer: box(document.querySelector('[data-calendar-save]')?.parentElement),
+                pointer: toast ? getComputedStyle(toast).pointerEvents : '', dsh: Boolean(toast && !toast.classList.contains('dshcal-toast')) };
+        }, TOAST);
         await shot(page, 'event-dialog-toast');
         await page.keyboard.press('Escape');
         await dialogGone();
         const made = (await events(today, addDays(today, 2))).find((o) => o.title === 'E2E Toast');
         if (made) await api('deleteEvent', { id: made.id, scope: 'all' });
         const apart = (a, b) => a.bottom <= b.top || b.bottom <= a.top || a.right <= b.left || b.right <= a.left;
-        check('a toast shown while the event dialog is open stays off the dialog\'s buttons', Boolean(geo.toast && geo.footer) && /E2E Toast/.test(geo.text) && apart(geo.toast, geo.footer),
+        check('a toast is DSH\'s own banner at the top of the window: shown while the event dialog is open, it stays off the dialog\'s buttons and lets clicks through',
+            Boolean(geo.toast && geo.footer) && /E2E Toast/.test(geo.text) && apart(geo.toast, geo.footer) && geo.toast.top < 120 && geo.pointer === 'none' && geo.dsh,
             JSON.stringify(geo));
     });
 
@@ -1082,7 +1169,7 @@ try {
             await page.locator('[data-calendar-save]').click();
             await (await consent()).answer(true);
             await dialogGone();
-            const toast = await page.locator('.dshcal-toast').first().textContent();
+            const toast = await page.locator(TOAST, { hasText: 'Emailed' }).first().textContent();
             const saved = (await events(day1, day1)).find((o) => o.title === 'E2E Planning review');
             check('a change that would email six guests asks first, naming all six on screen with what they get and why; Don\'t save sends nothing, Save and email repeats it with notify and approved: the six, and the toast says who was emailed',
                 question.title === 'Email an update to 6 guests?' && question.text.includes(`${why}.`) && !question.text.includes('so it\'s made only when')
@@ -1292,7 +1379,7 @@ try {
             await shot(page, 'drag-week');
             await page.mouse.up();
             const moved = await waitFor(async () => (await events(target, target)).find((o) => o.id === dragged.id && o.startLocal === `${target}T13:30`), 'the moved event', 10000);
-            const toast = (await page.locator('.dshcal-toast').first().textContent().catch(() => '')) ?? '';
+            const toast = (await page.locator(TOAST, { hasText: 'Moved' }).first().textContent().catch(() => '')) ?? '';
             const opened = await page.locator('[data-calendar-details]').count();
             // Its bottom edge an hour lower: it ends at 15:30.
             await page.waitForTimeout(400);
@@ -1421,7 +1508,7 @@ try {
             await question.answer(true);
             const moved = await waitFor(async () => (await events(day1, day1)).find((o) => o.id === made?.id && o.startLocal === `${day1}T09:30`), 'the meeting at 9:30', 10000);
             // The page has its answer once it says so: the played call is done before the next one (and before the route goes).
-            const saidMoved = (at) => page.locator('.dshcal-toast', { hasText: new RegExp(`Moved “E2E Key meeting” to .*${at}`) }).first().waitFor({ state: 'visible', timeout: 10000 });
+            const saidMoved = (at) => page.locator(TOAST, { hasText: new RegExp(`Moved “E2E Key meeting” to .*${at}`) }).first().waitFor({ state: 'visible', timeout: 10000 });
             await saidMoved('9:30');
             const twice = sent.splice(0);
             // Enter saves at once, without opening the event.
@@ -1512,7 +1599,7 @@ try {
 
     /** The toast that says these words, as it shows. */
     const toastWith = async (words) => {
-        const toast = page.locator('.dshcal-toast', { hasText: words }).first();
+        const toast = page.locator(TOAST, { hasText: words }).first();
         await toast.waitFor({ state: 'visible', timeout: 10000 });
         return (await toast.textContent()) ?? '';
     };
@@ -1530,7 +1617,15 @@ try {
         }
         return calls;
     };
+    // The side column, shown (beside DSH's sidebar at 1280 px it starts folded, and a reload folds it again).
+    const showSide = async () => {
+        const side = page.locator('[data-calendar-side]');
+        if (await side.isVisible()) return;
+        await page.locator('[data-calendar-side-toggle]').click();
+        await side.waitFor({ state: 'visible' });
+    };
     const openAccounts = async () => {
+        await showSide();
         await page.locator('[data-calendar-accounts-open]').click();
         await page.locator('[data-calendar-accounts]').waitFor({ state: 'visible' });
     };
@@ -2289,6 +2384,73 @@ try {
             JSON.stringify({ review: review?.title, location: after?.location }));
     });
 
+    // 14b. A reminder: DSH's banner at the top of this (throwaway) window, once, with Open.
+    await step('a reminder in DSH\'s banner, once, with Open', async () => {
+        const wall = (ms) => {
+            const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: ZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+                .formatToParts(ms).map((x) => [x.type, x.value]));
+            return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+        };
+        // It starts in six minutes; its reminder, ten minutes before, is due now.
+        const startMs = Date.now() + 6 * 60_000;
+        const made = (await api('createEvent', { input: { title: 'E2E Reminder', start: wall(startMs), end: wall(startMs + 30 * 60_000), timeZone: ZONE, alarms: [10], conference: 'https://meet.example.com/e2e-reminder' } })).value?.occurrence;
+        await openPage();
+        const banner = page.locator(TOAST, { hasText: 'E2E Reminder in' }).first();
+        const shown = await banner.waitFor({ state: 'visible', timeout: 75000 }).then(() => true, () => false);
+        const words = shown ? ((await banner.textContent()) ?? '') : '';
+        const where = shown ? await banner.evaluate((el) => ({ top: Math.round(el.getBoundingClientRect().top), dsh: !el.classList.contains('dshcal-toast') })) : null;
+        const buttons = shown ? await banner.getByRole('button').allTextContents() : [];
+        await shot(page, 'reminder-light');
+        // Open shows the event on the Calendar page.
+        const open = banner.getByRole('button', { name: 'Open', exact: true });
+        if (shown && (await open.count())) await open.click({ timeout: 5000 }).catch(() => open.evaluate((b) => b.click()));
+        const opened = await page.locator('[data-calendar-details]', { hasText: 'E2E Reminder' }).first().waitFor({ state: 'visible', timeout: 10000 }).then(() => true, () => false);
+        await page.keyboard.press('Escape');
+        // Shown once: asked again, by this window after a reload or by any other, it doesn't come back.
+        const again = await api('reminders');
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await settleWindow(page);
+        await page.waitForTimeout(6000);
+        const back = await page.locator(TOAST, { hasText: 'E2E Reminder in' }).count();
+        await openPage();
+        await showSide();
+        if (made) await api('deleteEvent', { id: made.id, scope: 'all' });
+        check('a reminder that is due shows as DSH\'s banner at the top of the window: the event, how soon and when, with Open and Join; Open shows the event; it shows once, not again after a reload',
+            Boolean(made) && shown && /E2E Reminder in [3-6] min/.test(words) && where?.dsh === true && where.top < 120 && buttons.includes('Open') && buttons.includes('Join') && opened
+            && again.ok === true && !(again.value?.reminders ?? []).some((r) => r.title === 'E2E Reminder') && back === 0,
+            JSON.stringify({ made: Boolean(made), shown, words, where, buttons, opened, again: again.ok ? (again.value?.reminders ?? []).map((r) => r.title) : again.error, back }));
+    });
+
+    // 14c. A sync that failed: the account says why, and one line under the header names it, with Retry.
+    await step('a sync that failed: its account says why, and a line under the header has Retry', async () => {
+        await openPage();
+        const google = providers.google;
+        // Google's stand-in answers its events reads with 500 until Retry.
+        google.store.failures.push({ times: 1000, method: 'GET', path: /\/events$/, status: 500, reason: 'backendError', message: 'Backend Error', domain: 'global' });
+        await api('syncNow', { accountId: googleAccount?.id });
+        const line = page.locator(`[data-calendar-trouble="${googleAccount?.id}"]`);
+        const shown = await line.waitFor({ state: 'visible', timeout: 20000 }).then(() => true, () => false);
+        const words = shown ? ((await line.textContent()) ?? '') : '';
+        const row = (await api('state')).value?.accounts?.find((a) => a.id === googleAccount?.id);
+        await shot(page, 'sync-failed-light');
+        await openAccounts();
+        const rowWords = (await page.locator(`[data-calendar-account="${googleAccount?.id}"] .dshcal-acct-status`).textContent().catch(() => '')) ?? '';
+        await shot(page, 'sync-failed-accounts-light');
+        await closeAccounts();
+        // The server answers again: Retry syncs it, and the line goes.
+        google.store.failures.splice(0);
+        const retry = line.getByRole('button', { name: 'Retry' });
+        if (shown) await retry.click();
+        const gone = await line.waitFor({ state: 'detached', timeout: 20000 }).then(() => true, () => false);
+        const after = (await api('state')).value?.accounts?.find((a) => a.id === googleAccount?.id);
+        check('a failed sync: the account\'s row says why and when it last synced (never "Synced now"), one line under the header names the account with Retry, and Retry syncs it again',
+            Boolean(googleAccount) && shown && words.startsWith(`${googleAccount.name}: `) && /HTTP 500/.test(words) && /Last synced/.test(words)
+            && row?.status === 'error' && Number.isFinite(row?.syncedAt) && row.triedAt > row.syncedAt
+            && /HTTP 500/.test(rowWords) && /Last synced/.test(rowWords) && !/Synced now/.test(rowWords)
+            && gone && after?.status === 'ok' && after.syncedAt > row.syncedAt,
+            JSON.stringify({ shown, words, row, rowWords, gone, after }));
+    });
+
     // 15. The Microsoft account removed, with the page to withdraw DSH's access there; then a sign-in with a code instead.
     await step('Microsoft: the account removed, and a code instead', async () => {
         await openAccounts();
@@ -2389,8 +2551,8 @@ try {
             JSON.stringify({ listText: listText?.slice(0, 200), hasDays, createText: createText?.slice(0, 200), detailsText: detailsText?.slice(0, 120) }));
         await page.keyboard.press('Escape');
     });
-    // The glass contract for what the plugin draws in a chat: a faint fill of its own, no blur (the conversation behind
-    // it is DSH's or the wallpaper's to blur), in light and dark.
+    // What the plugin draws in a chat draws like DSH's own cards there (DESIGN.md section 2): DSH's card ground, its
+    // large corner and no blur (the conversation behind it is DSH's or the wallpaper's to blur), in light and dark.
     /** A computed colour's alpha: 1 for rgb(), 0 for transparent. */
     const alphaOf = (color) => {
         if (color === 'transparent') return 0;
@@ -2398,23 +2560,29 @@ try {
         const parts = m ? m[1].split(/[,\s/]+/).filter(Boolean) : [];
         return parts.length >= 4 ? Number(parts[3]) : parts.length === 3 ? 1 : NaN;
     };
-    await step('chat cards on glass: a faint fill and no blur, in light and dark', async () => {
+    await step('chat cards drawn as DSH\'s own cards in a chat, in light and dark', async () => {
         await openSession(await titleOf(listCall.sessionId));
         const card = page.locator('.dshcal-chat[data-calendar-chat="calendar_events"][data-phase="result"] .dshcal-chat-card').first();
         await card.waitFor({ state: 'attached', timeout: 10000 });
         const look = () => card.evaluate((el) => {
             const css = getComputedStyle(el);
             const row = getComputedStyle(el.closest('.dshcal-chat'));
-            return { fill: css.backgroundColor, blur: css.backdropFilter, row: row.backgroundColor, rowBlur: row.backdropFilter };
+            const probe = document.createElement('div');
+            probe.style.cssText = 'background:var(--dsw-alias-bg-layer-1);border-radius:var(--dsw-radius-lg)';
+            el.parentElement.append(probe);
+            const dsh = { fill: getComputedStyle(probe).backgroundColor, radius: getComputedStyle(probe).borderTopLeftRadius };
+            probe.remove();
+            return { fill: css.backgroundColor, radius: css.borderTopLeftRadius, blur: css.backdropFilter, row: row.backgroundColor, rowBlur: row.backdropFilter, dsh };
         });
         const light = await look();
         await setDark(page, true);
         const dark = await look();
         if (shots) await card.screenshot({ path: join(shots, 'chat-events-dark.png') }).catch(() => {});
         await setDark(page, false);
-        const faint = (c) => alphaOf(c.fill) > 0 && alphaOf(c.fill) <= 0.06 && c.blur === 'none' && alphaOf(c.row) === 0 && c.rowBlur === 'none';
-        check('a chat card has a faint fill of its own (4 % in dark) and no blur, its row no background, in light and dark',
-            faint(light) && faint(dark) && Math.abs(alphaOf(dark.fill) - 0.04) < 0.005 && light.fill !== dark.fill, JSON.stringify({ light, dark }));
+        const likeDsh = (c) => c.fill === c.dsh.fill && alphaOf(c.fill) === 1 && c.radius === c.dsh.radius && c.radius === '16px' && c.blur === 'none'
+            && alphaOf(c.row) === 0 && c.rowBlur === 'none';
+        check('a chat card draws like DSH\'s own cards in a chat: DSH\'s card ground (opaque) and large corner, no blur, its row no background, in light and dark',
+            likeDsh(light) && likeDsh(dark) && light.fill !== dark.fill, JSON.stringify({ light, dark }));
     });
 
     await step('chat cards for a meeting that reached a guest, and for a move', async () => {
@@ -2468,6 +2636,14 @@ try {
 
     // 18. The Agenda pane.
     await step('the Agenda pane in the right sidebar', async () => {
+        // Something starting in a few minutes: the pane says what's next at its top.
+        const wallAt = (ms) => {
+            const p = Object.fromEntries(new Intl.DateTimeFormat('en-CA', { timeZone: ZONE, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+                .formatToParts(ms).map((x) => [x.type, x.value]));
+            return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+        };
+        const soonAt = Date.now() + 4 * 60_000;
+        const soon = (await api('createEvent', { input: { title: 'E2E Next up', start: wallAt(soonAt), end: wallAt(soonAt + 20 * 60_000), timeZone: ZONE } })).value?.occurrence;
         await openSession(await titleOf(listCall.sessionId));
         const opener = page.getByRole('button', { name: 'Open right sidebar' });
         if (await opener.count()) await opener.first().click();
@@ -2476,8 +2652,12 @@ try {
         const pane = page.locator('[data-calendar-pane]');
         await pane.waitFor({ state: 'visible', timeout: 10000 });
         await pane.locator('[data-calendar-event]', { hasText: 'E2E Planning' }).first().waitFor({ state: 'visible', timeout: 10000 });
+        const nextLine = pane.locator('[data-calendar-pane-next]');
+        await nextLine.filter({ hasText: 'E2E Next up' }).first().waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+        const nextText = ((await nextLine.first().textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim();
         const text = await pane.textContent();
         await shot(page, 'agenda-pane');
+        if (soon) await api('deleteEvent', { id: soon.id, scope: 'all' });
         // An event's details open beside the pane; the chat stays. Open in Calendar shows it on the page.
         const row = pane.locator('[data-calendar-event]', { hasText: 'E2E Planning' }).first();
         await row.locator('.dshcal-pane-what').click();
@@ -2495,9 +2675,10 @@ try {
         await page.locator('[data-calendar-page]').waitFor({ state: 'visible', timeout: 10000 });
         await details.waitFor({ state: 'visible', timeout: 10000 });
         const pageText = await details.textContent();
-        check('the Agenda pane lists today and the next days; an event\'s details open beside it, the chat staying, and Open in Calendar shows it on the page',
-            /Today/.test(text ?? '') && /E2E Offsite/.test(text ?? '') && /E2E Planning/.test(detailsText ?? '') && beside && stayed && /E2E Planning/.test(pageText ?? ''),
-            JSON.stringify({ text: (text ?? '').slice(0, 300), beside, stayed, pageText: (pageText ?? '').slice(0, 100) }));
+        check('the Agenda pane says what\'s next at its top (Next: E2E Next up in 3 or 4 min) and lists today and the next days; an event\'s details open beside it, the chat staying, and Open in Calendar shows it on the page',
+            Boolean(soon) && /^Next: ?E2E Next up ?in [2-4] min$/.test(nextText)
+            && /Today/.test(text ?? '') && /E2E Offsite/.test(text ?? '') && /E2E Planning/.test(detailsText ?? '') && beside && stayed && /E2E Planning/.test(pageText ?? ''),
+            JSON.stringify({ nextText, text: (text ?? '').slice(0, 300), beside, stayed, pageText: (pageText ?? '').slice(0, 100) }));
         await page.keyboard.press('Escape');
     });
 
@@ -2573,9 +2754,9 @@ try {
                 root: getComputedStyle(root).backgroundColor, dark: document.body.hasAttribute('data-ds-dark-theme'),
             };
         });
-        // The wallpaper's numbers: the side column at its tint, the view at tint + .2, both blurred by its blur; DSH's
-        // own fallbacks (22px, .55) without them.
-        const follows = (g, tint, blur) => Math.abs(alphaOf(g.side) - tint) < 0.005 && Math.abs(alphaOf(g.background) - Math.min(1, tint + 0.2)) < 0.005
+        // The wallpaper's numbers: the side column (all small text) and the view at tint + .2, both blurred by its blur;
+        // DSH's own fallbacks (22px, .55) without them.
+        const follows = (g, tint, blur) => Math.abs(alphaOf(g.side) - Math.min(1, tint + 0.2)) < 0.005 && Math.abs(alphaOf(g.background) - Math.min(1, tint + 0.2)) < 0.005
             && g.blur === `blur(${blur}) saturate(1.4)` && g.sideBlur === g.blur;
         await wallpaperOn(page);
         const light = await glass();
@@ -2603,9 +2784,63 @@ try {
         await page.locator('[data-calendar-view="week"]').click();
         await setDark(page, false);
         const clear = (c) => c === 'rgba(0, 0, 0, 0)' || c === 'transparent';
-        check('the page keeps no background of its own and its cards are glass, in light and dark: the side column at the wallpaper\'s tint, the view at tint + .2, both blurred by its blur, with the same fallbacks without it',
+        check('the page keeps no background of its own and its cards are glass, in light and dark: the side column and the view at the wallpaper\'s tint + .2, so no small text sits on the plain tint, both blurred by its blur, with the same fallbacks without it',
             clear(light.root) && clear(dark.root) && follows(light, 0.55, '22px') && follows(dark, 0.55, '22px') && follows(other, 0.3, '10px') && follows(none, 0.55, '22px')
             && light.background !== dark.background && dark.dark === true, JSON.stringify({ light, dark, other, none }));
+    });
+
+    await step('text contrast, light and dark, without a wallpaper and over a mid-grey one', async () => {
+        // An event that has ended two days ago, in the week shown: the sweep reads one faded as past events are.
+        const before = addDays(today, -2);
+        const ended = (await api('createEvent', { input: { title: 'E2E Ended', start: `${before}T09:00`, end: `${before}T10:00`, timeZone: ZONE } })).value?.occurrence;
+        await openPage();
+        await showSide();
+        await page.locator('[data-calendar-view="week"]').click();
+        await showDay(before);
+        const runs = {};
+        const hard = {};
+        // Secondary text deepens on thinner glass: the small month's weekday letters at the default tint and at .3.
+        const letters = async (tint) => {
+            await wallpaperOn(page, '#808080', tint);
+            const color = await page.evaluate(() => getComputedStyle(document.querySelector('[data-calendar-side] .dshcal-mini-wd')).color);
+            await wallpaperOff(page);
+            return color;
+        };
+        const deepens = { at55: await letters('0.55'), at30: await letters('0.3') };
+        for (const dark of [false, true]) {
+            await setDark(page, dark);
+            for (const view of ['week', 'month', 'agenda']) {
+                await page.locator(`[data-calendar-view="${view}"]`).click();
+                await page.waitForTimeout(400);
+                const name = `${dark ? 'dark' : 'light'} ${view}`;
+                runs[name] = await contrastSweep(page, '[data-calendar-page]');
+                runs[name].past = await page.locator('[data-calendar-main] [data-past]').count();
+                await wallpaperOn(page, '#808080');
+                runs[`${name}, grey wall`] = await contrastSweep(page, '[data-calendar-page]');
+                // A low tint (DESIGN.md section 12): .3 over the mid-grey picture, every text held to 4.5:1 too.
+                await wallpaperOn(page, '#808080', '0.3');
+                runs[`${name}, grey wall at tint .3`] = await contrastSweep(page, '[data-calendar-page]');
+                // The hard cases at .3, measured and said (not held: there the tint is the owner's lever): light glass
+                // over a dark picture, dark glass over a light one.
+                await wallpaperOn(page, dark ? '#d8d8d8' : '#262626', '0.3');
+                hard[`${name}, ${dark ? 'light' : 'dark'} wall at tint .3`] = await contrastSweep(page, '[data-calendar-page]');
+                await wallpaperOff(page);
+            }
+        }
+        await setDark(page, false);
+        await page.locator('[data-calendar-view="week"]').click();
+        await shot(page, 'past-light');
+        await page.locator('[data-calendar-today]').click();
+        if (ended) await api('deleteEvent', { id: ended.id, scope: 'all' });
+        const short = Object.fromEntries(Object.entries(runs).map(([k, r]) => [k, `${r.count} texts, lowest ${r.min}:1, ${r.glass} on glass, lowest there ${r.glassMin}:1, ${r.side} in the side column, lowest there ${r.sideMin}:1`]));
+        console.log(`# contrast: ${JSON.stringify(short)}`);
+        const hardShort = Object.fromEntries(Object.entries(hard).map(([k, r]) => [k, `${r.count} texts, lowest ${r.min}:1, side column lowest ${r.sideMin}:1, ${r.failCount} under, ${JSON.stringify(r.fails.slice(0, 4).map((f) => `${f.what} ${f.ratio}`))}`]));
+        console.log(`# contrast, hard cases at tint .3 (measured, not held): ${JSON.stringify(hardShort)}`);
+        // Over the grey wall the glass shows it: some text sits on glass all the way down to the wall. Week shows an ended event.
+        const bad = Object.entries(runs).filter(([k, r]) => r.failCount > 0 || r.count < 20 || r.side < 10 || (/grey wall/.test(k) && (!r.wall || r.glass < 10))
+            || (/week$/.test(k) && !(r.past > 0)));
+        check('every piece of the page\'s text reaches 4.5:1 (3:1 when large) over its grounds, in light and dark, in Week, Month and Agenda, events that have ended too, the side column too, without a wallpaper and over a mid-grey one at the default tint and at tint .3, where secondary text is deeper',
+            Boolean(ended) && bad.length === 0 && deepens.at55 !== deepens.at30 && /^(rgb|color\()/.test(deepens.at30), JSON.stringify({ bad: Object.fromEntries(bad), deepens }));
     });
 
     // 20. A narrow window.

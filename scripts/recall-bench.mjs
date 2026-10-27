@@ -15,13 +15,16 @@
  * - reading one turn in full;
  * - a new turn, and a new session, from the moment DSH says a session moved
  *   to the moment a search finds it;
- * - a restart: the index opens again and looks for changes.
+ * - a restart: the index opens again and looks for changes;
+ * - long notes in an index of their own: a daily log of 601 sections, a run
+ *   log of 9 MB and a note of 60,000 sections, read a slice at a time, with
+ *   searches meanwhile, and read again once both logs grew.
  *
  *   node scripts/recall-bench.mjs [--sessions 10000] [--rounds 20] [--dir DIR] [--keep] [--json FILE]
  *
  * @module scripts/recall-bench
  */
-import { mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { monitorEventLoopDelay, performance } from 'node:perf_hooks';
@@ -66,6 +69,79 @@ async function until(get, ms, step = 20) {
         const value = await get();
         if (value || Date.now() > end) return value;
         await sleep(step);
+    }
+}
+
+/** Wait for the next time the index thread says it is idle (a `caught-up` note) having read at least `files`. */
+function idleNotes() {
+    let waiting;
+    const onEvent = (message) => {
+        if (message?.type !== 'note' || message.note?.kind !== 'caught-up' || !waiting) return;
+        if ((message.note.read ?? 0) >= waiting.files) waiting.resolve(message.note);
+    };
+    return { onEvent, next: (files) => new Promise((resolve) => { waiting = { files, resolve }; }) };
+}
+
+/**
+ * Long notes, in an index of their own: how long they take to read, how searches answer meanwhile, and whether
+ * each part that should be searched is (the daily log's last section, the big log's newest, the 60,000-section
+ * note's first 5,000 and last 45,000) and the middle that should not be is not (word10000, in its 10,001st).
+ */
+async function benchNotes(root, log) {
+    const notes = join(root, 'notes');
+    mkdirSync(notes, { recursive: true });
+    mkdirSync(join(root, 'notes-index'), { recursive: true });
+    const daily = join(notes, 'daily-log.md');
+    const runLog = join(notes, 'run-log.md');
+    writeFileSync(daily, `# Daily log\n\n${Array.from({ length: 601 }, (_, i) => `## Day ${i}\nEntry ${i}: ${i === 600 ? 'the walrus survey' : 'a quiet day'}\n`).join('\n')}`);
+    const run = ['# Run log\n\n'];
+    for (let bytes = 0, i = 0; bytes < 9 * 1048576; i += 1) {
+        const step = `## Step ${i}\nstep ${i} of the long run went fine\n\n`;
+        run.push(step);
+        bytes += step.length;
+    }
+    run.push('## Newest\nthe newest tapir entry\n');
+    writeFileSync(runLog, run.join(''));
+    writeFileSync(join(notes, 'many.md'), Array.from({ length: 60_000 }, (_, k) => `## S${k}\nword${k}\n`).join(''));
+    const idle = idleNotes();
+    const thread = new IndexThread({ file: join(root, 'notes-index', 'index.sqlite'), onEvent: idle.onEvent, workerData: { rescanMs: 3_600_000 } });
+    try {
+        thread.start();
+        if (!(await thread.ready)) throw new Error(`the notes' index thread did not start: ${thread.problem}`);
+        /** Read until idle, searching every 20 ms meanwhile; how long it took and how the searches answered. */
+        const timed = async (files, start) => {
+            const done = idle.next(files);
+            let reading = true;
+            const during = [];
+            const t0 = performance.now();
+            await start();
+            const searching = (async () => {
+                while (reading) {
+                    const s = performance.now();
+                    await thread.call('search', { text: 'quiet day', limit: 20 }, { timeoutMs: 60_000 });
+                    during.push(performance.now() - s);
+                    await sleep(20);
+                }
+            })();
+            const note = await done;
+            const ms = Math.round(performance.now() - t0);
+            reading = false;
+            await searching;
+            return { ms, read: note.read, searchesMeanwhile: stats(during) };
+        };
+        const first = await timed(3, () => thread.call('configure', { sources: [{ kind: 'handoff', root: notes, own: false }] }, { standing: true, timeoutMs: 120_000 }));
+        const status = await thread.call('status');
+        const total = async (text) => (await thread.call('search', { text, limit: 1 })).total;
+        const found = { walrus: await total('walrus'), tapir: await total('tapir'), word4999: await total('word4999'), word59999: await total('word59999'), word10000: await total('word10000') };
+        appendFileSync(daily, '\n## Day 601\nEntry 601: the platypus survey\n');
+        appendFileSync(runLog, '\n## Newer\nan even newer quokka entry\n');
+        const grown = await timed(2, () => thread.call('rescan', {}));
+        Object.assign(found, { platypus: await total('platypus'), quokka: await total('quokka') });
+        const result = { files: status.totals.files, sections: status.totals.sections, partial: status.totals.partial, first, grown, found };
+        log(`long notes: ${result.sections.toLocaleString('en-US')} sections from ${result.files} notes read in ${(first.ms / 1000).toFixed(1)} s (searches meanwhile: median ${first.searchesMeanwhile.median} ms, slowest ${first.searchesMeanwhile.max} ms); after both logs grew, read again in ${(grown.ms / 1000).toFixed(1)} s`);
+        return result;
+    } finally {
+        await thread.stop();
     }
 }
 
@@ -210,6 +286,9 @@ export async function runBench({ sessions = 10_000, rounds = 20, dir, keep = fal
         result.restart.afterUncleanStopReadyMs = Math.round(performance.now() - s);
         log(`restart: the index opened in ${result.restart.readyMs} ms (${result.restart.afterUncleanStopReadyMs} ms after a stop that did not close it), answered its first search in ${result.restart.firstSearchMs} ms, and looked through every file in ${(result.restart.lookedThroughMs / 1000).toFixed(1)} s (${rescan.read} read again)`);
         result.indexFileMegabytes = round(statSync(indexFile).size / 1048576);
+        await thread.stop();
+        thread = undefined;
+        result.notes = await benchNotes(root, log);
         return result;
     } finally {
         await thread?.stop();
@@ -247,6 +326,7 @@ async function main() {
         `A new turn is found ${result.newTurn.ms} ms after DSH says its session moved; a new session ${result.newSession.ms} ms after.`,
         `Restart: open ${result.restart.readyMs} ms (${result.restart.afterUncleanStopReadyMs} ms after a stop that did not close the index), first search ${result.restart.firstSearchMs} ms, every file looked at again in ${(result.restart.lookedThroughMs / 1000).toFixed(1)} s.`,
         `The rare word's result: session ${result.rare.sessionId}, turn ${result.rare.turn}, seq ${result.rare.seq} (expected ${result.rare.expected.sessionId}, turn ${result.rare.expected.turn}, seq ${result.rare.expected.seq}).`,
+        `Long notes (a 601-section daily log, a 9 MB run log, a note of 60,000 sections): ${result.notes.sections.toLocaleString('en-US')} sections read in ${(result.notes.first.ms / 1000).toFixed(1)} s, searches meanwhile median ${result.notes.first.searchesMeanwhile.median} ms, p95 ${result.notes.first.searchesMeanwhile.p95} ms, slowest ${result.notes.first.searchesMeanwhile.max} ms (${result.notes.first.searchesMeanwhile.n} searches); after both logs grew, read again in ${(result.notes.grown.ms / 1000).toFixed(1)} s (slowest search ${result.notes.grown.searchesMeanwhile.max} ms). Found: ${Object.entries(result.notes.found).map(([w, n]) => `${w} ${n}`).join(', ')}.`,
     ];
     process.stdout.write(`${lines.join('\n')}\n`);
     if (values.json) writeFileSync(values.json, `${JSON.stringify(result, null, 2)}\n`);

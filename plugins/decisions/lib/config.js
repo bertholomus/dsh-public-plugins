@@ -10,6 +10,7 @@
  *
  * @module dsh-plugin-decisions/config
  */
+import { createHash } from 'node:crypto';
 import { changedEntry, changedTitles, keyName, oneOf, onOff, wholeNumber } from './shared/settings.js';
 
 /** The settings, in the words the page, the settings form and the errors use. */
@@ -64,6 +65,53 @@ export function checkConfig(settings) {
 /** The settings a change touched, by their titles in quotes, from DSH's changed paths. */
 export function changedWords(paths) {
     return changedTitles(paths, SETTING_TITLES);
+}
+
+/**
+ * Each setting's value as a short hash, kept in Decisions' state: at its next
+ * start, what an edit of DSH's profile changed (one that restarts Decisions,
+ * such as `enabled` or `mirrorCommand`) is said in its log.
+ */
+export function settingHashes(settings) {
+    const out = {};
+    for (const key of Object.keys(SETTING_TITLES)) {
+        let text;
+        try { text = JSON.stringify(settings?.[key]) ?? 'undefined'; } catch { text = 'unreadable'; }
+        out[key] = createHash('sha256').update(text).digest('hex').slice(0, 16);
+    }
+    return out;
+}
+
+/** `settingHashes`' hash of `enabled: false`: how a start tells that Decisions was switched off when it last ran. */
+const OFF_HASH = settingHashes({ enabled: false }).enabled;
+
+/**
+ * At start: the log entry for the settings that changed since Decisions last
+ * ran (an edit of DSH's profile restarts it), or undefined when none did or
+ * it never ran before. A switch of `enabled` is said as what it did:
+ * switched off, or switched on again.
+ * @param {import('./shared/settings.js').SettingsCheck} check - already run.
+ * @param {Record<string, string> | undefined} before - `settingHashes` when it last ran.
+ * @param {Record<string, string>} now - `settingHashes` now.
+ * @param {{ enabled?: unknown }} [settings] - the settings now, for which way `enabled` went.
+ */
+export function startEntry(check, before, now, settings = {}) {
+    if (!before) return undefined;
+    const keys = Object.keys(now).filter((key) => before[key] !== now[key]);
+    if (keys.length === 0) return undefined;
+    const off = settings.enabled === false;
+    const wasOff = before.enabled === OFF_HASH;
+    // `enabled` changed between on and off: said as such, with any other setting that changed with it.
+    const switched = keys.includes('enabled') && off !== wasOff && check.ok;
+    const others = switched ? keys.filter((key) => key !== 'enabled') : keys;
+    const also = others.length ? `; also changed: ${changedWords(others.map((key) => [key]))}` : '';
+    if (switched && off) {
+        return { kind: 'settings', text: `Switched off in DSH's profile (enabled: false)${also}`, why: 'Decisions lists and holds nothing until enabled is true again; DSH\'s own cards work as always.', state: 'paused' };
+    }
+    if (switched) return { kind: 'settings', text: `Switched on again in DSH's profile (enabled: true)${also}`, why: 'Decisions lists and holds again.', state: 'done' };
+    const words = changedWords(keys.map((key) => [key]));
+    if (!check.ok) return { kind: 'settings', text: `Settings changed in DSH's profile: ${words}; Decisions waits until a wrong one is fixed`, why: `${check.problem.text}.`, state: 'waiting on a setting' };
+    return { kind: 'settings', text: `Settings changed in DSH's profile: ${words}`, why: 'Decisions started again with them.', state: 'done' };
 }
 
 /**

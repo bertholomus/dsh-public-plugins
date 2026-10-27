@@ -379,4 +379,64 @@ export function foldAll(events) {
     return state;
 }
 
+/** Longest preview of a waiting message the watcher keeps. */
+const PREVIEW_MAX = 120;
+
+/**
+ * What waits in a session's queue, folded from its log as DSH folds its
+ * own inbox (`agent/inbox/spliced`: a target list, a start, a count
+ * removed and the messages inserted): `{ 'next-turn': [...], 'next-step':
+ * [...], gone }`, each waiting one `{ id, at, kind, preview }`, oldest
+ * first, and `gone` the ids taken out of it and how. DSH reads one
+ * next-turn message per turn, with every next-step message. Never throws:
+ * a splice it cannot place leaves the lists as they were.
+ * @param {object[]} events
+ */
+export function inboxOf(events) {
+    const lists = { 'next-turn': [], 'next-step': [] };
+    /** Messages taken out of the queue, by id: 'claimed' by a turn (which then reads them), or 'canceled' (let go unread). */
+    const gone = new Map();
+    for (const event of Array.isArray(events) ? events : []) {
+        if (event?.type !== 'agent/inbox/spliced' || !isRecord(event.data)) continue;
+        const { target, start, removedCount = 0, inserted, outcome } = event.data;
+        const list = target === 'next-turn' || target === 'next-step' ? lists[target] : undefined;
+        if (!list || !Number.isSafeInteger(start) || start < 0 || start > list.length || !Number.isSafeInteger(removedCount) || removedCount < 0 || start + removedCount > list.length) continue;
+        const added = (Array.isArray(inserted) ? inserted : []).filter((m) => isRecord(m) && typeof m.id === 'string').map((m) => waitingOf(m, event.time));
+        for (const removed of list.splice(start, removedCount, ...added)) gone.set(removed.id, { how: outcome === 'canceled' ? 'canceled' : 'claimed', ...(isTime(event.time) ? { at: event.time } : {}) });
+        for (const item of added) gone.delete(item.id);
+    }
+    return { ...lists, gone };
+}
+
+/** One waiting message as the watcher shows it: its id, when it went in, who it is from (DSH's source kind) and its first words. */
+export function waitingOf(message, time) {
+    const kind = typeof message?.source?.kind === 'string' ? message.source.kind.slice(0, 40) : undefined;
+    const preview = line(textOf(message), PREVIEW_MAX);
+    return { id: message.id, ...(isTime(time) ? { at: time } : {}), ...(kind ? { kind } : {}), ...(preview ? { preview } : {}) };
+}
+
+/**
+ * Where a message sits in a log: the index of its `user/message`, and the
+ * turn that read it (the last `turn/start` before it with no `turn/end`
+ * between). Undefined when no turn read it.
+ * @param {object[]} events
+ * @param {string} id
+ * @returns {{ index: number, turn?: number, seq?: number } | undefined}
+ */
+export function readIn(events, id) {
+    if (!Array.isArray(events)) return undefined;
+    const index = events.findIndex((e) => e?.type === 'user/message' && e.data?.id === id);
+    if (index < 0) return undefined;
+    let turn;
+    for (let i = index - 1; i >= 0; i -= 1) {
+        const type = events[i]?.type;
+        if (type === 'turn/end') break;
+        if (type === 'turn/start') {
+            turn = Number.isSafeInteger(events[i].data?.turn) ? events[i].data.turn : undefined;
+            break;
+        }
+    }
+    return { index, ...(turn !== undefined ? { turn } : {}), ...(Number.isSafeInteger(events[index].seq) ? { seq: events[index].seq } : {}) };
+}
+
 export { INITIAL };

@@ -24,7 +24,7 @@
  */
 import { closeSync, openSync, readSync, readdirSync, statSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
-import { NOTE_LIMITS, isNote, readNote } from './handoffs.js';
+import { NOTE_LIMITS, cutWords, isNote, readNote } from './handoffs.js';
 import { SessionLog, newSessionState } from './sessionlog.js';
 import { TranscriptLog, newTranscriptState } from './transcripts.js';
 import { canDecode, readFrames, readLines } from './zstd.js';
@@ -37,6 +37,79 @@ const SKIP_DIRS = new Set(['node_modules', '__pycache__', 'venv', 'dist', 'build
 export const WALK_LIMITS = Object.freeze({ depth: 8, sessionDepth: 3, files: 20000 });
 /** How much of a file one part reads. */
 const PART_BYTES = 2 << 20;
+/** Past this many bytes of a big note's middle, its lines are not counted (its last part's lines are not given). */
+const COUNT_LINES_BYTES = 512 << 20;
+
+const breaksIn = (buf) => {
+    let n = 0;
+    for (let at = buf.indexOf(10); at >= 0; at = buf.indexOf(10, at + 1)) n += 1;
+    return n;
+};
+
+/**
+ * A note's ends: the whole file up to `NOTE_LIMITS.fileBytes`. Past that, its first `headBytes` and the rest of
+ * the cap from its end (`tail`), each cut at a line break, and its middle (`middle`), whose line breaks
+ * `countMiddle` counts for the line the last part starts on (none past `COUNT_LINES_BYTES`: its line is 0).
+ * @returns {{ text: string, tail?: { text: string, line: number }, middle?: { from: number, to: number, breaks: number } }}
+ */
+export function noteEnds(path, size) {
+    const fd = openSync(path, 'r');
+    try {
+        const read = (from, bytes) => {
+            const buf = Buffer.alloc(Math.max(0, bytes));
+            const got = readSync(fd, buf, 0, buf.length, from);
+            return got < buf.length ? buf.subarray(0, got) : buf;
+        };
+        if (size <= NOTE_LIMITS.fileBytes) return { text: read(0, size).toString('utf8') };
+        let head = read(0, NOTE_LIMITS.headBytes);
+        const headCut = head.lastIndexOf(10);
+        if (headCut >= 0) head = head.subarray(0, headCut + 1);
+        const tailFrom = size - (NOTE_LIMITS.fileBytes - NOTE_LIMITS.headBytes);
+        let tail = read(tailFrom, size - tailFrom);
+        const tailCut = tail.indexOf(10);
+        const tailStart = tailFrom + (tailCut >= 0 ? tailCut + 1 : 0);
+        if (tailCut >= 0) tail = tail.subarray(tailCut + 1);
+        const out = { text: head.toString('utf8'), tail: { text: tail.toString('utf8'), line: 0 } };
+        if (tailStart - head.length <= COUNT_LINES_BYTES) out.middle = { from: head.length, to: tailStart, breaks: breaksIn(head) };
+        return out;
+    } finally {
+        closeSync(fd);
+    }
+}
+
+/**
+ * Count the line breaks of a big note's middle a part (`PART_BYTES`) at a time, never holding it whole, until
+ * `until`: so a note of hundreds of megabytes never holds a search up.
+ * @returns {boolean} whether all of it is counted (then `middle.line` is the line its last part starts on).
+ */
+export function countMiddle(path, middle, until = Infinity, now = Date.now) {
+    if (middle.from < middle.to) {
+        const fd = openSync(path, 'r');
+        try {
+            while (middle.from < middle.to) {
+                const buf = Buffer.alloc(Math.min(PART_BYTES, middle.to - middle.from));
+                const got = readSync(fd, buf, 0, buf.length, middle.from);
+                // Shorter than it was: the next look reads the changed note again.
+                if (got === 0) break;
+                middle.breaks += breaksIn(got < buf.length ? buf.subarray(0, got) : buf);
+                middle.from += got;
+                if (middle.from < middle.to && now() >= until) return false;
+            }
+        } finally {
+            closeSync(fd);
+        }
+    }
+    middle.from = middle.to;
+    middle.line = middle.breaks + 1;
+    return true;
+}
+
+/** A note's text, as `noteEnds` gives it, with its middle counted in one go. */
+export function noteText(path, size) {
+    const { middle, ...ends } = noteEnds(path, size);
+    if (middle && countMiddle(path, middle)) ends.tail.line = middle.line;
+    return ends;
+}
 
 const errorWords = (error) => {
     const code = error?.code;
@@ -76,11 +149,15 @@ class Walk {
         this.count = 0;
         this.capped = false;
         this.missing = false;
+        this.notFolder = false;
         this.error = '';
         const top = walkRoot(source);
         try {
             const st = statSync(top);
-            if (!st.isDirectory()) this.error = 'This is a file, not a folder. Name the folder that holds it in Recall\'s settings.';
+            if (!st.isDirectory()) {
+                this.notFolder = true;
+                this.error = 'This is a file, not a folder. Name the folder that holds it in Recall\'s settings.';
+            }
             else this.stack.push({ dir: top, depth: 0 });
         } catch (error) {
             if (error?.code === 'ENOENT') this.missing = true;
@@ -295,7 +372,7 @@ export class Indexer {
         st.capped = walk.capped;
         st.error = walk.error;
         // This DSH's own sessions folder is made with its first session: not there yet is not a folder gone.
-        st.state = walk.missing ? (walk.source.own ? 'ok' : 'missing') : walk.error ? 'unreadable' : 'ok';
+        st.state = walk.missing ? (walk.source.own ? 'ok' : 'missing') : walk.notFolder ? 'file' : walk.error ? 'unreadable' : 'ok';
         this.rootState.set(key, st);
         if (walk.missing || walk.error) return;
         // Files gone from a folder that is still there: their rows go too.
@@ -322,7 +399,7 @@ export class Indexer {
         try {
             if (job.source.kind === 'session') left = this.readSession(job, until);
             else if (job.source.kind === 'transcript') left = this.readTranscript(job, until);
-            else left = this.readHandoff(job);
+            else left = this.readHandoff(job, until);
         } catch (error) {
             this.problem(job, error);
             left = false;
@@ -450,21 +527,44 @@ export class Indexer {
         }
     }
 
-    readHandoff(job) {
-        const st = statSync(job.path);
-        const bytes = Math.min(st.size, NOTE_LIMITS.fileBytes);
-        const buf = Buffer.alloc(bytes);
-        const fd = openSync(job.path, 'r');
-        try {
-            readSync(fd, buf, 0, bytes, 0);
-        } finally {
-            closeSync(fd);
+    /**
+     * A note: read whole (its two ends past 4 MB, see `noteEnds`), a slice at a time: a big note's middle counted
+     * for its lines, its rows put, and the rows it no longer has taken out, so a note of hundreds of megabytes or
+     * thousands of sections never holds a search up. Its place is saved once all of that is done: a restart reads
+     * it again whole.
+     */
+    readHandoff(job, until) {
+        if (!job.note) {
+            if (!job.ends) {
+                const st = statSync(job.path);
+                job.ends = { st, ...noteEnds(job.path, st.size) };
+            }
+            const { st, text, tail, middle } = job.ends;
+            if (middle) {
+                if (!countMiddle(job.path, middle, until, this.now)) return true;
+                tail.line = middle.line;
+            }
+            job.ends = undefined;
+            job.note = { ...readNote(text, { name: basename(job.path), mtime: st.mtimeMs, tail }), st, at: 0, cutBytes: tail ? st.size : 0 };
         }
-        const { title, rows } = readNote(buf.toString('utf8'), { name: basename(job.path), mtime: st.mtimeMs });
-        const row = this.store.fileById(job.id);
-        const meta = { session: '', title, folder: dirname(job.path), model: '', created: Math.round(st.birthtimeMs || st.ctimeMs), updated: Math.round(st.mtimeMs), turns: rows.length, subagent: false };
-        this.save(job, row, { rows, meta, size: st.size, mtime: st.mtimeMs, ino: st.ino, offset: st.size, state: undefined, error: st.size > bytes ? `Only its first ${Math.round(bytes / 1048576)} MB are searched.` : '' });
-        this.store.trimRows(job.id, rows.length);
+        const n = job.note;
+        const file = { kind: 'handoff', title: n.title, folder: dirname(job.path) };
+        while (n.at < n.rows.length) {
+            this.store.putRow(job.id, file, n.rows[n.at]);
+            n.at += 1;
+            this.rowsPut += 1;
+            this.sectionsPut += 1;
+            if (n.at % 100 === 0 && n.at < n.rows.length && this.now() >= until) return true;
+        }
+        // Rows no longer in it: past its end when it got shorter, and those of the middle when only its ends are kept.
+        n.drop ??= this.store.rowsBut(job.id, n.rows.map((r) => r.turn));
+        while (n.drop.length > 0) {
+            this.store.dropRow(n.drop.pop());
+            if (n.drop.length % 200 === 0 && n.drop.length > 0 && this.now() >= until) return true;
+        }
+        const st = n.st;
+        const meta = { session: '', title: n.title, folder: dirname(job.path), model: '', created: Math.round(st.birthtimeMs || st.ctimeMs), updated: Math.round(st.mtimeMs), turns: n.rows.length, subagent: false };
+        this.store.saveFile(job.id, { size: st.size, mtime: st.mtimeMs, ino: st.ino, offset: st.size, state: undefined, ...meta, skip: '', error: cutWords({ bytes: n.cutBytes, rows: n.cut?.rows }) });
         return false;
     }
 

@@ -11,6 +11,8 @@
  *   Carry on from where you left off and finish the task.  (the plugin's nudge after a failed turn) reply NUDGED at once,
  *                                 unless E2E:fail is there too
  *   E2E:slow <ms>                 on a line of its own: answer after that long
+ *   (DSH closed before you answered this …  (a message the plugin sends again after DSH closed mid-turn) reply
+ *                                 SAW-AGAIN at once, whatever made the first answer slow
  *   [Handback from thread …       reply SAW-HANDBACK
  *   [Thread idle without …        reply SAW-IDLE
  *   [Thread waiting for approval… reply SAW-APPROVAL
@@ -59,6 +61,7 @@ function decide(body, text) {
     if (text.includes('E2E:fail')) return { fail: true };
     // The plugin's nudge after a failed or stopped turn: it carries on at once, whatever made the turn slow.
     if (text.includes('Carry on from where you left off and finish the task.')) return { text: 'NUDGED', nudge: true };
+    if (text.includes('(DSH closed before you answered this')) return { text: 'SAW-AGAIN', nudge: true };
     if (text.includes('[Handback from thread')) return { text: 'SAW-HANDBACK' };
     if (text.includes('[Thread idle without a handback')) return { text: 'SAW-IDLE' };
     if (text.includes('[Thread waiting for approval')) return { text: 'SAW-APPROVAL' };

@@ -55,9 +55,11 @@ function tokens(text) {
  * A query as FTS5 runs it.
  * @param {string} text
  * @param {{ prefix?: boolean }} [options] - prefix: the last word may be cut short (the person is still typing it).
- * @returns {{ match: string, own: string, words: string[], excluded: string[] }} `match` is '' when nothing
- *   searchable is left. `own` matches the rows `match` does whose own text (request, reply, tools: not the
- *   title of their file, which every row of it holds) says one of the words.
+ * @returns {{ match: string, own: string, titled: string, parts: string[], words: string[], excluded: string[] }}
+ *   `match` is '' when nothing searchable is left. `own` matches the rows `match` does whose own text (request,
+ *   reply, tools: not the title of their file, which every row of it holds) says the whole query, every word
+ *   of it; `titled` the rest of them: rows that match only with their file's title. `parts`: with two or more
+ *   groups of words (words joined by OR are one group), each group in the row's own text.
  */
 export function parseQuery(text, { prefix = false } = {}) {
     const raw = String(text ?? '');
@@ -83,7 +85,7 @@ export function parseQuery(text, { prefix = false } = {}) {
         else groups.push([piece]);
         joinNext = false;
     }
-    if (groups.length === 0) return { match: '', own: '', words, excluded };
+    if (groups.length === 0) return { match: '', own: '', titled: '', parts: [], words, excluded };
     // Still typing: the last word matches as a prefix ("deplo" finds "deploy").
     const typing = prefix && !/\s$/.test(raw);
     const last = groups.at(-1).at(-1);
@@ -91,13 +93,18 @@ export function parseQuery(text, { prefix = false } = {}) {
         ? `${quote(piece.term)}*` : quote(piece.term));
     // FTS5 joins two phrases with a space, but a group in brackets only with an explicit AND.
     const positive = groups.map((g) => (g.length === 1 ? render(g[0]) : `(${g.map(render).join(' OR ')})`)).join(' AND ');
-    const match = excluded.length ? `(${positive})${excluded.map((e) => ` NOT ${quote(e)}`).join('')}` : positive;
-    // A turn whose own text has a word of it, as bm25 with the title's weight at 0 tells (lib/store.js), but
-    // without scoring each row: the index alone answers (5,000 rows counted in 0.5 ms instead of 3). One group
-    // of words needs no second look at the whole row: a word of it in the turn's own text matches it already.
-    const said = `{prompt reply tools} : (${groups.flat().map(render).join(' OR ')})`;
-    const own = groups.length > 1 ? `(${match}) AND ${said}` : excluded.length ? `(${said})${excluded.map((e) => ` NOT ${quote(e)}`).join('')}` : said;
-    return { match, own, words, excluded };
+    const not = excluded.map((e) => ` NOT ${quote(e)}`).join('');
+    const match = excluded.length ? `(${positive})${not}` : positive;
+    // A turn whose own text says the whole query: a column filter puts every word of it in the request, the
+    // reply or the tools (each word in any of them), never in the title its file gives every row. A word left
+    // out stays out of the title too. The index alone answers, without scoring a row.
+    const said = `{prompt reply tools} : (${positive})`;
+    const own = excluded.length ? `(${said})${not}` : said;
+    // The rows that match only with their file's title: some or all of the words are in the title alone.
+    const titled = `(${match}) NOT (${said})`;
+    // With two or more groups of words, each group's own-text match: how many of them a titled row says itself.
+    const parts = groups.length > 1 ? groups.map((g) => `{prompt reply tools} : (${g.length === 1 ? render(g[0]) : `(${g.map(render).join(' OR ')})`})`) : [];
+    return { match, own, titled, parts, words, excluded };
 }
 
 const DAY = 86_400_000;

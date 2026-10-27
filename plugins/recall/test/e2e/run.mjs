@@ -31,7 +31,11 @@
  *   hold), marked "Found by Recall", the turn's rows marked and brought to
  *   the top; Back to the results keeps the search; Done takes the marks off;
  *   the filters; the reading view for a transcript and a note; the tool's
- *   card in the agent's chat and its Open; the index card, a folder that is
+ *   card in the agent's chat and its Open, then Back to the results (the
+ *   card's search) and Back to the chat; a running turn's row that follows
+ *   it to "stopped" with no new search, and the line above the message box
+ *   when it is opened while it runs (the mark takes over when it is stopped
+ *   there); the index card, a folder that is
  *   not there, Look for changes now; a narrow window; light and dark; focus
  *   back on the button that opened the reading view after Turn before and
  *   Back; Wallpaper on (a stand-in for it in this window) over a light and a
@@ -47,14 +51,18 @@
  *   checked and kept.
  * - Recall switched off and on in Plugins: no failure; its entry, marks and
  *   style go and come back.
- * - Without Session Watch, the open page follows new turns.
+ * - Without Session Watch, the open page follows new turns and never asks
+ *   for Session Watch's endpoint.
  * - Wrong types in the profile (one folder without the brackets, "yes" for a
  *   switch): Recall starts, names the setting and how to write it, refuses
  *   searches and offers no tool.
  * - A wrong setting: Recall starts, refuses searches, offers no tool, and
  *   its page says which setting; fixed through the form.
- * - Its folder is 700 and its files 600. `enabled: false`: idle, and its
- *   page says so.
+ * - Its folder is 700 and its files 600. `enabled: false`: idle, its page
+ *   says so and What happened says it first; `enabled` saved in the profile
+ *   while DSH runs, true then false: applied with no restart, the open page
+ *   follows, each switch said once, and the turn made while it was off is
+ *   read.
  *
  *   DSH_BIN=/path/to/@deepseek-ai/dsh/lib/bin.js node plugins/recall/test/e2e/run.mjs
  *
@@ -65,10 +73,10 @@
  * Playwright the run fails, unless NO_WINDOW=1 says to run without the
  * window checks.
  */
-import { appendFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { Script } from 'node:vm';
-import { DshRun, checks, dshBin, findPlaywright, modeOf, openWindow, pluginsDir, repoRoot, setDark, shot, sleep, waitFor } from '../../../../test/e2e/harness.mjs';
+import { DshRun, checks, dismissNotices, dshBin, findPlaywright, modeOf, openWindow, pluginsDir, repoRoot, setDark, shot, sleep, waitFor } from '../../../../test/e2e/harness.mjs';
 import { startRecallModel } from './fake-model.mjs';
 import { writeCorpus } from '../../../../test/fixtures/recall/corpus.mjs';
 
@@ -106,6 +114,9 @@ const AGENT_LOGS = join(run.root, 'agent-logs');
 const GONE = join(run.root, 'unplugged-disk', 'logs');
 const NOTES = join(run.root, 'notes');
 const MORE_NOTES = join(run.root, 'more-notes');
+/** Written by the notes step (after the first counts): a 601-section daily log and a run log past 4 MB. */
+const DAILY = join(NOTES, 'daily-log.md');
+const BIG_LOG = join(NOTES, 'run-log.md');
 const DAY = 86_400_000;
 const old = (days, minutes = 0) => new Date(Date.now() - days * DAY + minutes * 60_000).toISOString();
 const line = (value) => `${JSON.stringify(value)}\n`;
@@ -117,7 +128,7 @@ writeFileSync(RUN_1, [
     say('user', 'Please migrate the ledger schema to version 7.', old(40)),
     line({ type: 'assistant', timestamp: old(40, 1), cwd: '/work/parser', message: { role: 'assistant', model: 'glm-transcript', content: [{ type: 'tool_use', name: 'bash', input: { command: 'make migrate-ledger' } }, { type: 'text', text: 'Migrated the ledger schema.' }] } }),
     say('user', 'The xylophone parser fails on nested quotes.', old(40, 5)),
-    say('assistant', 'Fixed the xylophone tokenizer: nested quotes are read now.', old(40, 6)),
+    say('assistant', 'Fixed the xylophone tokenizer: **nested quotes** are read now, in `readQuoted`.', old(40, 6)),
 ].join(''));
 writeFileSync(RUN_2, [
     say('user', 'Rename the okapi helper.', old(39)),
@@ -387,6 +398,46 @@ try {
         const turn = await value('turn', { id: t.id });
         check('a transcript turn reads in full: what was asked, the reply, the turn after none', turn.prompt === 'The xylophone parser fails on nested quotes.' && /Fixed the xylophone tokenizer/.test(turn.reply) && turn.prev === 1 && turn.next === undefined && turn.count === 2, json(turn));
     });
+    await step('a note of 601 sections is searched to its last; one past 4 MB keeps its first 1 MB and last 3 MB, and says so', async () => {
+        // A daily log with a heading a day (round 3: sections past the 400th dropped without a word).
+        writeFileSync(DAILY, `# Daily log\n\n${Array.from({ length: 601 }, (_, i) => `## Day ${i}\nEntry ${i}: ${i === 600 ? 'the manatee survey' : i === 450 ? 'the axolotl tank' : 'a quiet day'}\n`).join('\n')}`);
+        // A run log past 4 MB that grows at the bottom: its first entry, its middle and its newest.
+        const lines = ['# Run log', '', '## First run', 'The gecko build started.', ''];
+        let bytes = lines.join('\n').length;
+        const fill = (upTo) => {
+            // The same few words on every line: a small index, so the later checks of the index's size hold.
+            const text = 'another step of the long run went fine';
+            while (bytes < upTo) {
+                lines.push(text);
+                bytes += text.length + 1;
+            }
+        };
+        // Its middle, between its first 1 MB and its last 3 MB, is the part that is not read.
+        fill(1.5 * 1048576);
+        lines.push('', '## Middle run', 'The chinchilla build stalled.', '');
+        fill(5 * 1048576);
+        const newestLine = lines.length + 2;
+        lines.push('', '## Newest run', 'The quetzal build passed.', '');
+        writeFileSync(BIG_LOG, lines.join('\n'));
+        await api('rescan');
+        const manatee = await found({ text: 'manatee' }, 'the daily log\'s 601st section', 30000);
+        const axolotl = await search({ text: 'axolotl' });
+        check('every section of a 601-section note is searched: the last at its heading and line, and the 451st',
+            manatee.total === 1 && manatee.results[0].label === 'Day 600' && manatee.results[0].line === 1803 && axolotl.results[0]?.label === 'Day 450', json([manatee.results[0], axolotl.results[0]]));
+        const quetzal = await found({ text: 'quetzal' }, 'the big log\'s newest section', 30000);
+        const gecko = await search({ text: 'gecko' });
+        const chinchilla = await search({ text: 'chinchilla' });
+        check('a note past 4 MB: its first and its newest sections are found, at their lines; its middle is not',
+            quetzal.results[0]?.label === 'Newest run' && quetzal.results[0].line === newestLine && gecko.results[0]?.label === 'First run' && chinchilla.total === 0,
+            json({ quetzal: quetzal.results[0], gecko: gecko.results[0], chinchilla: chinchilla.total }));
+        const s = await settledIndex();
+        const st = await pageState();
+        const parts = st.index.problems.filter((p) => p.part).map((p) => [p.path, p.error]);
+        const mb = Math.round((statSync(BIG_LOG).size / 1048576) * 10) / 10;
+        check('the big log is listed as read in part, with what is searched; the daily log is not, and its folder is up to date',
+            parts.some(([path, error]) => path === BIG_LOG && error === `Only its first 1 MB and its last 3 MB are searched (it is ${mb} MB).`) && !parts.some(([path]) => path === DAILY)
+            && st.index.roots.find((r) => r.kind === 'handoff')?.state === 'ok' && s.totals.partial >= 1, json({ parts, roots: st.index.roots.filter((r) => r.kind === 'handoff') }));
+    });
     await step('filters: kind, folder, model and time; newest first', async () => {
         const kinds = async (query) => [...new Set((await search(query)).results.map((r) => r.kind))].sort().join();
         check('kind: "gateway" is in sessions and a note; each kind alone finds only its own', await kinds({ text: 'gateway' }) === 'handoff,session'
@@ -436,7 +487,14 @@ try {
     pw = await findPlaywright();
     if (!pw) check('Playwright is here for the window checks (NO_WINDOW=1 runs without them)', process.env.NO_WINDOW === '1', 'install it: npm i --prefix .e2e/tools playwright-core (or set PLAYWRIGHT_MODULE)');
     const openRecall = async (page) => {
-        await page.getByRole('button', { name: 'Recall', exact: true }).first().click();
+        // DSH's own first-run notice can come late, over the whole window (the app's DSH showed its Preview Notice
+        // after the window had been calm for 4 s): put it away, and again if the click meets it.
+        await dismissNotices(page);
+        const entry = page.getByRole('button', { name: 'Recall', exact: true }).first();
+        await entry.click({ timeout: 5000 }).catch(async () => {
+            await dismissNotices(page);
+            await entry.click();
+        });
         await page.locator('[data-recall-page]').waitFor({ state: 'visible', timeout: 20000 });
     };
     const searchBox = (page) => page.getByRole('searchbox', { name: 'Search past work' });
@@ -478,7 +536,12 @@ try {
             const { page } = window;
             await openRecall(page);
             const line = (await page.locator('[data-recall-index-line]').textContent()) ?? '';
-            check('the header says what Recall holds and that it is up to date', /^Recall has \d+ turns from \d+ sessions and files\. Up to date\.$/.test(line), line);
+            const held = (await pageState()).index.totals;
+            const sections = held.sections ?? 0;
+            const many = (n) => n.toLocaleString('en-US');
+            const heldWords = `${many(held.turns - sections)} turn${held.turns - sections === 1 ? '' : 's'}${sections ? ` and ${many(sections)} note section${sections === 1 ? '' : 's'}` : ''}`;
+            check('the header says what Recall holds, turns and note sections apart, and that it is up to date',
+                sections > 0 && line === `Recall has ${heldWords} from ${held.files} sessions and files. Up to date.`, `${line} | ${json(held)}`);
             await page.locator('[data-recall-result]').first().waitFor({ state: 'visible', timeout: 15000 });
             const first = (await page.locator('[data-recall-count]').textContent()) ?? '';
             check('with nothing typed, the newest turns are listed', /^The newest turns first\./.test(first) && (await page.locator('[data-recall-result]').count()) > 0, first);
@@ -612,6 +675,13 @@ try {
             const text = (await reading.innerText()).replace(/\n+/g, ' ');
             check('a transcript turn opens in the reading view: what was asked, the reply, the file and line, the turn before',
                 /Asked The xylophone parser fails on nested quotes\./.test(text) && /Reply Fixed the xylophone tokenizer/.test(text) && text.includes(`File: ${RUN_1}, line 3`) && /Turn before/.test(text) && /Coding-agent transcript · \/work\/parser · glm-transcript · turn 2 of 3/.test(text), text);
+            // The reply in DSH's own Markdown, as the chat draws it: bold and code drawn, no raw marks.
+            const md = await reading.evaluate((el) => {
+                const box = el.querySelector('[data-recall-markdown]');
+                return { box: Boolean(box), strong: box?.querySelector('strong, b')?.textContent ?? '', code: box?.querySelector('code')?.textContent ?? '', raw: /\*\*|`/.test(el.innerText) };
+            });
+            check('the reply is drawn in DSH\'s own Markdown, as in the chat: bold and code, with none of their marks shown',
+                md.box && md.strong === 'nested quotes' && md.code === 'readQuoted' && !md.raw, json(md));
             await shot(page, shots, 'reading-light');
             await setDark(page, true);
             await shot(page, shots, 'reading-dark');
@@ -667,9 +737,135 @@ try {
             const mark = page.locator('[data-recall-mark]').filter({ visible: true }).first();
             await mark.waitFor({ state: 'visible', timeout: 20000 });
             check('Open on the card opens the long session at turn 2, marked', /Found by Recall · turn 2, for “narwhal exporter”/.test(await mark.innerText()) && (await turnPlace(page, 2)).marked > 0);
-            await page.getByRole('button', { name: 'Done: take the mark off this turn' }).first().click();
+            check('its mark offers Back to the results and Back to the chat the card is in', /Back to the results/.test(await mark.innerText()) && /Back to the chat/.test(await mark.innerText()), await mark.innerText());
+            // Back to the results: the agent's search, not the page's own earlier one ("decide about the exporter").
+            await mark.getByRole('button', { name: 'Back to the results' }).click();
+            await page.locator('[data-recall-page]').waitFor({ state: 'visible', timeout: 15000 });
+            const agentSaw = await search({ text: 'narwhal exporter', kind: 'session', prefix: true });
+            const landed = await waitFor(async () => {
+                const count = page.locator('[data-recall-count]');
+                return (await searchBox(page).inputValue()) === 'narwhal exporter' && (await count.count()) > 0 && (await count.getAttribute('data-recall-count')) === String(agentSaw.total)
+                    && (await page.locator('[data-recall-result]').first().getAttribute('data-recall-id')) === `${agentSaw.results[0].file}.${agentSaw.results[0].turn}`;
+            }, 'the page to show the card\'s search', 10000, 200).then(() => true, () => false);
+            const kindShown = await page.locator('[id="dshrc-kind-session"][aria-selected="true"]').count();
+            check('Back to the results from the card shows the search the agent made (its words and its kind filter), not the page\'s earlier one',
+                landed && kindShown === 1, `${await searchBox(page).inputValue()} | kind session shown: ${kindShown} | ${await page.locator('[data-recall-count]').textContent().catch(() => '')}`);
+            await shot(page, shots, 'tool-back-light');
+            await setDark(page, true);
+            await shot(page, shots, 'tool-back-dark');
+            await setDark(page, false);
+            // Back to the chat: from the card's turn again, then to the chat the card is in.
+            await searchFor(page, '"decide about the exporter"', { total: 1 });
+            await page.locator('[data-recall-open]').first().click();
+            await page.locator('[data-recall-mark]').filter({ visible: true }).first().waitFor({ state: 'visible', timeout: 20000 });
+            for (let i = 0; i < 6 && (await folded.count()) > 0; i += 1) {
+                await folded.first().click();
+                await sleep(300);
+            }
+            await card.waitFor({ state: 'visible', timeout: 20000 });
+            // The card may still be open from before: open it only when its result does not show.
+            if (!(await result.waitFor({ state: 'visible', timeout: 2000 }).then(() => true, () => false))) await card.getByText(/Searched past work for/).first().click();
+            await result.waitFor({ state: 'visible', timeout: 10000 });
+            await result.getByRole('button', { name: 'Open' }).click();
+            await waitFor(async () => /for “narwhal exporter”/.test((await mark.innerText().catch(() => '')) ?? ''), 'the long session\'s mark again', 20000, 200);
+            await mark.getByRole('button', { name: 'Back to the chat' }).click();
+            const back = await waitFor(async () => (await page.getByText('What did we decide about the exporter?').filter({ visible: true }).count()) > 0, 'the agent\'s chat', 15000, 200).then(() => true, () => false);
+            check('Back to the chat from the mark goes to the chat the card is in', back, (await page.locator('[data-chat-flow]').first().innerText().catch(() => '')).slice(0, 300));
+            const done = page.getByRole('button', { name: 'Done: take the mark off this turn' }).filter({ visible: true });
+            if (await done.count()) await done.first().click().catch(() => {});
+            // The page kept the card's search with its kind (Sessions): Clear the filters puts every kind back.
+            await openRecall(page);
+            await page.locator('[data-recall-clear]').first().click();
+            const cleared = await waitFor(async () => (await page.locator('[id="dshrc-kind-any"][aria-selected="true"], [id="dshrc-kind-all"][aria-selected="true"]').count()) === 1
+                && (await page.locator('[data-recall-clear]').count()) === 0, 'every kind again', 10000, 200).then(() => true, () => false);
+            check('the card\'s filter stays on the page until Clear the filters, which puts every kind back', cleared, await page.locator('[data-recall-search]').innerText().catch(() => ''));
         }, async () => {
             if (window?.page) await shot(window.page, shots, 'failed-tool-card');
+        });
+
+        await step('rows already on the page follow their turns: a shown running turn, stopped from the chat, reads "stopped" with no search again; opened while it runs, it gets a line above the composer', async () => {
+            const { page } = window;
+            ids.ocelot = await run.newSession('Roll out the ocelot canary.\nE2E:hang The ocelot canary waits.', 'Ocelot canary');
+            await waitFor(async () => (await run.session(ids.ocelot)).status === 'running', 'the ocelot turn to start', 20000, 200);
+            await found({ text: 'ocelot' }, 'the running ocelot turn to be read', 20000, (r) => r.results[0]?.state === 'running');
+            await openRecall(page);
+            await searchFor(page, 'ocelot canary', { total: 1 });
+            const row = page.locator('[data-recall-result]').first();
+            check('the running turn is listed as still running', /turn 1 · still running/.test((await row.innerText()).replace(/\n+/g, ' ')), await row.innerText());
+            // Opened while it runs: DSH draws no tail for a running turn, so no mark; the way back is a line above the composer.
+            await page.locator('[data-recall-open]').first().click();
+            const dock = page.locator('[data-recall-dock]').filter({ visible: true }).first();
+            const docked = await dock.waitFor({ state: 'visible', timeout: 20000 }).then(() => true, () => false);
+            const dockText = docked ? (await dock.innerText()).replace(/\n+/g, ' ') : '';
+            check('a running turn opened from the page: a line above the composer says which turn, with Back to the results and Done',
+                /Found by Recall · turn 1, still running, for “ocelot canary”/.test(dockText) && /Back to the results/.test(dockText) && /Done/.test(dockText), dockText);
+            // As wide as the composer at most, inside its edges (round 3: it spanned the chat column, wider than the composer).
+            const widths = docked ? await dock.evaluate((el) => {
+                const card = document.querySelector('[data-slot="conversation.composer.bar"] :is([class$="_card"],[class*="_card "])');
+                const a = el.getBoundingClientRect();
+                const b = card?.getBoundingClientRect();
+                return { line: [Math.round(a.left), Math.round(a.right)], composer: b ? [Math.round(b.left), Math.round(b.right)] : null };
+            }) : { line: null, composer: null };
+            check('the line above the composer sits inside the composer\'s width', Boolean(widths.composer) && widths.line[0] >= widths.composer[0] - 1 && widths.line[1] <= widths.composer[1] + 1, json(widths));
+            if (docked) {
+                await shot(page, shots, 'running-dock-light');
+                await setDark(page, true);
+                await shot(page, shots, 'running-dock-dark');
+                await setDark(page, false);
+                await dock.getByRole('button', { name: 'Back to the results' }).click();
+            } else await openRecall(page);
+            await page.locator('[data-recall-page]').waitFor({ state: 'visible', timeout: 15000 });
+            await row.waitFor({ state: 'visible', timeout: 10000 });
+            // Stopped from the chat while its row is on the page: the row says so by itself, with no search again.
+            const asked = [];
+            const onRequest = (req) => {
+                const m = /dsh-plugin-recall\/(search|states)/.exec(req.url());
+                if (m) asked.push(m[1]);
+            };
+            page.on('request', onRequest);
+            const stoppedAt = Date.now();
+            await run.bridge('POST', `/sessions/${encodeURIComponent(ids.ocelot)}/cancel`, {});
+            // Every look at the row on the way says a state: still running, then ending, then stopped (round 3: no word
+            // at all for about 2 s while its end was read).
+            const seen = [];
+            const took = await waitFor(async () => {
+                const text = (await row.innerText()).replace(/\n+/g, ' ');
+                const word = /turn 1 · (still running|ending|stopped)\b/.exec(text)?.[1] ?? 'no word';
+                if (seen.at(-1) !== word) seen.push(word);
+                return word === 'stopped';
+            }, 'the shown row to read stopped', 30000, 100).then(() => Date.now() - stoppedAt, () => -1);
+            page.off('request', onRequest);
+            check('on its way to "stopped", the row always says a state: still running, ending, stopped, never none', !seen.includes('no word') && seen.at(-1) === 'stopped', seen.join(' → '));
+            console.log(`# the shown row said: ${seen.join(' → ')}`);
+            timings.followed = took;
+            check('stopped from the chat, the row already shown reads "stopped" by itself: its state asked for, no search again',
+                took >= 0 && asked.includes('states') && !asked.includes('search') && (await searchBox(page).inputValue()) === 'ocelot canary', `${took} ms | asked: ${asked.join(', ')} | ${(await row.innerText()).replace(/\n+/g, ' ')}`);
+            console.log(`# a shown row read "stopped" ${took} ms after the turn was stopped`);
+            // Opened again now that it ended: its mark after the turn, and no line above the composer.
+            await page.locator('[data-recall-open]').first().click();
+            const mark = page.locator('[data-recall-mark]').filter({ visible: true }).first();
+            await mark.waitFor({ state: 'visible', timeout: 20000 });
+            check('opened once it ended: its mark, and no line above the composer', (await page.locator('[data-recall-dock]').filter({ visible: true }).count()) === 0, await mark.innerText());
+            await mark.getByRole('button', { name: 'Done' }).click();
+            // Stopped while its line shows: the mark takes over at the turn's end, and no line says it still runs.
+            ids.lynx = await run.newSession('Roll out the lynx canary.\nE2E:hang The lynx canary waits.', 'Lynx canary');
+            await waitFor(async () => (await run.session(ids.lynx)).status === 'running', 'the lynx turn to start', 20000, 200);
+            await found({ text: 'lynx' }, 'the running lynx turn to be read', 20000, (r) => r.results[0]?.state === 'running');
+            await openRecall(page);
+            await searchFor(page, 'lynx canary', { total: 1 });
+            await page.locator('[data-recall-open]').first().click();
+            await dock.waitFor({ state: 'visible', timeout: 20000 });
+            await run.bridge('POST', `/sessions/${encodeURIComponent(ids.lynx)}/cancel`, {});
+            const tookOver = await waitFor(async () => {
+                const docks = page.locator('[data-recall-dock]').filter({ visible: true });
+                const still = (await docks.count()) > 0 && /still running/.test(await docks.first().innerText().catch(() => ''));
+                return (await mark.count()) > 0 && /Found by Recall · turn 1, for “lynx canary”/.test(await mark.innerText().catch(() => '')) && !still;
+            }, 'the mark to take over from the line', 20000, 200).then(() => true, () => false);
+            check('stopped while its line shows above the composer: the mark is drawn at the turn\'s end, and no line says it still runs', tookOver,
+                `${await mark.innerText().catch(() => 'no mark')} | ${await page.locator('[data-recall-dock]').filter({ visible: true }).first().innerText().catch(() => 'no line')}`);
+            if (tookOver) await mark.getByRole('button', { name: 'Done' }).click();
+        }, async () => {
+            if (window?.page) await shot(window.page, shots, 'failed-follow');
         });
 
         await step('the index card: each folder\'s state, one not there, Look for changes now; a narrow window', async () => {
@@ -686,11 +882,18 @@ try {
             await index.evaluate((el) => el.scrollIntoView({ block: 'start' }));
             await shot(page, shots, 'index-light');
             await setDark(page, true);
-            await shot(page, shots, 'index-dark');
-            await page.locator('[data-recall-history]').evaluate((el) => el.scrollIntoView({ block: 'start' }));
-            await shot(page, shots, 'history-dark');
+            const indexDark = await shot(page, shots, 'index-dark');
+            // What happened, shot as its own card (round 3: the page could not scroll it to the top, so its pictures
+            // were the index card's again).
+            const history = page.locator('[data-recall-history]');
+            await history.evaluate((el) => el.scrollIntoView({ block: 'start' }));
+            const historyDark = await shot(page, shots, 'history-dark', history);
             await setDark(page, false);
-            await shot(page, shots, 'history-light');
+            await shot(page, shots, 'history-light', history);
+            if (indexDark && historyDark) {
+                const historyText = (await history.innerText()).replace(/\n+/g, ' ');
+                check('the pictures of What happened show that card, not the index card again', !readFileSync(indexDark).equals(readFileSync(historyDark)) && /^What happened/.test(historyText), historyText.slice(0, 200));
+            }
             await page.locator('[data-recall-page]').evaluate((el) => el.scrollIntoView({ block: 'start' }));
             await page.setViewportSize({ width: 760, height: 900 });
             await searchFor(page, 'gateway');
@@ -747,7 +950,6 @@ try {
             check('Wallpaper on at a low tint (.2) over a mid picture: the small text reads at 4.5:1 or more, light and dark', ['light', 'dark'].every((m) => low[m].count > 10 && low[m].ratio >= 4.5), json(low));
             // A narrow window: the kind switcher inside its row, every choice whole; nothing wider than the page.
             await page.setViewportSize({ width: 420, height: 900 });
-            await page.waitForTimeout(500);
             const fit = () => page.evaluate(() => {
                 const row = document.querySelector('[data-recall-filters]');
                 const list = row?.querySelector('[data-suite-choice="dshrc-kind"] [role="tablist"]');
@@ -755,8 +957,12 @@ try {
                 const l = list?.getBoundingClientRect();
                 const tabs = [...(list?.querySelectorAll('[role="tab"]') ?? [])].map((t) => ({ text: t.textContent, whole: t.scrollWidth <= t.clientWidth + 1 }));
                 const pageEl = document.querySelector('[data-recall-page]');
-                return { row: r ? [Math.round(r.left), Math.round(r.right)] : null, list: l ? [Math.round(l.left), Math.round(l.right)] : null, tabs, spill: pageEl.scrollWidth - pageEl.clientWidth };
+                return { width: Math.round(pageEl.getBoundingClientRect().width), row: r ? [Math.round(r.left), Math.round(r.right)] : null, list: l ? [Math.round(l.left), Math.round(l.right)] : null, tabs, spill: pageEl.scrollWidth - pageEl.clientWidth };
             });
+            // DSH folds its sidebar into a rail at this width, a moment after the resize on some builds (the app's own
+            // took more than half a second under load): measure once the page has the window's width, not before.
+            await waitFor(async () => (await fit()).width >= 300, 'DSH\'s narrow layout', 10000, 200).catch(() => {});
+            await page.waitForTimeout(300);
             const narrow = await fit();
             check('at 420 px the kind switcher fits inside its row with every choice whole, and nothing spills sideways',
                 narrow.row && narrow.list && narrow.list[0] >= narrow.row[0] && narrow.list[1] <= narrow.row[1] && narrow.tabs.length === 4 && narrow.tabs.every((t) => t.whole) && narrow.spill <= 1, json(narrow));
@@ -990,12 +1196,15 @@ try {
         if (!pw) return;
         window = await openWindow(run, pw, { entry: 'Recall' });
         const { page } = window;
+        const waits = [];
+        page.on('request', (req) => { if (req.url().includes('dsh-plugin-session-watch/')) waits.push(req.url()); });
         await openRecall(page);
         await page.locator('[data-recall-result]').first().waitFor({ state: 'visible', timeout: 15000 });
         ids.late = await run.newSession(sayText('The heron cache is warm now.'), 'Late session');
         await turnsEnded(ids.late, 1);
         const shown = await waitFor(async () => (await page.locator('[data-recall-result]').first().innerText()).startsWith('Late session'), 'the open page to show the new turn', 40000, 500).catch(() => false);
         check('the open page lists the new session\'s turn first, by itself', shown === true, await page.locator('[data-recall-result]').first().innerText().catch(() => ''));
+        check('without Session Watch the window never asks for its endpoint (no 404s): the page reads its own state on a timer', waits.length === 0, waits.slice(0, 3).join(', '));
         check('no errors from the suite in the window', ours(window.errors).length === 0, ours(window.errors).join('\n'));
     }, async () => {
         if (window?.page) await shot(window.page, shots, 'failed-watch-off');
@@ -1095,6 +1304,7 @@ try {
     await step('enabled: false: Recall keeps no index, refuses searches, offers no tool, and its page says so and how to change it', async () => {
         const s = await pageState();
         check('with enabled: false Recall is loaded but idle', s.enabled === false && !s.problem, json({ enabled: s.enabled, problem: s.problem, thread: s.thread }));
+        check('What happened says it was switched off in the profile', s.history[0]?.kind === 'switch' && s.history[0].text === 'Switched off in DSH\'s profile', json(s.history[0]));
         const refused = await api('search', { query: { text: 'narwhal' } });
         check('searches say it is switched off', refused.ok === false && refused.error?.message === 'Recall is switched off in DSH\'s profile (enabled: false), so it keeps no index.', json(refused.error));
         ids.disabled = await run.newSession(sayText('A turn with Recall off.'), 'Recall off');
@@ -1112,6 +1322,55 @@ try {
     }, async () => {
         if (window?.page) await shot(window.page, shots, 'failed-disabled');
     });
+
+    // ── enabled written while DSH runs ─────────────────────────────────
+    await step('enabled written into the profile while DSH runs: DSH applies the save, the open page follows within seconds, What happened says each switch once, and Recall reads what changed while it was off', async () => {
+        const patchFile = join(run.profile, 'cordis.patch.yml');
+        const off = readFileSync(patchFile, 'utf8');
+        check('Recall\'s row in the profile says enabled: false', /\n- id: recall\n {2}config:\n(?: {4}.*\n)*? {4}enabled: false\n/.test(off), off.slice(off.indexOf('- id: recall')));
+        const switches = (s) => s.history.filter((e) => e.kind === 'switch').map((e) => e.text);
+        const page = pw ? window?.page : undefined;
+        if (page) await page.locator('[data-recall-header="off"]').waitFor({ state: 'visible', timeout: 20000 });
+        // On again: the save alone, no restart.
+        let wrote = Date.now();
+        const recallRow = /(\n- id: recall\n {2}config:\n(?: {4}.*\n)*?) {4}enabled: false\n/;
+        writeFileSync(patchFile, off.replace(recallRow, '$1    enabled: true\n'));
+        const on = await waitFor(async () => {
+            const r = await api('state');
+            return r.ok && r.value.enabled === true && r.value.thread?.state === 'running' ? r.value : null;
+        }, 'DSH to apply enabled: true from the saved profile', 30000);
+        const appliedOn = Date.now() - wrote;
+        check('DSH applies enabled: true from the saved profile, with no restart', appliedOn < 30000, `${appliedOn} ms`);
+        check('What happened says it was switched on again, once', json(switches(on)) === json(['Switched on again in DSH\'s profile', 'Switched off in DSH\'s profile']), json(on.history.slice(0, 3)));
+        if (page) {
+            await page.locator('[data-recall-header="off"]').waitFor({ state: 'hidden', timeout: 15000 });
+            check('the open page shows Recall on again within 15 s of the save', true, `${Date.now() - wrote} ms`);
+        }
+        const madeOff = await waitFor(async () => {
+            const r = await search({ text: '"turn with Recall off"' });
+            return r.total >= 1 ? r : null;
+        }, 'the turn made while Recall was off to be read', 30000);
+        check('Recall reads what changed while it was off: the turn made then is found', madeOff.results[0]?.sessionId === ids.disabled && madeOff.results[0]?.turn === 1, json(madeOff.results[0]));
+        // Off again, the same way.
+        wrote = Date.now();
+        writeFileSync(patchFile, off);
+        const offAgain = await waitFor(async () => {
+            const r = await api('state');
+            return r.ok && r.value.enabled === false ? r.value : null;
+        }, 'DSH to apply enabled: false from the saved profile', 30000);
+        timings.switched = Math.max(appliedOn, Date.now() - wrote);
+        check('What happened says it was switched off again, once', json(switches(offAgain)) === json(['Switched off in DSH\'s profile', 'Switched on again in DSH\'s profile', 'Switched off in DSH\'s profile']), json(offAgain.history.slice(0, 3)));
+        const refused = await api('search', { query: { text: 'narwhal' } });
+        check('searches are refused again', refused.ok === false && /switched off/.test(refused.error?.message ?? ''), json(refused.error));
+        if (page) {
+            await page.locator('[data-recall-header="off"]').waitFor({ state: 'visible', timeout: 15000 });
+            check('the open page says it is off again within 15 s of the save', true, `${Date.now() - wrote} ms`);
+            await shot(page, shots, 'switched-off-live-light');
+            check('no errors from the suite in the window while Recall was switched off and on', ours(window.errors).length === 0, ours(window.errors).join('\n'));
+        }
+    }, async () => {
+        if (window?.page) await shot(window.page, shots, 'failed-switch-live');
+    });
 } catch (error) {
     check('the run finished', false, error?.stack ?? error);
     if (window?.page) await shot(window.page, shots, 'failed').catch(() => {});
@@ -1123,6 +1382,6 @@ try {
     if (warnings.length) console.log(`# DSH said about the suite:\n${warnings.slice(-20).map((l) => `#   ${l}`).join('\n')}`);
     run.cleanup();
 }
-if (timings.newTurn) console.log(`# timings: new turn searchable after ${timings.newTurn} ms; first search after a restart ${timings.afterRestart ?? '?'} ms${timings.shrunk ? `; a large folder taken out and its space given back in ${timings.shrunk} ms` : ''}`);
+if (timings.newTurn) console.log(`# timings: new turn searchable after ${timings.newTurn} ms; first search after a restart ${timings.afterRestart ?? '?'} ms${timings.shrunk ? `; a large folder taken out and its space given back in ${timings.shrunk} ms` : ''}${timings.followed ? `; a shown row followed its turn's end in ${timings.followed} ms` : ''}${timings.switched ? `; enabled saved in the profile applied in ${timings.switched} ms` : ''}`);
 console.log(`\n# DSH ${version}: ${tally.passed} passed, ${tally.failed} failed${pw ? '' : ', window checks skipped (no Playwright)'}`);
 process.exit(tally.failed ? 1 : 0);

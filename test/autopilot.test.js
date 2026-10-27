@@ -145,6 +145,38 @@ test('idle: no note when the last reply asks the person, an approval waits, noth
     assert.equal(pilot.plan('paused', 'idle', { force: true }).why, 'its goal is paused');
 });
 
+test('idle: an offer holds the note only when it hands the next step to the person; one that says the agent goes on does not', async () => {
+    const { dsh, clock, pilot, watch, journal, config } = setup();
+    // Round 5's false holds: each gets its note now.
+    const goesOn = {
+        happy: 'All tests pass. Happy to keep going with the next todo.',
+        report: 'I am happy to report the build is green. Moving on to the docs next.',
+        free: 'Feel free to review the diff; I will carry on with the remaining two todos.',
+        rename: 'If you would like a different name, say so. Next up: the README.',
+        questions: 'The lexer is done.\nLet me know if you have any questions.',
+    };
+    for (const [id, reply] of Object.entries(goesOn)) idleWithTodos(dsh, id, { reply });
+    // Hand-overs from the stack's own sessions: each is left alone, and its row quotes the words.
+    const handsOver = {
+        cont: 'Step 1 is done. Let me know if you want me to continue with steps 2 and 3.',
+        word: 'The fix is ready but unverified. If you want confirmation, say the word and I\'ll run them.',
+        colour: 'The blouse is now sage, with everything else unchanged. Happy to try another color, a print, or a fabric next.',
+    };
+    for (const [id, reply] of Object.entries(handsOver)) idleWithTodos(dsh, id, { reply });
+    await clock.advance(10 * MIN);
+    for (const id of Object.keys(goesOn)) assert.equal(notesIn(dsh, id).length, 1, id);
+    for (const id of Object.keys(handsOver)) assert.deepEqual(notesIn(dsh, id), [], id);
+    assert.match(entries(journal, 'nudge').find((e) => e.sessionId === 'happy').why, /and its last reply asked you nothing\.$/);
+    assert.equal(pilot.plan('cont', 'idle', { force: true }).why, 'its last reply leaves the next step to you');
+    const view = await pageState({ pilot, watch, journal, config });
+    const holds = Object.fromEntries(view.sessions.filter((r) => Object.hasOwn(handsOver, r.sessionId)).map((r) => [r.sessionId, r.hold]));
+    assert.deepEqual(holds, {
+        cont: 'waits for you: its last reply leaves the next step to you (“Let me know if you want me to continue with steps 2 and 3.”)',
+        word: 'waits for you: its last reply leaves the next step to you (“If you want confirmation, say the word and I\'ll run them.”)',
+        colour: 'waits for you: its last reply leaves the next step to you (“Happy to try another color, a print, or a fabric next.”)',
+    });
+});
+
 test('idle with an active goal that stopped: the goal starts again, proven by the round it begins', async () => {
     const { dsh, clock, journal, watch } = setup();
     dsh.add('g', { title: 'Goal session' });
@@ -167,8 +199,9 @@ test('idle with an active goal that stopped: the goal starts again, proven by th
     assert.equal(goalTurns(), 3, 'Autopilot started it again');
     const [rearm] = entries(journal, 'rearm');
     assert.equal(rearm.state, 'started');
-    assert.equal(rearm.reason, 'round 3 began');
-    assert.match(rearm.why, /^Its goal “Ship the parser” is active but stopped/);
+    assert.equal(rearm.reason, 'round 3 of 20 began');
+    assert.match(rearm.why, /^Its goal “Ship the parser” is active but stopped \(a DSH restart or an error stops a goal\), and it has been idle for 10 minutes\. This start begins round 3 of 20\.$/);
+    assert.deepEqual(rearm.goal, { id: 'goal-g', rev: 2, round: 3, max: 20 }, 'proven by a round of the revision this start wrote');
     assert.equal(notesIn(dsh, 'g').length, 0, 'a goal start, not a note');
     assert.equal(watch.goals, dsh.goals);
 });
@@ -197,18 +230,21 @@ test('after a restart: a cut-off session gets a carry-on note, and its goal star
     const notes = notesIn(dsh, 'r');
     assert.equal(notes.length, 1);
     assert.match(notes[0], /^\[Autopilot\] DSH stopped while you were working: turn 1 was cut off \(its last step was at .+\)\./);
-    assert.match(notes[0], /Still open: 2 open todos \(next: “Write the parser”\) and the goal “Cut the release” \(round 0 of 20\)\./);
+    assert.match(notes[0], /Still open: 2 todos \(next: “Write the parser”\) and the goal “Cut the release” \(no round begun yet, up to 20\)\./);
     const [resume] = entries(after.journal, 'resume');
     assert.equal(resume.state, 'delivered');
     assert.match(resume.why, /^Turn 1 was cut off: DSH stopped before it finished \(a quit, a restart or a crash\)\. Its last step was at .+, and nobody has written in the session since\.$/);
-    // The goal waits for the carry-on turn to end, then goes on by itself.
-    const [rearm] = entries(after.journal, 'rearm');
-    assert.equal(rearm.state, 'waiting for a round');
-    assert.equal(after.pilot.data.notes.length, 2, 'the goal start after the note counts toward the hour too, as the setting says');
+    // The goal waits for the carry-on turn to end without an error (kept on disk), then goes on by itself.
+    assert.equal(entries(after.journal, 'rearm').length, 0, 'no goal start while the note\'s turn runs');
+    assert.equal(after.pilot.data.sessions.r.goalAfter.turn, 2);
     dsh.end('r', { kind: 'completed' }, { reply: 'Checked; the build had finished. Tests next.' });
     await settle();
-    assert.equal(after.journal.get(rearm.id).state, 'started');
-    assert.equal(after.journal.get(rearm.id).reason, 'round 1 began');
+    const [rearm] = entries(after.journal, 'rearm');
+    assert.equal(rearm.state, 'started');
+    assert.equal(rearm.reason, 'round 1 of 20 began');
+    assert.equal(rearm.why, 'Its goal was active when DSH stopped, and the turn after its carry-on note has ended, so its goal goes on: this start begins round 1 of 20.');
+    assert.equal(after.pilot.data.sessions.r.goalAfter, undefined);
+    assert.equal(after.pilot.data.notes.length, 2, 'the goal start after the note counts toward the hour too, as the setting says');
     // The same cut is never handled twice, even by another restart.
     after.pilot.stop();
     dsh.end('r', { kind: 'completed' }, { reply: 'Tests pass.' });
@@ -246,7 +282,7 @@ test('after a restart: a turn cut off while a tool waited for approval, or a que
     await clock.advance(20000);
     const [ap] = notesIn(dsh, 'ap');
     assert.match(ap, /When DSH stopped, your bash call was waiting for approval, so it did not run: make it again if you still need it, and DSH asks for approval again\./);
-    assert.match(ap, /Still open: 2 open todos/);
+    assert.match(ap, /Still open: 2 todos \(next: “Write the parser”\)\./);
     const [qb] = notesIn(dsh, 'qb');
     assert.match(qb, /When DSH stopped, your question in DSH's question box \(“Which branch should I use\?”\) had no answer yet: ask it again if you still need the answer\./);
     const why = Object.fromEntries(entries(after.journal, 'resume').map((entry) => [entry.sessionId, entry.why]));
@@ -296,6 +332,8 @@ test('Ask first across stops: an open question is set aside in the log when Auto
     const asked = first.watch.asks();
     assert.equal(asked.length, 2);
     const askedAt = asked.find((ask) => ask.sessionId === 'q').at;
+    const firstWhy = asked.find((ask) => ask.sessionId === 'q').why;
+    assert.match(firstWhy, /idle for 10 minutes/);
     assert.equal(first.notified.length, 2);
     // Autopilot stops (DSH quits, or Autopilot or Session Watch is switched off): the questions leave the cards, and the log says why, at once.
     first.watch.running.flush();
@@ -317,10 +355,12 @@ test('Ask first across stops: an open question is set aside in the log when Auto
     const back = second.watch.asks();
     assert.deepEqual(back.map((ask) => ask.sessionId), ['q'], 'only the question that still applies comes back');
     assert.equal(back[0].at, askedAt, 'it keeps the time it was first asked, so its wait counts from then');
+    assert.equal(back[0].why, firstWhy, 'and the Why it was first asked with, which its log entry shows, not one worked out 6 minutes later');
     const forQ = entries(second.journal, 'ask').filter((entry) => entry.sessionId === 'q');
     assert.equal(forQ.length, 1, 'one entry for one question, across the stop');
     assert.equal(forQ[0].state, 'asked you');
     assert.equal(forQ[0].reason, '', 'the stop no longer shows on it');
+    assert.equal(forQ[0].why, `${firstWhy} Its rule is Ask first.`);
     assert.equal(lastWords(forQ[0]), 'asked you');
     assert.equal(second.notified.length, 0, 'no second notification for the same question');
     const forGone = entries(second.journal, 'ask').filter((entry) => entry.sessionId === 'gone');
@@ -330,6 +370,118 @@ test('Ask first across stops: an open question is set aside in the log when Auto
     assert.deepEqual(entries(second.journal, 'ask').filter((entry) => entry.sessionId === 'q').map((entry) => entry.state), ['answered']);
     assert.equal(lastWords(entries(second.journal, 'ask').find((entry) => entry.sessionId === 'q')), 'you answered its question');
     second.pilot.stop();
+});
+
+test('after a crash or a forced quit: what the killed run left open is settled from the logs before the first look', async () => {
+    const dir = tempDir('autopilot');
+    const clock = manualClock();
+    // Notes wait in the queue until the test lets a session read them.
+    const dsh = fakeDsh({ now: clock.now, autoRead: false });
+    const first = setup({ dir, clock, dsh, config: { defaultRule: 'ask' } });
+    for (const id of ['n', 'm', 'p', 'g1', 'g2']) first.pilot.setRule(id, 'auto');
+    idleWithTodos(dsh, 'q', { title: 'Parser' });
+    idleWithTodos(dsh, 'n', { title: 'Queued' });
+    idleWithTodos(dsh, 'm', { title: 'Read unseen' });
+    idleWithTodos(dsh, 'p', { title: 'Never sent' });
+    // p's note never reaches DSH: the kill comes while it is still on its way.
+    const deliver = first.watch.deliver.bind(first.watch);
+    first.watch.deliver = (sessionId, ...rest) => (sessionId === 'p' ? new Promise(() => {}) : deliver(sessionId, ...rest));
+    for (const id of ['g1', 'g2']) {
+        dsh.add(id, { title: `Goal ${id}` });
+        dsh.write(id, 'Go');
+        dsh.setGoal(id, `Ship ${id}`, { armed: false });
+        dsh.end(id, { kind: 'completed' }, { reply: 'Stopped.' });
+    }
+    // DSH takes a goal start, but is killed before its driver begins the round.
+    const resume = dsh.goals.resume;
+    dsh.goals.resume = (agent) => {
+        const g = dsh.sessions.get(agent.id).goal;
+        g.activation = 'armed';
+        g.revision += 1;
+        dsh.commit(agent.id, 'goal/change', { operation: 'resume', goal: { id: g.id, revision: g.revision, objective: g.objective, phase: 'active', maxGoalRounds: g.maxGoalRounds }, roundsStarted: g.roundsStarted });
+    };
+    await clock.advance(10 * MIN);
+    const askedAt = first.watch.asks().find((ask) => ask.sessionId === 'q').at;
+    assert.equal(first.notified.length, 1);
+    const open = Object.fromEntries(entries(first.journal).filter((e) => e.kind !== 'rule').map((e) => [e.sessionId, e.state]));
+    assert.deepEqual(open, { q: 'asked you', n: 'in the queue', m: 'in the queue', p: 'sending', g1: 'waiting for a round', g2: 'waiting for a round' });
+    // Two things happen that the run never hears of: m reads its note, and g1's round begins.
+    const msg = dsh.agents.get('m').inbox.shift();
+    dsh.commit('m', 'turn/start', { turn: 2 }, { quiet: true });
+    dsh.commit('m', 'user/message', msg, { quiet: true });
+    const g1 = dsh.sessions.get('g1').goal;
+    g1.roundsStarted += 1;
+    dsh.commit('g1', 'turn/start', { turn: 2 }, { quiet: true });
+    dsh.commit('g1', 'user/message', dsh.message('Continue working toward the goal (round 1).', { kind: 'goal', goalId: g1.id, revision: g1.revision, round: 1 }), { quiet: true });
+    // DSH's timer saves both sessions' values with their turns open.
+    dsh.save('m');
+    dsh.save('g1');
+    // The kill: no stop handlers run, every timer of the run is gone, open turns stay open in the logs.
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    for (const timer of clock.pending()) clock.clearTimer(timer);
+    dsh.stop({ crash: true });
+    dsh.goals.resume = resume;
+    await clock.advance(2 * MIN);
+    const second = setup({ dir, clock, dsh, config: { defaultRule: 'ask' } });
+    await settle();
+    const byId = (id) => entries(second.journal).find((e) => e.sessionId === id && e.kind !== 'rule');
+    // Before the first look: the question is set aside to be reused, each note and start checked against its log.
+    assert.equal(byId('q').state, 'withdrawn');
+    assert.equal(byId('q').stopped, true);
+    assert.equal(byId('q').reason, 'withdrawn: DSH stopped before it was answered (a crash or a forced quit); it asks again when it runs, if this still applies');
+    // n's note is still in DSH's queue, which DSH keeps in the session's log: the session may still read it.
+    assert.equal(byId('n').state, 'not proven');
+    assert.equal(byId('n').reason, 'DSH stopped with it in the session\'s queue (a crash or a forced quit); the session may still read it when it next runs, and this entry says so when it does');
+    assert.equal(byId('n').queued, true);
+    assert.equal(byId('p').state, 'not delivered');
+    assert.equal(byId('p').reason, 'DSH stopped before it reached the session (a crash or a forced quit)');
+    assert.equal(byId('m').state, 'delivered');
+    assert.equal(byId('m').turn, 2);
+    assert.equal(byId('g1').state, 'started');
+    assert.equal(byId('g1').reason, 'round 1 of 20 began');
+    assert.equal(byId('g2').state, 'not started');
+    assert.equal(byId('g2').reason, 'DSH stopped before a round began (a crash or a forced quit)');
+    for (const id of ['q', 'n', 'm', 'p', 'g1', 'g2']) assert.equal(byId(id).settledAt, clock.now(), id);
+    // The first look: the question comes back under its entry and first time, without a second notification;
+    // the note that never arrived and the goal that never started get their turn; nothing is done twice.
+    await clock.advance(MIN);
+    const back = second.watch.asks();
+    assert.deepEqual(back.map((ask) => ask.sessionId), ['q']);
+    assert.equal(back[0].at, askedAt);
+    assert.equal(entries(second.journal, 'ask').length, 1);
+    assert.equal(entries(second.journal, 'ask')[0].state, 'asked you');
+    assert.equal(second.notified.length, 0);
+    assert.equal(entries(second.journal, 'nudge').filter((e) => e.sessionId === 'p').length, 2, 'p gets its note again');
+    assert.equal(entries(second.journal, 'nudge').filter((e) => e.sessionId === 'n').length, 1, 'n\'s note may still be read: not sent twice');
+    assert.equal(entries(second.journal, 'nudge').filter((e) => e.sessionId === 'm').length, 1, 'm read its note: not again');
+    const starts = entries(second.journal, 'rearm').filter((e) => e.sessionId === 'g2');
+    assert.equal(starts.length, 2);
+    assert.equal(starts[0].state, 'started');
+    assert.equal(starts[0].reason, 'round 1 of 20 began');
+    assert.equal(entries(second.journal, 'rearm').filter((e) => e.sessionId === 'g1').length, 1, 'g1\'s round began: not started twice');
+    // m's and g1's turns were cut off by the kill: each gets one carry-on note.
+    assert.equal(entries(second.journal, 'resume').map((e) => e.sessionId).sort().join(), 'g1,m');
+    // Later, n's session opens and reads the note DSH kept in its queue: its entry says delivered, with that turn.
+    const nAgent = dsh.load('n');
+    const kept = dsh.sessions.get('n').events.filter((e) => e.type === 'agent/inbox/spliced').at(-1).data.inserted[0];
+    nAgent.inbox.push(kept);
+    dsh.read('n');
+    await clock.advance(1000);
+    assert.equal(byId('n').state, 'not proven', 'read a moment after the session moves');
+    await clock.advance(1000);
+    await settle();
+    assert.equal(byId('n').state, 'delivered');
+    assert.equal(byId('n').turn, 2);
+    assert.equal(byId('n').queued, false);
+    assert.equal(byId('n').reason, '');
+    assert.equal(byId('n').deliveredAt, dsh.sessions.get('n').events.findLast((e) => e.type === 'user/message').time);
+    assert.equal(entries(second.journal, 'nudge').filter((e) => e.sessionId === 'n').length, 1, 'still never sent twice');
+    second.pilot.stop();
+    // A start after that leaves it delivered.
+    const third = setup({ dir, clock, dsh, config: { defaultRule: 'ask' } });
+    await settle();
+    assert.equal(third.journal.get(byId('n').id).state, 'delivered');
+    third.pilot.stop();
 });
 
 test('after a restart: sessions cut off too long ago, ones someone wrote in since, and Off sessions are left alone', async () => {
@@ -367,36 +519,138 @@ test('a reload under a running turn (DSH still up): the cut-off session gets its
 
 // ── A failed turn ─────────────────────────────────────────────────────
 
-test('a failed turn that stopped a goal: Autopilot starts it again after growing waits, then gives up and says so', async () => {
-    const { dsh, clock, journal, notified, pilot } = setup();
+test('a failed turn that stopped a goal: a carry-on note goes first and spends no goal round; the goal starts again once a turn ends without an error', async () => {
+    const { dsh, clock, journal, pilot } = setup();
     dsh.add('e', { title: 'Flaky provider' });
-    dsh.setGoal('e', 'Finish the migration');
+    dsh.setGoal('e', 'Finish the migration', { max: 4 });
+    dsh.write('e', 'Go');
+    const rounds = () => dsh.sessions.get('e').goal.roundsStarted;
+    dsh.end('e', { kind: 'error', error: { code: 'provider', message: '502 from the gateway' } });
+    await clock.advance(119000);
+    assert.equal(entries(journal, 'error').length, 0);
+    await clock.advance(1000);
+    const [note] = entries(journal, 'error');
+    assert.equal(note.state, 'delivered', 'the first try, 2 minutes after the error, is a note');
+    assert.equal(note.why, 'Turn 1 failed (502 from the gateway), which stops a goal; the goal “Finish the migration” is still active. A note costs no goal round, so it goes first; the goal starts again (round 1 of 4) once a turn ends without an error.');
+    assert.match(notesIn(dsh, 'e')[0], /^\[Autopilot\] Your last turn \(turn 1\) failed: 502 from the gateway\./);
+    assert.equal(rounds(), 0, 'no goal round spent');
+    assert.equal(entries(journal, 'rearm').length, 0);
+    // The note's turn ends cleanly: the goal goes on, and its start begins the next round.
+    dsh.end('e', { kind: 'completed' }, { reply: 'Retried; the gateway answers again.' });
+    await settle();
+    const [rearm] = entries(journal, 'rearm');
+    assert.equal(rearm.state, 'started');
+    assert.equal(rearm.reason, 'round 1 of 4 began');
+    assert.equal(rearm.why, 'The turn after its carry-on note ended without an error, so its goal goes on: this start begins round 1 of 4.');
+    assert.equal(rearm.text, 'Started its goal again after an error');
+    assert.equal(rounds(), 1);
+    assert.equal(pilot.data.sessions.e.errorTries, 0);
+    assert.equal(pilot.data.notes.length, 2, 'the note and the goal start after it both count toward the hour');
+});
+
+test('an outage: each carry-on note fails too, so no goal round is spent; the waits grow, then Autopilot gives up at once, tagged gave up', async () => {
+    const { dsh, clock, journal, notified, pilot, watch, config } = setup();
+    dsh.add('e', { title: 'Flaky provider' });
+    dsh.setGoal('e', 'Finish the migration', { max: 4 });
     dsh.write('e', 'Go');
     const fail = () => dsh.end('e', { kind: 'error', error: { code: 'provider', message: '502 from the gateway' } });
     fail();
-    await clock.advance(119000);
-    assert.equal(entries(journal, 'rearm').length, 0);
-    await clock.advance(1000);
-    assert.equal(entries(journal, 'rearm').length, 1, 'first try after 2 minutes');
-    assert.match(entries(journal, 'rearm')[0].why, /^Turn 1 failed \(502 from the gateway\), which stops a goal/);
-    await settle();
+    await clock.advance(2 * MIN);
+    assert.equal(entries(journal, 'error').length, 1, 'first note after 2 minutes');
     fail();
-    await clock.advance(10 * MIN);
-    assert.equal(entries(journal, 'rearm').length, 2, 'second after 10 more');
+    await settle();
+    assert.equal(pilot.pending().e.trigger, 'error');
+    await clock.advance(10 * MIN - 1000);
+    assert.equal(entries(journal, 'error').length, 1);
+    await clock.advance(1000);
+    assert.equal(entries(journal, 'error').length, 2, 'second after 10 more');
     fail();
     await clock.advance(30 * MIN);
-    assert.equal(entries(journal, 'rearm').length, 3, 'third after 30 more');
+    assert.equal(entries(journal, 'error').length, 3, 'third after 30 more');
+    // The third note's turn fails: no fourth wait, the give-up comes at once.
     fail();
-    await clock.advance(60 * MIN);
-    assert.equal(entries(journal, 'rearm').length, 3);
+    await clock.advance(0);
     const [giveup] = entries(journal, 'giveup');
+    assert.equal(giveup.state, 'gave up');
     assert.equal(giveup.text, 'Stopped retrying after errors');
+    assert.equal(giveup.why, 'It failed again after 3 tries, so Autopilot stops retrying and leaves it to you.');
+    assert.equal(giveup.at, clock.now());
     assert.equal(notified.at(-1).title, 'Autopilot stopped retrying: Flaky provider');
+    assert.equal(dsh.sessions.get('e').goal.roundsStarted, 0, 'no goal round went to the outage');
+    assert.equal(entries(journal, 'rearm').length, 0);
     assert.ok(pilot.data.sessions.e.gaveUp);
-    // Try again from the page starts over.
+    const view = await pageState({ pilot, watch, journal, config });
+    const row = view.sessions.find((r) => r.sessionId === 'e');
+    assert.equal(row.word, 'gave up');
+    assert.equal(row.last.text, 'stopped retrying after errors');
+    assert.equal(row.next, undefined);
+    // Try again from the page starts over, with a note again (a person's own action).
     const result = await pilot.retry('e');
-    assert.equal(result.action, 'rearm');
+    assert.equal(result.action, 'note');
+    assert.equal(result.entry.by, 'you');
     assert.equal(pilot.data.sessions.e.gaveUp, undefined);
+});
+
+test('a goal start is proven only by a round of the revision it wrote: a turn that fails first leaves it not started, and a later start\'s round is not credited to it', async () => {
+    const { dsh, clock, journal } = setup();
+    dsh.add('g', { title: 'Goal' });
+    dsh.write('g', 'Go');
+    dsh.setGoal('g', 'Ship it', { armed: false, max: 4 });
+    dsh.end('g', { kind: 'completed' }, { reply: 'Stopped.' });
+    // DSH takes the start, but its driver has not begun the round when a turn of the person's starts and fails.
+    const resume = dsh.goals.resume;
+    dsh.goals.resume = (agent) => {
+        const g = dsh.sessions.get(agent.id).goal;
+        g.activation = 'armed';
+        g.revision += 1;
+        dsh.commit(agent.id, 'goal/change', { operation: 'resume', goal: { id: g.id, revision: g.revision, objective: g.objective, phase: 'active', maxGoalRounds: g.maxGoalRounds }, roundsStarted: g.roundsStarted });
+    };
+    await clock.advance(10 * MIN);
+    const [first] = entries(journal, 'rearm');
+    assert.equal(first.state, 'waiting for a round');
+    assert.deepEqual(first.goal, { id: 'goal-g', rev: 2, round: 1, max: 4 });
+    dsh.goals.resume = resume;
+    dsh.write('g', 'Use the other gateway.');
+    dsh.end('g', { kind: 'error', error: { message: '502 from the gateway' } });
+    await settle();
+    assert.equal(journal.get(first.id).state, 'not started');
+    assert.equal(journal.get(first.id).reason, 'the turn running in the session failed before a round began (an error stops a goal)');
+    // The next start writes revision 3 and begins round 1: credited to it alone.
+    dsh.write('g', 'Carry on.');
+    dsh.end('g', { kind: 'completed' }, { reply: 'Gateway fixed.' });
+    await clock.advance(10 * MIN);
+    const [second] = entries(journal, 'rearm');
+    assert.notEqual(second.id, first.id);
+    assert.equal(second.state, 'started');
+    assert.equal(second.reason, 'round 1 of 4 began');
+    assert.deepEqual(second.goal, { id: 'goal-g', rev: 3, round: 1, max: 4 });
+    assert.equal(journal.get(first.id).state, 'not started');
+});
+
+test('a goal that used all its rounds is never started again: the skip and the row say to raise its round limit', async () => {
+    const { dsh, clock, journal, pilot, watch } = setup();
+    dsh.add('g', { title: 'Short goal' });
+    dsh.write('g', 'Go');
+    dsh.setGoal('g', 'Ship it', { max: 2 });
+    dsh.end('g', { kind: 'completed' }, { reply: 'Round one.' });
+    await settle();
+    dsh.end('g', { kind: 'completed' }, { reply: 'Round two.' });
+    await settle();
+    // Two rounds of two: the driver stops; a restart of the agent leaves it disarmed.
+    dsh.sessions.get('g').goal.activation = 'disarmed';
+    dsh.end('g', { kind: 'completed' }, { reply: 'Out of rounds.' });
+    await settle();
+    assert.equal(dsh.sessions.get('g').goal.roundsStarted, 2);
+    await clock.advance(10 * MIN);
+    assert.equal(entries(journal, 'rearm').length, 0, 'no start DSH would refuse');
+    const [skip] = entries(journal, 'skip');
+    assert.equal(skip.why, 'Its goal used all 2 of its rounds; raise its round limit to let it go on.');
+    const row = (await watch.list(undefined, { maxAgeMs: 0 })).find((r) => r.sessionId === 'g');
+    assert.equal(pilot.holdOf(row), 'waits for you: its goal used all 2 of its rounds; raise its round limit to let it go on');
+    // Try again says the same, without asking DSH.
+    const result = await pilot.retry('g');
+    assert.equal(result.action, 'none');
+    assert.match(entries(journal, 'skip')[0].why, /^You pressed Try again, but its goal used all 2 of its rounds; raise its round limit to let it go on\.$/);
 });
 
 test('a failed turn with open todos and no goal gets a carry-on note naming the error', async () => {
@@ -408,6 +662,124 @@ test('a failed turn with open todos and no goal gets a carry-on note naming the 
     const [note] = notesIn(dsh, 'e');
     assert.match(note, /^\[Autopilot\] Your last turn \(turn 1\) failed: context window exceeded\. Carry on from where you stopped\./);
     assert.match(note, /If the same error comes back, stop/);
+});
+
+test('an error DSH ends with a full stop reads once in the note and its Why, which says what is still open in plain words', async () => {
+    const { dsh, clock, journal } = setup();
+    dsh.add('e');
+    dsh.write('e', 'Go');
+    dsh.end('e', { kind: 'error', error: { message: 'Connection error.' } }, { todos: TODOS });
+    await clock.advance(2 * MIN);
+    const [note] = notesIn(dsh, 'e');
+    assert.match(note, /^\[Autopilot\] Your last turn \(turn 1\) failed: Connection error\. Carry on from where you stopped\. Still open: 2 todos \(next: “Write the parser”\)\. /);
+    assert.doesNotMatch(note, /\.\./);
+    assert.equal(entries(journal, 'error')[0].why, 'Turn 1 failed (Connection error) with 2 todos still open (next: “Write the parser”).');
+    assert.equal(errorNote({ turn: 3, error: 'Gateway timed out!' }, {}), '[Autopilot] Your last turn (turn 3) failed: Gateway timed out! Carry on from where you stopped. If the same error comes back, stop and end your reply with one line: DECISION NEEDED: <question> — recommend: <your pick>.');
+});
+
+test('a carry-on after a restart that fails too (DSH came back before its gateway): tried again note-first like any failed turn with work open, then given up with Try again', async () => {
+    const dir = tempDir('autopilot');
+    const clock = manualClock();
+    const dsh = fakeDsh({ now: clock.now });
+    const before = setup({ dir, clock, dsh });
+    // No todos and no goal: only the stop says work was cut off.
+    dsh.add('pb', { title: 'Power blip' });
+    dsh.write('pb', 'Rebuild the search index.');
+    before.watch.running.flush();
+    before.pilot.stop();
+    before.store.close();
+    dsh.stop({ crash: true });
+    await clock.advance(2 * MIN);
+    const { journal, pilot, watch, config, notified } = setup({ dir, clock, dsh });
+    await clock.advance(20000);
+    assert.equal(notesIn(dsh, 'pb').length, 1, 'the carry-on note');
+    assert.equal(entries(journal, 'resume')[0].state, 'delivered');
+    assert.deepEqual(pilot.data.sessions.pb.carry, { turn: 2, cut: 1, at: clock.now() });
+    // The carry-on turn fails: the gateway is not back yet.
+    const fail = () => dsh.end('pb', { kind: 'error', error: { code: 'provider', message: 'Connection error.' } });
+    fail();
+    await settle();
+    assert.equal(pilot.pending().pb?.trigger, 'error', 'the work the stop cut off is still open: it is tried again');
+    await clock.advance(2 * MIN);
+    const [first] = entries(journal, 'error');
+    assert.equal(first.state, 'delivered');
+    assert.equal(first.why, 'Turn 2 failed (Connection error) while it carried on after DSH stopped under turn 1, so the work that stop cut off is still open.');
+    assert.equal(notesIn(dsh, 'pb')[1], '[Autopilot] Your last turn (turn 2) failed: Connection error. You were carrying on after DSH stopped under turn 1: check what already finished (files, commands, todos), then carry on from where you stopped. If the same error comes back, stop and end your reply with one line: DECISION NEEDED: <question> — recommend: <your pick>.');
+    // Still down: the waits grow, then Autopilot gives up, tagged gave up, with Try again.
+    fail();
+    await clock.advance(10 * MIN);
+    assert.equal(entries(journal, 'error').length, 2);
+    fail();
+    await clock.advance(30 * MIN);
+    assert.equal(entries(journal, 'error').length, 3);
+    fail();
+    await clock.advance(0);
+    const [giveup] = entries(journal, 'giveup');
+    assert.equal(giveup.state, 'gave up');
+    assert.equal(giveup.why, 'It failed again after 3 tries, so Autopilot stops retrying and leaves it to you.');
+    assert.equal(notified.at(-1).title, 'Autopilot stopped retrying: Power blip');
+    const view = await pageState({ pilot, watch, journal, config });
+    const row = view.sessions.find((r) => r.sessionId === 'pb');
+    assert.equal(row.word, 'gave up');
+    assert.ok(row.gaveUp, 'the Waiting card lists it, with Try again');
+    // Try again: the same carry-on note again, by the person; a turn that ends well closes the carry-on.
+    const result = await pilot.retry('pb');
+    assert.equal(result.action, 'note');
+    assert.equal(result.entry.by, 'you');
+    await settle();
+    assert.match(notesIn(dsh, 'pb').at(-1), /You were carrying on after DSH stopped under turn 1/);
+    dsh.end('pb', { kind: 'completed' }, { reply: 'The index is rebuilt.' });
+    await settle();
+    assert.equal(pilot.data.sessions.pb.carry, undefined);
+    // A failure after that, with nothing open, is the person's: no try, and the row says why instead of "failed" alone.
+    dsh.write('pb', 'Now vacuum the database.');
+    dsh.end('pb', { kind: 'error', error: { message: 'Connection error.' } });
+    await clock.advance(2 * MIN);
+    assert.equal(entries(journal, 'error').length, 4, 'nothing more after the try the person asked for');
+    assert.equal(pilot.pending().pb, undefined);
+    const after = (await pageState({ pilot, watch, journal, config })).sessions.find((r) => r.sessionId === 'pb');
+    assert.equal(after.hold, 'its last turn failed with nothing left open (no todos, no goal), so Autopilot leaves it to you');
+    pilot.stop();
+});
+
+test('a carry-on after a restart whose turn ends well, or that the person takes over, is no longer Autopilot\'s to retry', async () => {
+    const dir = tempDir('autopilot');
+    const clock = manualClock();
+    const dsh = fakeDsh({ now: clock.now });
+    const before = setup({ dir, clock, dsh });
+    for (const id of ['ok', 'mine']) dsh.write(id, 'Rebuild the search index.');
+    before.watch.running.flush();
+    before.pilot.stop();
+    before.store.close();
+    dsh.stop({ crash: true });
+    await clock.advance(2 * MIN);
+    const { journal, pilot } = setup({ dir, clock, dsh });
+    await clock.advance(20000);
+    assert.equal(entries(journal, 'resume').length, 2);
+    dsh.end('ok', { kind: 'completed' }, { reply: 'Done; the index is rebuilt.' });
+    dsh.write('mine', 'Stop; I will do it myself.');
+    await settle();
+    assert.equal(pilot.data.sessions.ok.carry, undefined);
+    assert.equal(pilot.data.sessions.mine.carry, undefined);
+    for (const id of ['ok', 'mine']) dsh.end(id, { kind: 'error', error: { message: 'Connection error.' } });
+    await clock.advance(5 * MIN);
+    assert.equal(entries(journal, 'error').length, 0);
+    pilot.stop();
+});
+
+test('the first look\'s words in a waiting row follow what Autopilot started after: DSH, a fixed setting, or a switch back on', async () => {
+    for (const [after, words] of [[undefined, 'after DSH starts'], ['dsh', 'after DSH starts'], ['settings', 'after the setting was fixed'], ['again', 'after Autopilot starts again']]) {
+        const { dsh, pilot, watch } = setup({ start: false });
+        // A failed turn with work open, as in the settings restart the judge saw.
+        dsh.add('c', { title: 'Colours' });
+        dsh.write('c', 'Pick the colours.');
+        dsh.end('c', { kind: 'error', error: { message: 'Connection error.' } }, { todos: TODOS });
+        pilot.start(after ? { after } : undefined);
+        await settle();
+        const row = (await watch.list(undefined, { maxAgeMs: 0 })).find((r) => r.sessionId === 'c');
+        assert.equal(pilot.holdOf(row), `Autopilot looks at it 20 seconds ${words}`, String(after));
+        pilot.stop();
+    }
 });
 
 // ── Rules, the switch, the limit ──────────────────────────────────────
@@ -501,6 +873,68 @@ test('the hourly limit holds notes back, says so once, and tries again later', a
     assert.equal(notesIn(dsh, 'a').length + notesIn(dsh, 'b').length, 2, 'the held one goes once the hour has room');
 });
 
+test('the hourly limit stops Autopilot, not the person: an answer goes at once with the hour full, and is not counted', async () => {
+    const { dsh, clock, journal, pilot, watch } = setup({ config: { defaultRule: 'ask', maxNotesPerHour: 1 } });
+    pilot.setRule('a', 'auto');
+    idleWithTodos(dsh, 'a');
+    idleWithTodos(dsh, 'b');
+    await clock.advance(10 * MIN);
+    assert.equal(notesIn(dsh, 'a').length, 1, 'the hour is full');
+    const ask = watch.asks().find((item) => item.sessionId === 'b');
+    const result = await watch.answerAsk(ask.id, 'go', 'you');
+    assert.equal(result.ok, true);
+    await settle();
+    assert.equal(notesIn(dsh, 'b').length, 1, 'the person\'s answer goes at once');
+    assert.equal(pilot.data.notes.length, 1, 'and is not counted');
+    assert.equal(entries(journal, 'held').length, 0);
+    assert.equal(entries(journal, 'nudge').find((entry) => entry.sessionId === 'b').by, 'you');
+    // So is Try again; Autopilot's own next note still waits for the hour.
+    dsh.write('a', 'More');
+    dsh.end('a', { kind: 'completed' }, { todos: TODOS });
+    await clock.advance(10 * MIN);
+    assert.equal(notesIn(dsh, 'a').length, 1);
+    assert.equal(entries(journal, 'held').length, 1);
+});
+
+test('a cut-off session Autopilot has not looked at since its start is offered when the switch comes on, its rule leaves Off, or the default rule changes', async () => {
+    const dir = tempDir('autopilot');
+    const clock = manualClock();
+    const dsh = fakeDsh({ now: clock.now });
+    const before = setup({ dir, clock, dsh, config: { defaultRule: 'off' } });
+    before.pilot.setRule('c', 'off');
+    before.pilot.setRule('e', 'auto');
+    before.pilot.setPaused(true);
+    for (const id of ['c', 'd', 'e']) {
+        dsh.add(id, { title: `Draft ${id}` });
+        dsh.write(id, 'Draft it.');
+        dsh.commit(id, 'todo/write', { todos: TODOS });
+    }
+    before.watch.running.flush();
+    dsh.save('c');
+    before.pilot.stop();
+    before.store.close();
+    // A forced quit: the turns stay open in the logs.
+    dsh.stop({ crash: true });
+    await clock.advance(2 * MIN);
+    const after = setup({ dir, clock, dsh, config: { defaultRule: 'off' } });
+    await clock.advance(MIN);
+    assert.deepEqual(after.watch.asks(), []);
+    assert.equal(entries(after.journal, 'resume').length, 0, 'off, and every rule Off: nothing');
+    // The switch comes on: e (Auto) gets its note.
+    after.pilot.setPaused(false);
+    await clock.advance(1000);
+    assert.equal(notesIn(dsh, 'e').length, 1);
+    // c's own rule leaves Off: its log is read, and it is asked about.
+    after.pilot.setRule('c', 'ask');
+    await clock.advance(1000);
+    assert.deepEqual(after.watch.asks().map((ask) => ask.sessionId), ['c']);
+    // The default leaves Off: d is asked about too.
+    after.pilot.setDefaultRule('ask');
+    await clock.advance(1000);
+    assert.deepEqual(after.watch.asks().map((ask) => ask.sessionId).sort(), ['c', 'd']);
+    after.pilot.stop();
+});
+
 test('subagent sessions are left to their parent', async () => {
     const { dsh, pilot } = setup();
     dsh.add('child', { parentSessionId: 'p' });
@@ -542,6 +976,10 @@ test('notes and questions in plain words, each signed [Autopilot]', () => {
     const state = { todos: { open: 1, next: 'Add tests' }, goal: { phase: 'active', objective: 'Ship', rounds: 2, max: 5 } };
     assert.equal(openWork(state), '1 open todo (next: “Add tests”) and the goal “Ship” (round 2 of 5)');
     assert.equal(openWork({}), '');
+    // A goal cut off before its first round: no "round 0".
+    assert.equal(openWork({ goal: { phase: 'active', objective: 'Ship', rounds: 0, max: 5 } }), 'the goal “Ship” (no round begun yet, up to 5)');
+    assert.equal(openWork({ goal: { phase: 'active', objective: 'Ship', rounds: 0 } }), 'the goal “Ship” (no round begun yet)');
+    assert.equal(openWork({ goal: { phase: 'active', objective: 'Ship', rounds: 3 } }), 'the goal “Ship”');
     for (const note of [carryOnNote({ turn: 3, at: now - 60000 }, state, now), nudgeNote(state), errorNote({ turn: 3, error: 'boom' }, state), answerNote('yes')]) {
         assert.match(note, /^\[Autopilot\] /);
     }
@@ -630,6 +1068,12 @@ test('browser half: the page\'s cards say what to do next, in plain words', () =
     assert.match(textIn(AutopilotPage({ autopilot: {} })), /Reading the sessions/);
     const head = HeaderCard({ data: base, busy: false, act });
     assert.match(textIn(head), /Watching 4 sessions · 3 notes this hour; the limit is 20 · a session with open work gets a note after 10 minutes of quiet/);
+    // The quiet time reads as the log says it: 90 seconds is not "2 minutes".
+    const quiet = (idleSeconds) => /gets a note after (.+) of quiet/.exec(textIn(HeaderCard({ data: { ...base, settings: { ...base.settings, idleSeconds } }, busy: false, act })))[1];
+    assert.deepEqual([90, 119, 150, 300, 600, 5400, 7200, 86400].map(quiet), ['90 seconds', '119 seconds', '2 minutes 30 seconds', '5 minutes', '10 minutes', '1 hour 30 minutes', '2 hours', '24 hours']);
+    // The Ask first line names Decisions only when DSH says it runs (the page never calls it to find out).
+    assert.match(textIn(HeaderCard({ data: { ...base, defaultRule: 'ask' }, busy: false, act, decisions: true })), /on this page and in Decisions/);
+    assert.doesNotMatch(textIn(HeaderCard({ data: { ...base, defaultRule: 'ask' }, busy: false, act, decisions: false })), /Decisions/);
     const toggle = elementsOf(head).find((e) => e.type === 'Switch');
     assert.equal(toggle.props.checked, true);
     toggle.props.onChange(false);
@@ -665,6 +1109,16 @@ test('browser half: the page\'s cards say what to do next, in plain words', () =
     const waiting = WaitingCard({ data, busy: false, act, onOpen: () => {} });
     assert.match(textIn(waiting), /Tell it to carry on\?/);
     assert.match(textIn(waiting), /Autopilot backed off: its notes brought no progress\./);
+    const tagIn = (tree) => textIn(elementsOf(tree).find((e) => e.type === 'Tag'));
+    assert.equal(tagIn(waiting), 'backed off');
+    // A give-up is tagged with its own word, and a row whose tries are spent says it gives up next, not that it retries.
+    const gave = WaitingCard({ data: { ...data, asks: [], sessions: [{ ...data.sessions[0], backedOff: undefined, gaveUp: 5 }] }, busy: false, act, onOpen: () => {} });
+    assert.match(textIn(gave), /Autopilot stopped retrying: it kept failing\./);
+    assert.equal(tagIn(gave), 'gave up');
+    const at = Date.now() + 10 * MIN;
+    const nextOf = (trigger) => /next: ([^·]+)/.exec(textIn(SessionsCard({ data: { ...data, sessions: [{ ...data.sessions[0], next: { trigger, at } }] }, busy: false, act, onOpen: () => {} })))[1].trim();
+    assert.match(nextOf('giveup'), /^gives up at /);
+    assert.match(nextOf('error'), /^retry at /);
     elementsOf(waiting).find((e) => e.type === 'Button' && textIn(e) === 'Try again').props.onClick();
     assert.deepEqual(acts.at(-1), ['retry', { sessionId: 's' }]);
     elementsOf(waiting).find((e) => e.type === 'Button' && textIn(e) === 'Leave it').props.onClick();
@@ -704,6 +1158,18 @@ test('page: a session\'s last action in a few words, names kept as written', () 
     assert.equal(lastWords({ kind: 'nudge', text: 'Told it to carry on with its todos' }), 'told it to carry on with its todos');
     assert.equal(lastWords({ kind: 'ask', text: '“Config cleanup” stopped with 1 open todo. Tell it to carry on?' }), 'asked you');
     assert.equal(lastWords({ kind: 'skip', text: '' }), '');
+    // What happened, by the entry's state: a refused or unproven start, a note that never arrived.
+    const start = { kind: 'rearm', text: 'Started its goal again after an error' };
+    assert.equal(lastWords({ ...start, state: 'started' }), 'started its goal again after an error');
+    assert.equal(lastWords({ ...start, state: 'not started', reason: 'DSH refused to start it: goal "g" exhausted 4 goal rounds; increase maxGoalRounds before resuming' }), 'DSH refused to start its goal');
+    assert.equal(lastWords({ ...start, state: 'not started', reason: 'DSH stopped before a round began (a crash or a forced quit)' }), 'its goal did not start');
+    assert.equal(lastWords({ ...start, state: 'waiting for a round' }), 'starting its goal');
+    const note = { kind: 'nudge', text: 'Told it to carry on with its todos', note: '[Autopilot] Carry on.' };
+    assert.equal(lastWords({ ...note, state: 'not delivered' }), 'its note was not delivered');
+    assert.equal(lastWords({ ...note, state: 'not proven' }), 'its note may not have arrived');
+    assert.equal(lastWords({ ...note, state: 'in the queue' }), 'its note waits in the queue');
+    assert.equal(lastWords({ ...note, state: 'delivered' }), 'told it to carry on with its todos');
+    assert.equal(lastWords({ kind: 'giveup', text: 'Stopped retrying after errors', state: 'gave up' }), 'stopped retrying after errors');
 });
 
 // ── Round 1 findings: holds, a wrong setting, the switch, settings in Plugins ──
@@ -754,13 +1220,13 @@ test('holds: a quiet session with open work that Autopilot leaves alone says why
         'blocked-goal': 'waits for you: its goal is blocked',
         stopped: 'you stopped its last turn, so Autopilot leaves it to you',
         left: 'Autopilot already handled its last turn; it looks again after the next one',
-        fresh: undefined,
+        fresh: 'waits for your answer: Autopilot asked whether to tell it to carry on',
     });
-    // The page puts the reason on the row; a session with a question waiting, or a check pending, needs none.
+    // The page puts the reason on the row (a question of Autopilot's waiting says so); a check pending needs none.
     const view = await pageState({ pilot, watch, journal, config });
     const byId = Object.fromEntries(view.sessions.map((row) => [row.sessionId, row]));
     assert.equal(byId.asks.hold, 'waits for you: its last reply asks you something');
-    assert.equal(byId.fresh.hold, undefined);
+    assert.equal(byId.fresh.hold, 'waits for your answer: Autopilot asked whether to tell it to carry on');
     assert.equal(view.asks.map((ask) => ask.sessionId).join(), 'fresh');
     // Off, or a rule of Off, says it in the switch and the rule: no hold on top.
     pilot.setRule('asks', 'off');
@@ -902,6 +1368,19 @@ test('settings: read live, checked once per change, and a save says in the log w
     assert.equal(logged.at(-1)[0], 'info');
     current = 90;
     assert.deepEqual(savedEntry(check, [['idleSeconds']]), { kind: 'settings', text: 'Settings changed: “Quiet time before a note”', why: 'They apply now.', state: 'done' });
+    // With the values before and after (index.js keeps them), each change says its new value and the old one.
+    assert.equal(savedEntry(check, [['idleSeconds']], { before: { idleSeconds: 600 }, after: { idleSeconds: 90 } }).text, 'Settings changed: “Quiet time before a note” now 90 seconds (was 600 seconds)');
+    assert.equal(savedEntry(check, [['idleSeconds'], ['maxNudges'], ['errorRetrySeconds'], ['resumeAfterRestart']], { before: { idleSeconds: 600, maxNudges: 2, errorRetrySeconds: [120, 600, 1800], resumeAfterRestart: true }, after: { idleSeconds: 90, maxNudges: 3, errorRetrySeconds: [30, 90], resumeAfterRestart: false } }).text,
+        'Settings changed: “Quiet time before a note” now 90 seconds (was 600 seconds), “Notes in a row without progress” now 3 (was 2), “Waits before each try after an error” now 30, 90 seconds (was 120, 600, 1800 seconds), “Resume after a restart” now off (was on)');
+    assert.equal(savedEntry(check, [['resumeWindowHours']], { before: { resumeWindowHours: 6 }, after: { resumeWindowHours: 1 } }).text, 'Settings changed: “Resume sessions cut off within” now 1 hour (was 6 hours)');
+    // A value in quotes keeps them, so the log shows it was text; the fix says what it is now.
+    current = '90';
+    const quoted = savedEntry(check, [['idleSeconds']], { before: { idleSeconds: 90 }, after: { idleSeconds: '90' } });
+    assert.equal(quoted.text, 'Settings changed: “Quiet time before a note” now "90" (was 90 seconds); Autopilot waits until a wrong one is fixed');
+    current = 90;
+    const fixed = savedEntry(check, [['idleSeconds']], { before: { idleSeconds: '90' }, after: { idleSeconds: 90 } });
+    assert.equal(fixed.text, 'Settings fixed: Autopilot is working again');
+    assert.equal(fixed.why, 'The change to “Quiet time before a note” now 90 seconds (was "90") fixed it.');
     assert.equal(savedEntry(check, []), undefined, 'nothing changed, nothing logged');
     current = 1;
     const broke = savedEntry(check, [['idleSeconds']]);
@@ -1044,4 +1523,13 @@ test('browser half: when Autopilot cannot work, the page says why and what to do
     // A held session says why on its row.
     const rows = SessionsCard({ data: { ...base, sessions: [{ sessionId: 's', title: 'Parser', folder: 'work', word: 'idle', work: '1 open todo', rule: 'auto', own: false, updatedAt: 1, hold: 'waits for you: its last reply asks you something' }] }, busy: false, act: () => {}, onOpen: () => {} });
     assert.match(textIn(rows), /Waits for you: its last reply asks you something\./);
+    // Open work keeps a session Autopilot gave up on, todos or not (a failed carry-on after a stop has none), and a
+    // failed one with nothing open, which says why it is left to the person.
+    const gaveUp = { sessionId: 'pb', title: 'Power blip', folder: 'work', word: 'gave up', work: '', rule: 'auto', own: false, updatedAt: 1, gaveUp: 5 };
+    const failedAlone = { sessionId: 'f', title: 'Vacuum', folder: 'work', word: 'failed', work: '', rule: 'auto', own: false, updatedAt: 1, hold: 'its last turn failed with nothing left open (no todos, no goal), so Autopilot leaves it to you' };
+    const quiet = { sessionId: 'q', title: 'Done', folder: 'work', word: 'idle', work: '', rule: 'auto', own: false, updatedAt: 1 };
+    const openWork = textIn(SessionsCard({ data: { ...base, sessions: [gaveUp, failedAlone, quiet] }, busy: false, act: () => {}, onOpen: () => {} }));
+    assert.match(openWork, /Power blip/);
+    assert.match(openWork, /Its last turn failed with nothing left open \(no todos, no goal\), so Autopilot leaves it to you\./);
+    assert.doesNotMatch(openWork, /Done/);
 });

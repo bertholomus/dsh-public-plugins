@@ -280,9 +280,15 @@ export function editSummary(turn, edits, folder = '') {
 /** A path inside the folder written relative to it, as the records keep it; any other path as it is. */
 export function placeIn(folder, path) {
     const root = typeof folder === 'string' ? folder.replace(/\/+$/, '') : '';
-    const p = root !== '' && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path;
+    const within = (r, p) => (r !== '' && p.startsWith(`${r}/`) ? p.slice(r.length + 1) : undefined);
+    // On macOS /var, /tmp and /etc are links into /private, and DSH 0.2.0 names a folder there by its real path
+    // while a tool names a file by the path it was given: one place, two spellings.
+    const p = within(root, path) ?? within(unprivate(root), unprivate(path)) ?? path;
     return p.replace(/^(\.\/)+/, '');
 }
+
+/** A path under macOS's /private/var, /private/tmp or /private/etc, as its usual spelling (/var, /tmp, /etc). */
+const unprivate = (path) => path.replace(/^\/private(?=\/(?:var|tmp|etc)(?:\/|$))/, '');
 
 /**
  * A thread's changes as its Changes tab shows them: each file with its

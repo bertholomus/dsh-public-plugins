@@ -4,6 +4,7 @@
  *
  * @module dsh-plugin-proof/page
  */
+import { unquoted } from './config.js';
 import { countsOf, ledgerOf, withChecks } from './ledger.js';
 
 /** Log entries the page's history lists, newest first. */
@@ -53,7 +54,9 @@ async function titlesOf(dsh) {
  * session that is not on the list of sessions with claims is still named.
  */
 export async function pageState({ config, check, verifier, journal, rows, dsh }) {
-    const problem = check?.problem;
+    // A number or true/false in quotes that would be right without them: the page offers to save it so.
+    const fix = check?.problem?.live && check.problem.key ? unquoted(config, check.problem.key) : undefined;
+    const problem = check?.problem && (fix === undefined ? check.problem : { ...check.problem, unquoted: fix });
     const on = working({ config, check });
     const [names, titles, sessions] = await Promise.all([namesOf(config, dsh), titlesOf(dsh), on ? rows() : []]);
     const titled = (entry) => (entry.sessionId && titles.has(entry.sessionId) ? { ...entry, title: titles.get(entry.sessionId) } : entry);

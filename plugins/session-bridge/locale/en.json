@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Session Bridge",
+    "description": "Lets scripts and scheduled jobs on this Mac start, prompt, steer and read DSH sessions, and retry them safely."
+  }
+}

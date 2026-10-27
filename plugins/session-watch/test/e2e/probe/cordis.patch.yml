@@ -1,0 +1,4 @@
+# The stand-in user of Session Watch (plugins/session-watch/test/e2e/probe: tests only).
+- insert:
+    - id: session-watch-probe
+      name: dsh-plugin-session-watch-probe

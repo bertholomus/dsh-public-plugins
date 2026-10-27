@@ -25,6 +25,7 @@ export const CHECK_WORDS = Object.freeze({
     'not-verified': 'Not verified',
     unclear: 'Unclear',
     failed: 'Could not check',
+    cancelled: 'Stopped',
 });
 
 /** The most claims one ledger holds (a session that makes more keeps its latest). */
@@ -43,8 +44,10 @@ export function titleOf(item) {
 }
 
 /**
- * The sessions with claims, newest first, from DSH's session list (its
- * `items`): each with how many claims it made and how many are flagged.
+ * The sessions with claims, from DSH's session list (its `items`), the one
+ * flagged last first (`at`: its latest flagged claim's time, else when the
+ * session last changed): each with how many claims it made and how many are
+ * flagged.
  * Proof's own check threads are left out. `checkOf(sessionId, claimId)`
  * gives a claim's independent check: a flagged claim a check verified is
  * counted as verified, not flagged.
@@ -60,11 +63,15 @@ export function sessionRows(items, { limit = 300, checkOf } = {}) {
         };
         const open = view.flagged.filter((c) => !verifiedNow(c));
         const last = open.at(-1);
+        const updatedAt = Number.isFinite(item.updatedAt) ? item.updatedAt : 0;
+        // Its latest claim's time (a flagged claim's, which the view keeps), else when the session last changed.
+        const claimedAt = view.flagged.reduce((n, c) => (Number.isFinite(c.at) && c.at > n ? c.at : n), 0);
         rows.push({
             sessionId: item.sessionId,
             title: titleOf(item),
             cwd: typeof item.cwd === 'string' ? item.cwd : '',
-            updatedAt: Number.isFinite(item.updatedAt) ? item.updatedAt : 0,
+            updatedAt,
+            at: claimedAt || updatedAt,
             running: item.running === true,
             total: view.total,
             flagged: open.length,
@@ -73,7 +80,8 @@ export function sessionRows(items, { limit = 300, checkOf } = {}) {
             ...(last ? { latest: { id: last.id, turn: last.turn, verdict: last.verdict, text: last.text } } : {}),
         });
     }
-    rows.sort((a, b) => b.updatedAt - a.updatedAt);
+    // The session flagged last listed first.
+    rows.sort((a, b) => b.at - a.at || b.updatedAt - a.updatedAt);
     return rows.slice(0, limit);
 }
 
@@ -147,7 +155,11 @@ const FORMATS = Object.freeze({
 export const EXPORT_FORMATS = Object.freeze(Object.keys(FORMATS));
 
 const oneLine = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
-const day = (at) => new Date(at).toISOString().slice(0, 10);
+/** The local day, as the person's calendar has it: an export made at 11 PM is named for that day, not tomorrow's. */
+const day = (at) => {
+    const d = new Date(at);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 const when = (at) => (Number.isFinite(at) && at > 0 ? new Date(at).toISOString().replace(/\.\d{3}Z$/, 'Z') : '');
 
 /** A check in words: "Verified: re-ran npm test, 42 passed." */

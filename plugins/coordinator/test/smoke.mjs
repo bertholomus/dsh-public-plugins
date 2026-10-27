@@ -9,7 +9,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateJsonSchemaValue } from '@deepseek-ai/dsh-tools';
@@ -18,11 +18,12 @@ import * as plugin from '../lib/index.js';
 import { effectiveSettings, effectiveAccess, applyRoute, checkSelection, parseModelSpec, pluginDefaults } from '../lib/settings.js';
 import { timing, clipTitle, guardList, guardedIn, personalMark, withPersonal, unsaidPart } from '../lib/projects.js';
 import { changeRecord, withChange, changeTotals, changesLine, MAX_TURNS, lineDelta, editOf, editsIn, editSummary, hunksOf, subagentsIn, diffFiles, placeIn, MAX_HUNK_CHARS, MAX_VIEW_CHARS } from '../lib/changes.js';
-import { describeEnding, endingStateOf, continueMessage, readableError, handbackSummary, handbackMessage, idleMessage, approvalMessage, questionMessage, userMustFix, cardSummary, threadMarkdown, outsideMessage, replyMessage, NUDGE, IDLE_NUDGE } from '../lib/prompts.js';
+import { describeEnding, endingStateOf, continueMessage, readableError, handbackSummary, handbackMessage, idleMessage, approvalMessage, questionMessage, userMustFix, cardSummary, threadMarkdown, outsideMessage, replyMessage, againMessage, NUDGE, IDLE_NUDGE } from '../lib/prompts.js';
 import { ProjectStore, dataPath, dshHome } from '../lib/store.js';
 import { NetTexts, canonicalPath } from '../lib/net.js';
 import { grantsIn, asksFor } from '../lib/grants.js';
 import { deletesOf, codeDeletesOf, isFree, identityOf, CLOCK_SLACK_MS } from '../lib/deletes.js';
+import { ownWrite, Mutations } from '../lib/shell.js';
 
 // No test reads or writes the real ~/.dsh: DSH's data folder is this run's own, as a DSH
 // started with DSH_HOME has. Set before anything resolves a default path; removed at exit.
@@ -363,7 +364,9 @@ function fakeHost({ selection = false, hostListener = selection, gateway = false
             }),
             schemas: () => host.toolNames.map((name) => ({ name })),
         },
-        logger: { info() {}, warn() {} },
+        /** What the plugin tells DSH's logger at info level, as lines; `started` waits for its start's line. */
+        said: [],
+        logger: { info: (format, ...args) => { host.said.push(args.reduce((text, arg) => text.replace(/%[sd]/, String(arg)), format)); }, warn() {} },
         provide(name, value) { provided.set(name, value); },
         get: (name) => services[name],
         /** Like cordis: run the callback only when every named service is present. */
@@ -592,7 +595,8 @@ test('config: defaults, and nothing to set up per chat', () => {
     assert.equal(c.memoryDir, '~/.dsh/coordinator/memory');
     // A chat coordinates with /coordinate: no list of projects, no welcome, and no settings for the chat itself.
     for (const key of ['projects', 'welcome', 'coordinatorModel', 'coordinatorEffort', 'coordinatorPermission']) assert.equal(Object.hasOwn(c, key), false, key);
-    assert.throws(() => plugin.Config({ autoHandback: 'always' }));
+    // Any value passes the schema, so a wrong one can't stop the plugin: lib/config.js checks it in words.
+    assert.doesNotThrow(() => plugin.Config({ autoHandback: 'always', maxHandbacksPerHour: 'x', trustedHosts: 'nas' }));
     assert.equal(plugin.name, 'coordinator');
     assert.ok(plugin.inject.includes('sessionController') && plugin.inject.includes('systemPrompt'));
 });
@@ -653,7 +657,7 @@ test('/coordinate off: the chat is a plain chat again; its threads keep running 
     await coord.ctx.call('thread_start', { ask: 'Please do this.', title: 'Docs', brief: 'Write docs.' });
     const thread = threadOf(host, coord);
     const cp = host.sessions.get(CHAT).prompts;
-    assert.deepEqual(await coordinateIn(host, coord, 'off'), { kind: 'success', text: 'Stopped coordinating. Its thread keeps running; reports wait until you run /coordinate here again.' });
+    assert.deepEqual(await coordinateIn(host, coord, 'off'), { kind: 'success', text: 'Stopped coordinating. Its thread stays open (idle); what it hands back waits until you run /coordinate here again.' });
     assert.deepEqual([coord.ctx.registered.size, coord.ctx.sections.size], [0, 0]);
     assert.equal(storedIn(dir).off, true);
     // Its thread keeps its tools and its guards; what it hands back waits.
@@ -679,6 +683,19 @@ test('/coordinate off: the chat is a plain chat again; its threads keep running 
     assert.deepEqual(Object.keys(JSON.parse(readFileSync(join(dir, 'coordinator.json'), 'utf8')).projects), [CHAT]);
     assert.equal(storedIn(dir).off, undefined);
     assert.match(readFileSync(join(dir, 'coordinator.log'), 'utf8'), / coordinate dsh-plugins off\n[^]* coordinate dsh-plugins on again\n/);
+    // The answer counts what runs: of three open threads, one running (one more is resolved and not counted).
+    await coord.ctx.call('thread_start', { ask: 'Please do this.', title: 'Tests', brief: 'Run the tests.' });
+    await coord.ctx.call('thread_start', { ask: 'Please do this.', title: 'Lint', brief: 'Lint it.' });
+    await coord.ctx.call('thread_start', { ask: 'Please do this.', title: 'Old', brief: 'Old work.' });
+    await coord.ctx.call('thread_update', { thread: 't4', resolved: true });
+    const t2 = host.live.get(storedIn(dir).threads.t2.sessionId);
+    t2.ctx.emitStatus(t2, 'running');
+    assert.equal((await coordinateIn(host, coord, 'off')).text, 'Stopped coordinating. Its 3 threads stay open (1 running); what they hand back waits until you run /coordinate here again.');
+    await coordinateIn(host, coord, 'on');
+    await tick();
+    for (const id of ['t1', 't3']) { const a = host.live.get(storedIn(dir).threads[id].sessionId); a.ctx.emitStatus(a, 'running'); }
+    assert.equal((await coordinateIn(host, coord, 'off')).text, 'Stopped coordinating. Its 3 threads stay open (all running); what they hand back waits until you run /coordinate here again.');
+    for (const id of ['t1', 't2', 't3']) { const a = host.live.get(storedIn(dir).threads[id].sessionId); a.status = 'idle'; }
 });
 
 test('/coordinate is refused in a thread, a subagent\'s session and a chat without a folder; a chat DSH no longer has is marked gone', async () => {
@@ -1287,7 +1304,8 @@ test('old session records: each coordinating chat and thread DSH lists without a
     const raw = { storeFile: join(dir, 'coordinator.json'), memoryDir: join(dir, 'memory'), logFile: join(dir, 'coordinator.log') };
     plugin.apply(host, plugin.Config(raw));
     const log = () => { try { return readFileSync(raw.logFile, 'utf8'); } catch { return ''; } };
-    for (let i = 0; i < 50 && !/records refreshed/.test(log()); i += 1) await tick();
+    // By time, not a count of ticks, so a busy machine waits longer.
+    for (const end = Date.now() + 20000; !/records refreshed/.test(log()) && Date.now() < end;) await tick();
     // Read again: each one DSH lists without a value and hasn't loaded; not the loaded one, the current one, or one DSH no longer has.
     assert.deepEqual(reads, [['c1', 0, 1], ['c2', 0, 1], ['b1', 0, 1]]);
     assert.match(log(), /records refreshed=3/);
@@ -1334,7 +1352,8 @@ test('window: Coordinate and the Thread settings endpoints read and change a cha
     for (const name of ['create', 'rename', 'remove', 'addCoordinator', 'createCategory', 'renameCategory', 'removeCategory', 'moveCategory', 'fileWorkspace', 'listCategories']) {
         assert.equal(name in remote, false, name);
     }
-    assert.deepEqual(Object.keys(await remote.list()).sort(), ['guarded', 'permissions', 'projects']);
+    assert.deepEqual(Object.keys(await remote.list()).sort(), ['guarded', 'permissions', 'problems', 'projects', 'store']);
+    assert.deepEqual((await remote.list()).problems, [], 'no setting to fix');
     const refused = async (promise, pattern) => {
         await assert.rejects(promise, (error) => error.code === 'coordinator/refused' && pattern.test(error.message));
     };
@@ -1395,7 +1414,7 @@ test('window: Coordinate and the Thread settings endpoints read and change a cha
 
     // Coordinate in the chat's header: the same as the command, logged in the chat; refused for a thread.
     let done = await remote.coordinate(coord.id, false);
-    assert.deepEqual(plain([done.coordinating, done.session, done.text, done.projects[0].off]), [false, coord.id, 'Stopped coordinating. Its thread keeps running; reports wait until you run /coordinate here again.', true]);
+    assert.deepEqual(plain([done.coordinating, done.session, done.text, done.projects[0].off]), [false, coord.id, 'Stopped coordinating. Its thread stays open (idle); what it hands back waits until you run /coordinate here again.', true]);
     done = await remote.coordinate(coord.id, true);
     assert.deepEqual(plain([done.coordinating, done.text]), [true, 'Coordinating. Ask for work here as usual: what runs long or splits into parts goes to threads that report back to this chat.']);
     assert.deepEqual(host.sessions.get(CHAT).events.filter((e) => e.type === 'command/run').map((e) => e.data.args), ['', ' off', '']);
@@ -1781,6 +1800,46 @@ test('a permission prompt tells the coordinator at once', async () => {
     assert.equal(cp.length, 1);
 });
 
+test('the chat\'s roster says how the user answered a thread\'s prompt, and what it was, until the thread hands back (round-1 finding 5)', async () => {
+    const work = mkdtempSync(join(tmpdir(), 'projects-answer-'));
+    mkdirSync(join(work, 'build'));
+    writeFileSync(join(work, 'build', 'app.o'), 'object\n');
+    const { host } = setup({}, undefined, { presets: true, gateway: true }, { folder: work });
+    host.services.approval = { effectivePolicy: () => 'ask' };
+    await tick();
+    const coord = coordinatorOf(host);
+    await coord.ctx.call('thread_start', { ask: 'Clean up this folder.', title: 'Clean', brief: 'List what looks like junk.' });
+    const thread = threadOf(host, coord);
+    const line = () => coord.ctx.section().split('\n').find((l) => l.startsWith('- t1 '));
+    // The plugin holds its rm, and DSH puts the prompt in front of the user.
+    const held = await host.waterfall('tools/pre-execute', { name: 'bash', arguments: { command: 'rm -rf build/' }, agent: thread, callId: 'c1' }, () => Promise.resolve({ kind: 'allow' }));
+    assert.equal(held.kind, 'ask');
+    thread.ctx.sessionEvent({ type: 'approval/asked', data: { id: 'a1', toolName: 'bash', callId: 'c1', reason: held.reason } });
+    await tick();
+    assert.match(line(), / · no handback yet$/, 'nothing answered yet');
+    // Before, the line said only that until the thread's handback, so the chat's reply said it still waited on the user.
+    thread.ctx.sessionEvent({ type: 'approval/decided', data: { id: 'a1', outcome: 'rejected' } });
+    await tick();
+    assert.match(line(), /^- t1 · "Clean" · \w+ · no handback yet · the user declined its command that deletes build\/ \(rm\) at \d{1,2}:\d\d [AP]M \(it was told to hand back needs_decision\)$/);
+    // DSH's own prompt (no call the plugin held) is named by its tool; an Allow says so, with no hand-back note.
+    thread.ctx.sessionEvent({ type: 'approval/asked', data: { id: 'a2', toolName: 'write', reason: 'outside the workspace' } });
+    thread.ctx.sessionEvent({ type: 'approval/decided', data: { id: 'a2', outcome: 'allowed-once' } });
+    await tick();
+    assert.match(line(), / · the user allowed its write call at \d{1,2}:\d\d [AP]M$/);
+    // A prompt DSH cancelled (the turn stopped) is no answer of the user's.
+    thread.ctx.sessionEvent({ type: 'approval/asked', data: { id: 'a3', toolName: 'bash' } });
+    thread.ctx.sessionEvent({ type: 'approval/decided', data: { id: 'a3', outcome: 'cancelled' } });
+    await tick();
+    assert.match(line(), / · the user allowed its write call at /);
+    // The handback after it is the news: the answer leaves the line.
+    thread.ctx.emitStatus(thread, 'running');
+    await new Promise((r) => setTimeout(r, 5));
+    assert.equal(await thread.ctx.call('thread_handback', { status: 'needs_decision', summary: 'The user declined deleting build/; nothing else to clean.' }), 'Handback delivered to the coordinator.');
+    await tick();
+    assert.doesNotMatch(line(), /the user (allowed|declined)/);
+    assert.match(line(), /last handback: needs_decision/);
+});
+
 test('with approvalNoticeSeconds set, a permission prompt tells the coordinator once left unanswered that long', async () => {
     const { host } = setup({ approvalNoticeSeconds: 0.02 });
     await tick();
@@ -1890,7 +1949,9 @@ test('a permission prompt notice still waiting out approvalNoticeSeconds stops w
     assert.equal(host.sessions.get(coord.id).prompts.length, 0);
     // At once is the default; a wait can't be less than none.
     assert.equal(plugin.Config({}).approvalNoticeSeconds, 0);
-    assert.throws(() => setup({ approvalNoticeSeconds: -1 }), /approvalNoticeSeconds/);
+    // A wait below none is a setting to fix, not a reason to stop: the plugin tells the chat at once meanwhile.
+    const { dir } = setup({ approvalNoticeSeconds: -1 });
+    assert.match(readFileSync(join(dir, 'coordinator.log'), 'utf8'), / config-problem approvalNoticeSeconds\n/);
 });
 
 // ── turns DSH runs back to back, and turns the plugin did not see end ──────
@@ -2694,6 +2755,100 @@ test('a thread turn cut off by DSH closing is reported at the next start, once, 
     assert.equal(third.sessions.get(thread.id).prompts.length, 0, 'not sent on');
 });
 
+test('a handback the chat was answering when DSH closed is sent to it again at the next start, once, from its thread; nothing else is', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'projects-'));
+    const first = setup({}, dir);
+    await tick();
+    const coord = coordinatorOf(first.host);
+    await coord.ctx.call('thread_start', { ask: 'Please do this.', title: 'Docs', brief: 'Write docs.' });
+    const thread = threadOf(first.host, coord);
+    thread.ctx.emitStatus(thread, 'running');
+    await thread.ctx.call('thread_handback', { status: 'needs_decision', summary: 'Delete README.md or keep it?' });
+    thread.ctx.emitStatus(thread, 'idle');
+    await tick();
+    // The chat's turn takes the handback, and DSH quits (or crashes) before it answers.
+    turnMarks(first.host, coord.id).start();
+    assistantSays(first.host, coord.id, 'Let me look at');
+    const handback = first.host.sessions.get(coord.id).prompts[0].text;
+    // The chat's turn started (it takes the handback), and never ends.
+    coord.ctx.emitStatus(coord, 'running');
+    assert.match(handback, /^\[Handback from thread t1 · "Docs" · status: needs_decision\]\n\nDelete README\.md or keep it\?\n\n\(The user has not seen this\. Reply now\./);
+
+    const second = restart(first.host.sessions, first.config);
+    await tick();
+    const sent = second.sessions.get(coord.id).prompts;
+    assert.equal(sent.length, 1, 'sent once more');
+    assert.equal(sent[0].text, handback.replace('\n\n(The user has not seen this.', '\n\n(DSH closed before you answered this, so the plugin sends it again, once. The user has not seen this.'));
+    assert.deepEqual(sourceOf(second.sessions.get(coord.id), 1), { kind: 'agent-message', form: 'relay', senderSessionId: thread.id }, 'it comes from its thread, as it did');
+    // Its body and its card read as before.
+    assert.equal(handbackSummary(sent[0].text), 'Delete README.md or keep it?');
+    const log = () => readFileSync(join(dir, 'coordinator.log'), 'utf8');
+    assert.match(log(), / raise-cut dsh-plugins turn=\d+ messages=1\n/);
+    // Nothing for the thread: its turn had ended with its handback.
+    assert.deepEqual(second.sessions.get(thread.id).prompts, []);
+
+    // Another start finds the same cut turn (the chat hasn't answered yet): nothing is sent again.
+    const third = restart(first.host.sessions, first.config);
+    await tick();
+    assert.equal(third.sessions.get(coord.id).prompts.length, 0, 'once');
+    assert.equal(log().match(/ raise-cut /g).length, 1);
+});
+
+test('a chat\'s cut-off turn sends nothing again when it took only the user\'s words or an approval note, or when it finished', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'projects-'));
+    const first = setup({}, dir);
+    await tick();
+    const coord = coordinatorOf(first.host);
+    const typed = userTyping(first.host);
+    // The user's own message, cut off: theirs to send again, not the plugin's.
+    await typed(coord, 'Plan the release.');
+    turnMarks(first.host, coord.id).start();
+    let next = restart(first.host.sessions, first.config);
+    await tick();
+    assert.equal(next.sessions.get(coord.id).prompts.length, 0);
+    // An approval note: the prompt it was about closed with DSH (the thread's cut-off note says so instead).
+    const events = first.host.sessions.get(coord.id).events;
+    events.push({ seq: events.length + 1, type: 'turn/end', data: { reason: { kind: 'interrupted' } } });
+    first.host.sessions.get(coord.id).events.push({ seq: events.length + 1, type: 'user/message', time: Date.now(), data: { role: 'user', content: [{ type: 'text', text: '[Thread waiting for approval: t1 · "Docs"]\n\nIt waits.\n\n(Tell the user in one line.)' }], source: { kind: 'cordis-host-runner' } } });
+    turnMarks(first.host, coord.id).start();
+    next = restart(first.host.sessions, first.config);
+    await tick();
+    assert.equal(next.sessions.get(coord.id).prompts.length, 0);
+    // A handback whose turn finished: answered.
+    events.push({ seq: events.length + 1, type: 'turn/end', data: { reason: { kind: 'interrupted' } } });
+    events.push({ seq: events.length + 1, type: 'user/message', time: Date.now(), data: { role: 'user', content: [{ type: 'text', text: '[Handback from thread t1 · "Docs" · status: done]\n\nDone.\n\n(The user has not seen this. Reply now.)' }], source: { kind: 'agent-message', form: 'relay', senderSessionId: 's1' } } });
+    turnMarks(first.host, coord.id).start();
+    assistantSays(first.host, coord.id, 'Docs is done.');
+    turnMarks(first.host, coord.id).end();
+    next = restart(first.host.sessions, first.config);
+    await tick();
+    assert.equal(next.sessions.get(coord.id).prompts.length, 0);
+    assert.doesNotMatch(readFileSync(join(dir, 'coordinator.log'), 'utf8'), / raise-cut /);
+    // A chat whose turn took the plugin's message and ended is not read at the next start: only a turn the plugin never
+    // saw end is looked for.
+    const { host, config } = setup({}, mkdtempSync(join(tmpdir(), 'projects-')));
+    await tick();
+    const chat = coordinatorOf(host);
+    await chat.ctx.call('thread_start', { ask: 'Please do this.', title: 'Docs', brief: 'Write docs.' });
+    const t1 = threadOf(host, chat);
+    t1.ctx.emitStatus(t1, 'running');
+    await t1.ctx.call('thread_handback', { status: 'done', summary: 'Docs written.' });
+    t1.ctx.emitStatus(t1, 'idle');
+    await tick();
+    chat.ctx.emitStatus(chat, 'running');
+    chat.ctx.emitStatus(chat, 'idle');
+    const inspect = host.sessionController.inspect;
+    const reads = [];
+    host.sessionController.inspect = (id, ...rest) => { reads.push(id); return inspect(id, ...rest); };
+    await reload(host, config);
+    await tick();
+    assert.deepEqual(reads.filter((id) => id === chat.id), [], 'its turn ended: no read of its log');
+    // againMessage keeps the closing note one note, whatever the message.
+    assert.equal(againMessage('[Reply from "Ops"]\n\nNo.'), '[Reply from "Ops"]\n\nNo.\n\n(DSH closed before you answered this, so the plugin sends it again, once.)');
+    assert.equal(againMessage(againMessage('[Reply from "Ops"]\n\nNo.')), againMessage('[Reply from "Ops"]\n\nNo.'), 'never twice');
+    assert.equal(handbackSummary(againMessage('[Reply from "Ops"]\n\nNo.')), 'No.');
+});
+
 test('a thread waiting on a permission prompt when DSH quits gets the cut-off note at the next start, not another approval note', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'projects-'));
     const first = setup({ approvalNoticeSeconds: 0.02 }, dir);
@@ -2989,6 +3144,90 @@ test('store: a reload keeps one copy, so a tool call that outlives the old insta
     assert.deepEqual([saved.settings.threadEffort, saved.threads.t1?.title], ['max', 'Late']);
 });
 
+test('store: a file it can\'t read is kept aside under a new name, never written over, and said in the log and on the page', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'projects-'));
+    const file = join(dir, 'coordinator.json');
+    // A record cut short (a full disk, a bad copy): a chat, its thread and a held handback in it.
+    const cut = '{\n  "version": 1,\n  "projects": {\n    "dsh-plugins": {\n      "coordinatorSessionId": "dsh-plugins",\n      "threads": { "t1": { "sessionId": "s9", "ti';
+    writeFileSync(file, cut);
+    const { host } = setup({}, dir, { gateway: true }, { chat: false });
+    await tick();
+    const kept = readdirSync(dir).filter((name) => name.startsWith('coordinator.json.unreadable-'));
+    assert.equal(kept.length, 1, 'one copy kept aside');
+    assert.match(kept[0], /^coordinator\.json\.unreadable-\d{4}-\d\d-\d\dT\d\d-\d\d-\d\d-\d{3}Z$/);
+    assert.equal(readFileSync(join(dir, kept[0]), 'utf8'), cut, 'byte for byte');
+    assert.equal(statSync(join(dir, kept[0])).mode & 0o777, 0o600);
+    const log = () => readFileSync(join(dir, 'coordinator.log'), 'utf8');
+    assert.match(log(), new RegExp(` store-unreadable ${file.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')} \\(it is not whole JSON\\) kept as .*${kept[0]}\\n`));
+    const remote = host.provided.get('dshPluginCoordinatorRemote');
+    const listed = await remote.list();
+    assert.deepEqual(listed.projects, []);
+    assert.equal(listed.store.length, 1);
+    assert.match(listed.store[0], new RegExp(`^At \\d{1,2}:\\d\\d [AP]M the plugin couldn't read its record of coordinating chats \\(it is not whole JSON\\), so it started without them\\. That file is kept as ${kept[0]} in .*: to bring them back, put it back as coordinator\\.json while DSH is closed, or run /coordinate again in each chat\\.$`));
+    // The next save writes a new record; the copy stays as it was.
+    assert.equal((await coordinateIn(host, openChat(host, CHAT, { title: 'DSH Plugins' }))).kind, 'success');
+    assert.equal(JSON.parse(readFileSync(file, 'utf8')).projects[CHAT].coordinatorSessionId, CHAT);
+    assert.equal(readFileSync(join(dir, kept[0]), 'utf8'), cut);
+    assert.equal(log().match(/ store-unreadable /g).length, 1, 'said once');
+
+    // Another format (a newer version's, or a hand edit) is kept aside too, never read as no chats and written over.
+    const dir2 = mkdtempSync(join(tmpdir(), 'projects-'));
+    writeFileSync(join(dir2, 'coordinator.json'), '{"version":2,"chats":{}}');
+    const second = setup({}, dir2, {}, { chat: false });
+    await tick();
+    const kept2 = readdirSync(dir2).filter((name) => name.startsWith('coordinator.json.unreadable-'));
+    assert.equal(kept2.length, 1);
+    assert.equal(readFileSync(join(dir2, kept2[0]), 'utf8'), '{"version":2,"chats":{}}');
+    assert.match(readFileSync(join(dir2, 'coordinator.log'), 'utf8'), / store-unreadable .* \(it is not this plugin's record\) kept as /);
+    void second;
+});
+
+test('store: an unreadable file that can\'t be moved aside is never saved over; a failed save is said once, and again when one goes through', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'projects-'));
+    const data = join(dir, 'data');
+    mkdirSync(data);
+    const file = join(data, 'coordinator.json');
+    writeFileSync(file, '{"version":1,"projects":');
+    // The folder can't be written: the file can be neither moved nor copied aside.
+    chmodSync(data, 0o500);
+    try {
+        const { host } = setup({ storeFile: file }, dir, { gateway: true }, { chat: false });
+        await tick();
+        await coordinateIn(host, openChat(host, CHAT, { title: 'DSH Plugins' }));
+        await tick();
+        assert.equal(readFileSync(file, 'utf8'), '{"version":1,"projects":', 'nothing saved over it');
+        const log = readFileSync(join(dir, 'coordinator.log'), 'utf8');
+        assert.match(log, / store-unreadable .* \(it is not whole JSON\) left as it is; nothing is saved over it\n/);
+        assert.match(log, / store-save-failed .* \(the unreadable file is still in its place\)\n/);
+        assert.equal(log.match(/ store-save-failed /g).length, 1, 'said once, not at every change');
+        const listed = await host.provided.get('dshPluginCoordinatorRemote').list();
+        assert.equal(listed.store.length, 2);
+        assert.match(listed.store[0], /^At .* the plugin couldn't read its record of coordinating chats \(it is not whole JSON\) or move it aside, so it saves nothing over it, and what changes now is lost when DSH closes\. Fix or move coordinator\.json in .*data, then switch the plugin off and on\.$/);
+        assert.match(listed.store[1], /^Since .* the plugin can't save its record of coordinating chats \(the unreadable file is still in its place\)\./);
+    } finally {
+        chmodSync(data, 0o700);
+    }
+
+    // A save that fails (a folder where its temporary file goes), then goes through.
+    const dir2 = mkdtempSync(join(tmpdir(), 'projects-'));
+    const { host, raw } = setup({}, dir2, { gateway: true });
+    await tick();
+    mkdirSync(join(dir2, 'coordinator.json.tmp'));
+    const coord = coordinatorOf(host);
+    await coord.ctx.call('thread_start', { ask: 'Please do this.', title: 'Docs', brief: 'Write docs.' });
+    await coord.ctx.call('thread_settings', { thread_effort: 'max' });
+    const log = () => readFileSync(raw.logFile, 'utf8');
+    assert.match(log(), / store-save-failed .*coordinator\.json \(a folder has its name\)\n/);
+    assert.equal(log().match(/ store-save-failed /g).length, 1);
+    assert.equal((await host.provided.get('dshPluginCoordinatorRemote').list()).store.length, 1);
+    rmSync(join(dir2, 'coordinator.json.tmp'), { recursive: true });
+    await coord.ctx.call('thread_settings', { thread_effort: 'low' });
+    assert.match(log(), / store-saved .*coordinator\.json \(after failing since .*\)\n/);
+    const saved = JSON.parse(readFileSync(join(dir2, 'coordinator.json'), 'utf8')).projects[CHAT];
+    assert.deepEqual([saved.threads.t1.title, saved.settings.threadEffort], ['Docs', 'low'], 'what changed meanwhile is saved');
+    assert.deepEqual((await host.provided.get('dshPluginCoordinatorRemote').list()).store, []);
+});
+
 // ── code changes (changes.js) ──────────────────────────────────────────────
 
 test('changes: each turn\'s newest summary is kept, and the totals count a file once', () => {
@@ -3258,6 +3497,103 @@ test('changes: a turn counts its shell edits only when no other session was chan
     assert.deepEqual([read.added, read.deleted, read.files, read.turns], [2, 0, 1, 1], 'only what its own command wrote, alone');
 });
 
+test('changes: a turn whose window another thread shares still counts the files only its own commands wrote (round-1 finding 7)', async () => {
+    const { host, dir } = setup({}, undefined, { ...SELECTING, gateway: true });
+    await tick();
+    const coord = coordinatorOf(host);
+    const remote = host.provided.get('dshPluginCoordinatorRemote');
+    await coord.ctx.call('thread_start', { ask: 'Please do this.', title: 'First', brief: 'Go.' });
+    const t1 = threadOf(host, coord);
+    await coord.ctx.call('thread_start', { ask: 'Please do this.', title: 'Second', brief: 'Go.' });
+    const t2 = [...host.live.values()].find((a) => a.id !== coord.id && a.id !== t1.id);
+    const work = mkdtempSync(join(tmpdir(), 'shell-own-'));
+    writeFileSync(join(work, 'old.txt'), 'o\n');
+    writeFileSync(join(work, 'gone.txt'), 'g\nh\n');
+    for (const t of [t1, t2]) {
+        host.sessions.get(t.id).folder = work;
+        t.session.header = { cwd: work };
+    }
+    // Calls 80 ms apart are told apart here; DSH's runs keep two seconds of slack.
+    remote.manager.mutations.slack = 15;
+    const apart = () => new Promise((r) => setTimeout(r, 80));
+    const events = (id) => host.sessions.get(id).events;
+    const push = (t, type, data) => { const e = { seq: events(t.id).length + 1, type, data }; events(t.id).push(e); t.ctx.sessionEvent(e); return e; };
+    let calls = 0;
+    const shell = (agent, body) => host.waterfall('tools/execute', { name: 'bash', arguments: { command: 'the command' }, agent, callId: `own-${++calls}`, signal: new AbortController().signal }, body);
+    const until = async (probe, what) => {
+        for (let i = 0; i < 500; i++) {
+            if (await probe()) return;
+            await new Promise((r) => setTimeout(r, 10));
+        }
+        assert.fail(`never settled: ${what}`);
+    };
+    const of = async (t) => (await remote.describe(coord.id)).threads.find((x) => x.session === t.id)?.changes ?? null;
+    const log = () => readFileSync(join(dir, 'coordinator.log'), 'utf8');
+    // Both threads' turns run at once, their commands one after another, as two threads on one model do.
+    t1.ctx.emitStatus(t1, 'running');
+    push(t1, 'turn/start', { turn: 1 });
+    t2.ctx.emitStatus(t2, 'running');
+    push(t2, 'turn/start', { turn: 1 });
+    await shell(t1, () => { writeFileSync(join(work, 'one.txt'), '1\n'); return { content: [] }; });
+    await apart();
+    // t2 makes a file of three lines in one command, as the judge's t2 made notes/reversed.txt while t1 ran.
+    await shell(t2, () => { mkdirSync(join(work, 'notes')); writeFileSync(join(work, 'notes', 'reversed.txt'), 'c\nb\na\n'); return { content: [] }; });
+    await apart();
+    // t1 changes a file both snapshots hold and removes another; then t2 changes the first one too.
+    await shell(t1, () => { writeFileSync(join(work, 'old.txt'), 'o\nt1\n'); rmSync(join(work, 'gone.txt')); return { content: [] }; });
+    await apart();
+    await shell(t2, () => { writeFileSync(join(work, 'old.txt'), 'o\nt1\nt2\n'); return { content: [] }; });
+    await apart();
+    for (const t of [t1, t2]) {
+        push(t, 'turn/end', { turn: 1, reason: { kind: 'completed' } });
+        t.ctx.emitStatus(t, 'idle');
+    }
+    await until(async () => (await of(t1)) !== null && (await of(t2)) !== null, 'both turns\' own files');
+    // t2: its new file, born and written in its own command with no other call near. Not old.txt (t1 wrote it after
+    // t2's snapshot), not gone.txt (nothing says whose command removed it), not one.txt (made before its snapshot).
+    const second = plain(await of(t2));
+    assert.deepEqual([second.added, second.deleted, second.files, second.turns], [3, 0, 1, 1], 'only notes/reversed.txt');
+    // t1: one.txt, born and last written in its first command. Not old.txt (last written in t2's command), not gone.txt,
+    // not t2's file.
+    const first = plain(await of(t1));
+    assert.deepEqual([first.added, first.deleted, first.files, first.turns], [1, 0, 1, 1], 'only one.txt');
+    assert.match(log(), new RegExp(` shell-window ${t1.id} turn=1 shared kept=1/4\n`));
+    assert.match(log(), new RegExp(` shell-window ${t2.id} turn=1 shared kept=1/3\n`));
+});
+
+test('changes: a file in a shared window is the thread\'s own only when no other call came near its life (shell.js ownWrite)', () => {
+    const spans = [
+        { owner: 't1', from: 1000, to: 1100, turn: 1 },
+        { owner: 't2', from: 1300, to: 1400, turn: 1 },
+        { owner: 't1', from: 1600, to: 1700, turn: 1 },
+        { owner: 't1', from: 2600, to: 2700, turn: 2 },
+    ];
+    const own = (since, at) => ownWrite(spans, 't1', 1, since, at, 50);
+    assert.equal(own(1050, 1060), true, 'born and written in its own call');
+    assert.equal(own(1050, 1650), false, 'another thread\'s call ran between its birth and its last change');
+    assert.equal(own(1620, 1650), true, 'born after the other call, in its own');
+    assert.equal(own(1250, 1260), false, 'written outside every call of its own');
+    assert.equal(own(1360, 1380), false, 'inside the other thread\'s call');
+    assert.equal(own(1430, 1450), false, 'too near the other call\'s end to tell');
+    assert.equal(own(1700, 1740), true, 'just past its own call\'s end, inside the slack');
+    assert.equal(own(2620, 2650), false, 'its own call of another turn is not this turn\'s');
+    assert.equal(own(Number.NaN, 1050), false, 'no time, no claim');
+    assert.equal(ownWrite([], 't1', 1, 0, 10), false, 'no call at all');
+    // A window's spans: every owner's calls near it, a running one's until now.
+    const m = new Mutations();
+    m.slack = 10;
+    m.begin('a', 1);
+    m.end('a');
+    m.begin('b', null);
+    const near = m.spansIn(Date.now() - 1000, Date.now());
+    assert.deepEqual(near.map((s) => s.owner).sort(), ['a', 'b']);
+    assert.equal(near.find((s) => s.owner === 'a').turn, 1);
+    assert.equal(m.spansIn(Date.now() - 10000, Date.now() - 5000).length, 0, 'a window before both calls holds neither');
+    assert.equal(m.slack, 10);
+    assert.equal(new Mutations().slack, CLOCK_SLACK_MS, 'two seconds unless a test says otherwise');
+    m.end('b');
+});
+
 test('changes: own edits count lines as a diff does', () => {
     const L = (text) => text.split('\n');
     assert.deepEqual(lineDelta(L('one\ntwo\nthree'), L('one\nTWO\nthree')), { added: 1, deleted: 1 });
@@ -3340,6 +3676,12 @@ test('changes: the Changes tab draws each edit\'s hunks as DSH\'s own diff card 
     assert.equal(placeIn('/w', '/w/x/y.md'), 'x/y.md');
     assert.equal(placeIn('/w', '/wx/y.md'), '/wx/y.md');
     assert.equal(placeIn('', './z.md'), 'z.md');
+    // macOS: /var, /tmp and /etc are links into /private; DSH may name the folder one way and a tool the file the other.
+    assert.equal(placeIn('/private/var/folders/q/ws', '/var/folders/q/ws/b.txt'), 'b.txt');
+    assert.equal(placeIn('/var/folders/q/ws', '/private/var/folders/q/ws/sub/b.txt'), 'sub/b.txt');
+    assert.equal(placeIn('/private/tmp/ws/', '/tmp/ws/c.md'), 'c.md');
+    assert.equal(placeIn('/private/var/folders/q/ws', '/var/folders/q/wsx/b.txt'), '/var/folders/q/wsx/b.txt');
+    assert.equal(placeIn('/private/varnish/ws', '/varnish/ws/b.txt'), '/varnish/ws/b.txt');
 });
 
 test('changes: a thread\'s Changes tab reads its own edits and its subagents\' from their logs', async () => {
@@ -3565,17 +3907,21 @@ test('changes: the kept texts of threads gone from the store or from DSH, or unu
         mkdirSync(join(dir, 'net', id), { recursive: true });
         writeFileSync(join(dir, 'net', id, 'index.json'), JSON.stringify({ version: 1, bytes: 3, files: {}, used: Date.now() }));
     }
-    const { host } = setup({}, dir, { gateway: true });
-    // DSH has the chats of t1 and t3 (t3's archived, so not in its list, but still there for Restore project); t2's was deleted.
+    // DSH has the chats of t1 and t3 (t3's archived, so not in its list, but still there for Restore project); t2's was
+    // deleted. All of that holds before the plugin starts: its first sweep runs at once.
+    const host = fakeHost({ gateway: true });
     host.sessions.set('s-kept', { events: [], prompts: [], title: 'Kept' });
     host.sessions.set('s-archived', { events: [], prompts: [], title: 'Archived' });
     const list = host.sessionController.list;
     host.sessionController.list = async () => ({ items: (await list()).items.filter((item) => item.sessionId !== 's-archived') });
-    for (let i = 0; i < 100 && readdirSync(join(dir, 'net')).length > 2; i++) await tick();
+    plugin.apply(host, plugin.Config({ threadEffort: 'high', storeFile: join(dir, 'coordinator.json'), memoryDir: join(dir, 'memory'), logFile: join(dir, 'coordinator.log') }));
+    const log = () => { try { return readFileSync(join(dir, 'coordinator.log'), 'utf8'); } catch { return ''; } };
+    // Done when both are logged (a folder is gone from the disk a moment before its line is written), however busy
+    // the machine is: a count of ticks ran out once under a full real-DSH run beside it.
+    const swept = () => /net-prune s-gone gone/.test(log()) && /net-prune s-deleted gone/.test(log());
+    for (const end = Date.now() + 20000; !swept() && Date.now() < end;) await tick();
+    assert.ok(swept(), log());
     assert.deepEqual(readdirSync(join(dir, 'net')).sort(), ['s-archived', 's-kept']);
-    const log = () => readFileSync(join(dir, 'coordinator.log'), 'utf8');
-    assert.match(log(), /net-prune s-gone gone/);
-    assert.match(log(), /net-prune s-deleted gone/);
     // Unused for over 30 days: gone at the next sweep (every hour while the plugin runs).
     writeFileSync(join(dir, 'net', 's-archived', 'index.json'), JSON.stringify({ version: 1, bytes: 3, files: {}, used: Date.now() - 31 * 86400 * 1000 }));
     await host.provided.get('dshPluginCoordinatorRemote').manager.sweepNet();
@@ -3886,6 +4232,9 @@ test('projection: unrelated and malformed events keep the same state; parsing ne
 /** A coordinating chat with two threads, Alpha and Beta, and the window's endpoints. */
 async function chatWithThreads() {
     const made = setup({}, undefined, { gateway: true });
+    await started(made.host);
+    await made.host.coordinated;
+    // The chat comes up just after DSH logs the command's result.
     await tick();
     const coord = coordinatorOf(made.host);
     await coord.ctx.call('thread_start', { ask: 'Please do A.', title: 'Alpha', brief: 'Do A.' });
@@ -3894,6 +4243,15 @@ async function chatWithThreads() {
     return { ...made, coord, alpha, beta, registry: made.host.workspaceRegistry, remote: made.host.provided.get('dshPluginCoordinatorRemote') };
 }
 const settle = async () => { for (let i = 0; i < 5; i += 1) await tick(); };
+/**
+ * Wait for the plugin's start on this host to finish (it tells DSH's logger how many chats coordinate, or that it
+ * failed): by time, not a count of ticks, so a busy machine waits longer.
+ */
+async function started(host, ms = 20000) {
+    const done = () => host.said.some((line) => /^coordinator: (\d+ coordinating chat|startup failed)/.test(line));
+    for (const end = Date.now() + ms; !done() && Date.now() < end;) await tick();
+    assert.ok(done(), `the plugin's start finished: ${host.said.join(' | ')}`);
+}
 const storedIn = (dir) => JSON.parse(readFileSync(join(dir, 'coordinator.json'), 'utf8')).projects['dsh-plugins'];
 /** Switch the plugin off: its manager stops, and its store is read anew by the next one. */
 async function switchOff(host) {
@@ -3906,6 +4264,7 @@ async function startOver(old, config, archived) {
     for (const id of archived) await host.workspaceRegistry.archiveSession(id, { stopActivity: true });
     host.workspaceRegistry.archives.splice(0);
     plugin.apply(host, config);
+    await started(host);
     await settle();
     return host;
 }
@@ -4586,7 +4945,8 @@ test('rule 6, held for deletes: a thread\'s command that deletes files it didn\'
     const header = t1.session.header;
     t1.session.header = { ...header, cwd: work };
     host.services.workingDirectory = { get: (session) => (session === t1.session ? join(work, 'packages', 'web') : undefined) };
-    assert.equal((await gate(t1, 'bash', { command: 'rm -rf src' })).reason, 'the command deletes src (rm); if the user doesn\'t allow it, hand back with status needs_decision', 'M2');
+    // The prompt says it from the thread's folder, so which src goes is plain.
+    assert.equal((await gate(t1, 'bash', { command: 'rm -rf src' })).reason, 'the command deletes packages/web/src (rm); if the user doesn\'t allow it, hand back with status needs_decision', 'M2');
     delete host.services.workingDirectory;
     t1.session.header = header;
     // A shell that keeps its folder between commands (DSH's persistent bash, which takes no workdir): a relative path
@@ -4627,6 +4987,39 @@ test('rule 6, held for deletes: a thread\'s command that deletes files it didn\'
     assert.match((await gate(sub, 'bash', { command: 'rm -rf build' })).reason, /^Not run: the command deletes build \(rm\)\. A subagent doesn't delete files its thread didn't create: say in your result what you would delete, and the thread you work for asks the user first\.$/);
     assert.deepEqual(await gate(sub, 'bash', { command: `rm ${made}` }), allowed);
     assert.deepEqual(await gate(host.wake('plain-1'), 'bash', { command: 'rm -rf build' }), allowed);
+    // Round-1 finding 4: the prompt names the file from the thread's folder, not a full path cut after 59 characters.
+    writeFileSync(join(work, 'README.md'), 'the user\'s\n');
+    assert.deepEqual(await gate(t1, 'bash', { command: `rm ${join(work, 'README.md')}` }), {
+        kind: 'ask',
+        reason: 'the command deletes README.md (rm); if the user doesn\'t allow it, hand back with status needs_decision',
+        displayReason: { en: 'This command deletes README.md (rm). A thread asks you before each command that deletes files it didn\'t create.' },
+    });
+    // Round-1 finding 6: a move out of its folder asks as a delete does, and says where it goes; a move inside is a rename.
+    assert.deepEqual(await gate(t1, 'bash', { command: 'mv README.md /tmp/' }), {
+        kind: 'ask',
+        reason: 'the command moves README.md to /tmp/ (mv); if the user doesn\'t allow it, hand back with status needs_decision',
+        displayReason: { en: 'This command moves README.md to /tmp/ (mv). A thread asks you before each command that deletes files it didn\'t create or moves them out of its folder.' },
+    });
+    // (lib2 is the user's src, which B2 renamed.)
+    for (const command of ['mv -t ~/Desktop README.md', 'rsync -a --remove-source-files lib2/ /tmp/lib2/', 'ls | xargs mv -t /tmp', 'mv lib2 /tmp/', "bash -c 'mv lib2 /tmp/'"]) {
+        assert.equal((await gate(t1, 'bash', { command })).kind, 'ask', command);
+    }
+    assert.deepEqual(await gate(t1, 'bash', { command: 'mv README.md docs/README.md' }), allowed, 'a move inside its folder is a rename');
+    assert.deepEqual(await gate(t1, 'bash', { command: `mv ${made} /tmp/` }), allowed, 'its own file may go anywhere');
+    policies.set(t1.id, 'never');
+    assert.deepEqual(await gate(t1, 'bash', { command: 'mv README.md /tmp/' }), {
+        kind: 'deny',
+        reason: "Not run: the command moves README.md to /tmp/ (mv). A thread asks the user before each command that deletes files it didn't create or moves them out of its folder, and this thread's permission never asks. Hand back with status needs_decision and say exactly what you would delete or move; the user can put this thread on Workspace Write so it can ask. Don't move or delete it another way.",
+    });
+    policies.delete(t1.id);
+    assert.equal((await gate(sub, 'bash', { command: 'mv README.md /tmp/' })).reason,
+        "Not run: the command moves README.md to /tmp/ (mv). A subagent doesn't delete files its thread didn't create or move them out of its folder: say in your result what you would delete or move, and the thread you work for asks the user first.");
+    assert.deepEqual(await gate(t1, 'bash', { command: 'curl -sS -X POST http://127.0.0.1:9/hook && mv README.md /tmp/' }), {
+        kind: 'ask',
+        reason: 'the command sends a POST to 127.0.0.1:9/hook (curl) and moves README.md to /tmp/ (mv); if the user doesn\'t allow it, hand back with status needs_decision',
+        displayReason: { en: 'This command sends a POST to 127.0.0.1:9/hook (curl) and moves README.md to /tmp/ (mv). A thread asks you before each command that sends outside the workspace or deletes files it didn\'t create or moves them out of its folder.' },
+    });
+    assert.match(log(), / delete-ask dsh-plugins\/t1 mv\n/);
     // A send asks first, as before.
     assert.equal((await gate(t1, 'bash', { command: 'git push origin main' })).reason, 'the command pushes to origin (git push)');
 
@@ -4697,4 +5090,151 @@ test('news: a sink that throws is logged, and the handback still reads as delive
     await tick();
     assert.equal(host.sessions.get(coord.id).prompts.length, 1, 'one handback, no idle note');
     assert.match(readFileSync(join(dir, 'coordinator.log'), 'utf8'), /error news-sink .*notifier down/);
+});
+
+test('config: wrong values never stop the plugin; each falls back to its default and is named in the logs and on the page', async () => {
+    const host = fakeHost({ gateway: true, presets: true });
+    const warned = [];
+    host.logger = { info() {}, warn: (format, ...args) => warned.push(args.reduce((text, arg) => text.replace('%s', String(arg)), format)) };
+    const dir = mkdtempSync(join(tmpdir(), 'projects-'));
+    const raw = {
+        threadEffort: 'high', storeFile: join(dir, 'coordinator.json'), memoryDir: join(dir, 'memory'), logFile: join(dir, 'coordinator.log'),
+        // Types the old schema refused before the plugin ran (DSH showed only "Problem"), and values apply() threw on.
+        maxHandbacksPerHour: 0, maxThreadsPerHour: 'many', approvalNoticeSeconds: -5, maxMemoryBytes: 12.5, autoHandback: 'sometimes',
+        trustedHosts: { nas: true }, guardedTools: 7, enabled: 'maybe',
+    };
+    assert.doesNotThrow(() => plugin.apply(host, plugin.Config(raw)));
+    host.coordinated = coordinateIn(host, openChat(host, CHAT, { title: 'DSH Plugins', folder: '/work/dsh' }));
+    await tick();
+    // It runs: the chat coordinates and gets its thread tools.
+    const coord = coordinatorOf(host);
+    assert.ok(coord.ctx.registered.has('thread_start'), 'the chat has its thread tools');
+    const keys = ['enabled', 'autoHandback', 'maxHandbacksPerHour', 'maxThreadsPerHour', 'approvalNoticeSeconds', 'maxMemoryBytes'];
+    for (const key of keys) assert.ok(warned.some((line) => line.startsWith(`coordinator: ${key} must be`)), `DSH's logger hears ${key}: ${warned.join(' | ')}`);
+    const log = readFileSync(join(dir, 'coordinator.log'), 'utf8');
+    for (const key of keys) assert.match(log, new RegExp(` config-problem ${key}\\n`));
+    // The page lists them in words, the live ones (guardedTools, trustedHosts) too, with what the plugin uses meanwhile.
+    const { problems } = await host.provided.get('dshPluginCoordinatorRemote').list();
+    assert.equal(problems.length, 8, problems.join('\n'));
+    assert.ok(problems.includes('maxHandbacksPerHour must be a whole number of handbacks from 1 to 1000 (it is 0), so the plugin uses 30 until you fix it.'), problems.join('\n'));
+    assert.ok(problems.includes('autoHandback must be "idle" or "off" (it is "sometimes"), so the plugin uses "idle" until you fix it.'));
+    assert.ok(problems.includes('trustedHosts must be a list of host names or addresses (it is {"nas":true}), so the plugin trusts no machine (every send asks) until you fix it.'));
+    assert.ok(problems.some((line) => line.startsWith('guardedTools must be a list of names')));
+    // The defaults stand in: 30 handbacks an hour.
+    await coord.ctx.call('thread_start', { ask: 'Add CI that runs our tests.', title: 'Add CI', brief: 'Add a workflow.' });
+    const thread = [...host.live.values()].find((a) => a.id !== coord.id);
+    for (let i = 0; i < 30; i += 1) await thread.ctx.call('thread_handback', { status: 'progress', summary: `Step ${i + 1} done.` });
+    assert.match(String(await thread.ctx.call('thread_handback', { status: 'done', summary: 'All done.' }).catch((error) => error.message)), /handback limit reached \(30 per hour\)/);
+});
+
+test('config: the schema DSH reads gives the defaults the plugin checks against; a path under ~/.dsh follows DSH_HOME', async () => {
+    const { DEFAULTS, DSH_HOME_DIR } = await import('../lib/config.js');
+    const given = plugin.Config({});
+    for (const [key, value] of Object.entries(DEFAULTS)) assert.deepEqual(given[key], value, key);
+    const before = process.env.DSH_HOME;
+    try {
+        process.env.DSH_HOME = '/tmp/dsh-second';
+        assert.equal(dataPath(DEFAULTS.storeFile), '/tmp/dsh-second/coordinator/coordinator.json');
+        assert.equal(dataPath(`${DSH_HOME_DIR}`), '/tmp/dsh-second');
+        assert.equal(dataPath('~/.dshfoo/x'), join(homedir(), '.dshfoo/x'), 'only DSH\'s own folder moves');
+        process.env.DSH_HOME = '';
+        assert.equal(dshHome(), join(homedir(), '.dsh'));
+    } finally {
+        if (before === undefined) delete process.env.DSH_HOME;
+        else process.env.DSH_HOME = before;
+    }
+});
+
+test('config: a fixed list of hosts or tools may be one name; YAML\'s bare off turns the nudges off', async () => {
+    const { host, dir } = setup({ trustedHosts: 'nas.local', guardedTools: 'lane-catalog', autoHandback: false });
+    await host.coordinated;
+    const checks = await import('../lib/config.js');
+    assert.deepEqual(checks.trustedHostsOf('nas.local'), { value: ['nas.local'] });
+    assert.deepEqual(checks.guardedToolsOf('lane-catalog'), { value: ['lane-catalog'] });
+    assert.equal(checks.checkConfig({ autoHandback: false }).config.autoHandback, 'off');
+    assert.doesNotMatch(readFileSync(join(dir, 'coordinator.log'), 'utf8'), /config-problem/);
+});
+
+test('config: enabled: false switches the plugin off; no chat coordinates, the window hears it is off, and anything it asks is answered in words', async () => {
+    const host = fakeHost({ gateway: true });
+    const said = [];
+    host.logger = { info: (format, ...args) => said.push(args.reduce((text, arg) => text.replace('%s', String(arg)), format)), warn: (format, ...args) => said.push(args.reduce((text, arg) => text.replace('%s', String(arg)), format)) };
+    const dir = mkdtempSync(join(tmpdir(), 'projects-'));
+    assert.doesNotThrow(() => plugin.apply(host, plugin.Config({ enabled: false, maxThreadsPerHour: 'lots', storeFile: join(dir, 'coordinator.json'), memoryDir: join(dir, 'memory'), logFile: join(dir, 'coordinator.log') })));
+    const chat = openChat(host, CHAT, { title: 'DSH Plugins', folder: '/work/dsh' });
+    await tick();
+    assert.equal(await coordinateIn(host, chat), undefined, 'no /coordinate: DSH answers it as no command');
+    assert.ok(!host.live.get(CHAT)?.ctx?.registered?.has?.('thread_start'), 'the chat gets no thread tools');
+    assert.ok(said.includes('coordinator: switched off (enabled: false); no chat coordinates until it is true again'), said.join(' | '));
+    assert.ok(said.some((line) => line.startsWith('coordinator: maxThreadsPerHour must be')), 'a wrong value is still named');
+    const remote = host.provided.get('dshPluginCoordinatorRemote');
+    // DSH's gateway finds it as it finds the running plugin's: the same binding, the same endpoints.
+    assert.deepEqual([remote.typertRemote.namespace, remote.typertRemote.serviceKey], ['dsh-plugin-coordinator', 'dshPluginCoordinatorRemote']);
+    assert.deepEqual(remoteMethods(remote).map((m) => m.method), [
+        'describe', 'list', 'sessions', 'news', 'seeNews', 'update', 'continueThread', 'changes', 'coordinate', 'archive', 'restore',
+    ]);
+    // The gateway reads each method's parameter names from its source, as here, and refuses a call whose arguments
+    // it does not name before the method runs; so each switched-off method names them as the running plugin's does.
+    const { ProjectsRemote } = await import('../lib/remote.js');
+    const named = (Class, method) => {
+        const source = Function.prototype.toString.call(Class.prototype[method]);
+        return source.slice(source.indexOf('(') + 1, source.indexOf(')')).split(',').map((name) => name.trim()).filter(Boolean);
+    };
+    for (const { method } of remoteMethods(remote)) assert.deepEqual(named(remote.constructor, method), named(ProjectsRemote, method), method);
+    assert.deepEqual(named(remote.constructor, 'coordinate'), ['target', 'on']);
+    assert.deepEqual(await remote.sessions(), { sessions: {}, off: true });
+    const listed = await remote.list();
+    assert.deepEqual([listed.off, listed.projects, listed.problems.length], [true, [], 1]);
+    assert.deepEqual(await remote.news(), { news: [] });
+    const words = /^The coordinator is switched off: its row in your profile's cordis\.patch\.yml says enabled: false\. Set it to true, or take the line out, to coordinate again\.$/;
+    for (const [name, args] of [['coordinate', [CHAT, true]], ['describe', [CHAT]], ['update', [CHAT, {}]], ['changes', [CHAT, 't1']], ['archive', [CHAT]], ['restore', [CHAT]], ['continueThread', [CHAT, 't1']]]) {
+        await assert.rejects(remote[name](...args), (error) => error.code === 'coordinator/refused' && words.test(error.message), name);
+    }
+    assert.deepEqual(readdirSync(dir), [], 'nothing written: no store, no notes, no log');
+});
+
+test('config: a live text setting of the wrong type (YAML\'s bare 5 or yes) never stops the plugin; it counts as not set, in words', async () => {
+    let host;
+    assert.doesNotThrow(() => { ({ host } = setup({ threadModel: 5, threadEffort: true, yourTools: ['asked'], threadPermission: { preset: 'x' } }, undefined, { gateway: true, presets: true })); });
+    await tick();
+    const coord = coordinatorOf(host);
+    assert.ok(coord.ctx.registered.has('thread_start'), 'the chat still coordinates');
+    const { problems } = await host.provided.get('dshPluginCoordinatorRemote').list();
+    assert.deepEqual(problems, [
+        'threadModel must be text: a model, such as "provider:model" (it is 5), so the plugin uses DSH\'s default model for new threads until you fix it.',
+        'threadEffort must be text (it is true), so the plugin uses the model\'s default effort for new threads until you fix it.',
+        'yourTools must be text (it is ["asked"]), so the plugin uses "asked" until you fix it.',
+        'threadPermission must be text (it is {"preset":"x"}), so the plugin uses "workspace-write" for new threads until you fix it.',
+    ]);
+    // New threads start on what each line says.
+    const described = await host.provided.get('dshPluginCoordinatorRemote').describe(CHAT);
+    assert.deepEqual([described.settings.threadModel.source, described.settings.threadEffort.source], ['DSH default', 'DSH default'], JSON.stringify(described.settings));
+    await coord.ctx.call('thread_start', { ask: 'Add CI that runs our tests.', title: 'Add CI', brief: 'Add a workflow.' });
+    assert.equal([...host.live.values()].filter((a) => a.id !== coord.id).length, 1, 'and a thread starts');
+});
+
+test('the log says a live setting went wrong and was put right, and what a pause or resume set (round-1 nit 10)', async () => {
+    const { host, config, dir } = setup({}, undefined, { gateway: true, presets: true });
+    await tick();
+    const log = () => readFileSync(join(dir, 'coordinator.log'), 'utf8');
+    assert.doesNotMatch(log(), / config-problem /);
+    // Before, only the page named a live setting saved wrong; the log never did.
+    saveDefaults(host, config, { threadPermission: 'nonsense' });
+    await tick();
+    assert.equal(log().match(/ config-problem threadPermission\n/g)?.length, 1);
+    await host.provided.get('dshPluginCoordinatorRemote').list();
+    assert.equal(log().match(/ config-problem threadPermission\n/g)?.length, 1, 'once, not at each read of the page');
+    saveDefaults(host, config, { threadPermission: 'default' });
+    await tick();
+    assert.match(log(), / config-fixed threadPermission\n/);
+    // A wrong setting at start is logged there too.
+    const again = setup({ threadModel: 5 }, undefined, { gateway: true, presets: true });
+    await tick();
+    assert.equal(readFileSync(join(again.dir, 'coordinator.log'), 'utf8').match(/ config-problem threadModel\n/g)?.length, 1, 'once, though it is both a start and a live problem');
+    // Pause and resume read apart: the log says the value each set (before, both read "settings <chat> paused").
+    const remote = host.provided.get('dshPluginCoordinatorRemote');
+    await remote.update(CHAT, { paused: true });
+    await remote.update(CHAT, { paused: false });
+    await remote.update(CHAT, { paused: null });
+    assert.match(log(), new RegExp(` settings ${CHAT} paused=true\n[^]* settings ${CHAT} paused=false\n[^]* settings ${CHAT} paused=default\n`));
 });

@@ -104,3 +104,34 @@ test('plugins and docs carry no third-party assistant branding', () => {
     walk(root.pathname);
     assert.deepEqual(hits, []);
 });
+
+test('coordinator: a wrong setting falls back to its default, in words, and never throws', async () => {
+    const { checkConfig, guardedToolsOf, trustedHostsOf, DEFAULTS } = await import('../plugins/coordinator/lib/config.js');
+    const good = checkConfig({});
+    assert.deepEqual(good.problems, []);
+    for (const [key, value] of Object.entries(DEFAULTS)) assert.equal(good.config[key], value, key);
+    const bad = checkConfig({ maxThreadsPerHour: -1, enabled: 'perhaps', storeFile: '', logFile: 3, autoHandback: 'auto' });
+    assert.deepEqual(bad.problems.map((p) => p.key).sort(), ['autoHandback', 'enabled', 'logFile', 'maxThreadsPerHour', 'storeFile']);
+    assert.equal(bad.config.maxThreadsPerHour, 20);
+    assert.equal(bad.config.enabled, true);
+    assert.equal(bad.problems.find((p) => p.key === 'maxThreadsPerHour').message, 'maxThreadsPerHour must be a whole number of threads from 1 to 1000 (it is -1), so the plugin uses 20 until you fix it.');
+    // What a person or YAML means is taken as meant: "30", off and "no".
+    const meant = checkConfig({ maxHandbacksPerHour: '30', autoHandback: false, enabled: 'no', logFile: '' });
+    assert.deepEqual([meant.problems, meant.config.maxHandbacksPerHour, meant.config.autoHandback, meant.config.enabled, meant.config.logFile], [[], 30, 'off', false, '']);
+    assert.equal(checkConfig(null).config.enabled, true);
+    // Live settings pass through as DSH gave them (references read when used).
+    const ref = { get: () => 'x' };
+    assert.equal(checkConfig({ threadModel: ref }).config.threadModel, ref);
+    assert.deepEqual(guardedToolsOf({ vault: 'vault', lanes: ['lanes', 'model lanes'], cua: null }), { value: { vault: ['vault'], lanes: ['lanes', 'model lanes'], cua: [] } });
+    assert.match(guardedToolsOf(7).problem.message, /^guardedTools must be a list of names/);
+    assert.deepEqual(trustedHostsOf(['nas', 'pi']), { value: ['nas', 'pi'] });
+    assert.match(trustedHostsOf(['nas', 4]).problem.message, /uses only the names in it \(1\)/);
+    // A live text setting that isn't text (YAML's bare 5, or yes) counts as not set, in words.
+    const { textSettingProblem } = await import('../plugins/coordinator/lib/config.js');
+    assert.equal(textSettingProblem('threadModel', 'fake:fake-model'), undefined);
+    assert.equal(textSettingProblem('threadEffort', undefined), undefined);
+    assert.equal(textSettingProblem('threadModel', 5).message, 'threadModel must be text: a model, such as "provider:model" (it is 5), so the plugin uses DSH\'s default model for new threads until you fix it.');
+    assert.equal(textSettingProblem('threadEffort', true).message, 'threadEffort must be text (it is true), so the plugin uses the model\'s default effort for new threads until you fix it.');
+    assert.equal(textSettingProblem('threadPermission', { preset: 'x' }).message, 'threadPermission must be text (it is {"preset":"x"}), so the plugin uses "workspace-write" for new threads until you fix it.');
+    assert.equal(textSettingProblem('yourTools', ['asked']).message, 'yourTools must be text (it is ["asked"]), so the plugin uses "asked" until you fix it.');
+});

@@ -1,5 +1,7 @@
-# The plugin's own bundle row. Your profile's cordis.patch.yml addresses the
-# same id ("discord") to set workspacePath, tokenRef and the channel/user gates.
+# The Discord plugin's own bundle patch. Installed via `dsh plugin add` this
+# row is inserted with schema defaults; the profile's cordis.patch.yml should
+# address the same row id to set deployment-varying config (workspacePath,
+# tokenRef, channel policy).
 - insert:
     - id: discord
       name: dsh-plugin-discord

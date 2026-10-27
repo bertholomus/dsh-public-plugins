@@ -18,11 +18,13 @@
  *
  * @module dsh-plugin-calendar
  */
+import { dshHomePath } from '@deepseek-ai/dsh-home-paths';
 import z from '@deepseek-ai/schemastery';
+import { TEST_ENDPOINTS, checkConfig, dataPath } from './config.js';
 import { isLoopback } from './http.js';
 import { CalendarManager } from './manager.js';
-import { MODES, ShownPlans, changeGate } from './policy.js';
-import { CalendarRemote, SERVICE } from './remote.js';
+import { ShownPlans, changeGate } from './policy.js';
+import { CalendarOff, CalendarRemote, SERVICE } from './remote.js';
 import { calendarTools } from './tools.js';
 
 export const name = 'calendar';
@@ -30,25 +32,33 @@ export const name = 'calendar';
 /** Host services the plugin uses. */
 export const inject = ['tools', 'credentials'];
 
+/*
+ * Every key takes any value with its default: DSH stops a plugin whose entry has a value of the wrong type,
+ * with only "Problem" in Plugins. config.js checks each one in words instead; while one is wrong, the plugin
+ * uses the safe choice, logs it, and the Calendar page says which setting to change.
+ */
 export const Config = z.object({
     /** Master switch. */
-    enabled: z.boolean().default(true),
-    /** Accounts, calendars and choices (mode 600); each calendar's events are in an events folder beside it. */
-    storeFile: z.string().default('~/.dsh/calendar/calendar.json'),
-    /** Action log, mode 600: ids, kinds and counts, never event text or secrets. Empty turns it off. */
-    logFile: z.string().default('~/.dsh/calendar/calendar.log'),
-    /** How often accounts sync, in minutes (at least 5). */
-    syncMinutes: z.number().default(15),
+    enabled: z.any().default(true),
+    /**
+     * Accounts, calendars and choices (mode 600); each calendar's events are in an events folder beside it.
+     * A relative path is in DSH's data folder (DSH_HOME, else the home's DSH folder).
+     */
+    storeFile: z.any().default('calendar/calendar.json'),
+    /** Action log, mode 600: ids, kinds and counts, never event text or secrets. Empty turns it off. Relative: in DSH's data folder. */
+    logFile: z.any().default('calendar/calendar.log'),
+    /** How often accounts sync, in minutes (5 to 1440). */
+    syncMinutes: z.any().default(15),
     /** The user's time zone (IANA, like Europe/Berlin). Empty: this computer's. */
-    timeZone: z.string().default(''),
+    timeZone: z.any().default(''),
     /** Agents' calendar tools. Off: chats can't see or change calendars; the window still can. */
-    tools: z.boolean().default(true),
+    tools: z.any().default(true),
     /**
      * Whether agents may change calendars: 'preset' by the chat's permission
      * (Read Only can't, Full access can, others ask first), 'ask' always ask
      * first, 'off' never.
      */
-    agentChanges: z.union(MODES).default('preset'),
+    agentChanges: z.any().default('preset'),
     /**
      * Whether a chat's change that emails someone (an invitation, an update,
      * a cancellation, an answer), or puts an event on other people's Google
@@ -60,32 +70,50 @@ export const Config = z.object({
      * calendar tool or window endpoint changes; a chat that can write files
      * there can, from DSH's next start.
      */
-    askBeforeEmails: z.boolean().default(true),
+    askBeforeEmails: z.any().default(true),
+    /**
+     * Whether the calendars' reminders show in DSH: at each reminder's time, DSH's banner at the top of the window
+     * with the event and Open (and Join for a call), shown once by one window. Off: they fire only where the
+     * calendar's server sends them (your phone and other apps).
+     */
+    reminders: z.any().default(true),
     /** Google sign-in: the client id of the user's own OAuth client (Desktop app). The window can set it too. */
-    googleClientId: z.string().default(''),
+    googleClientId: z.any().default(''),
     /** The credential (DSH's store or the environment) that holds that client's secret. */
-    googleClientSecretRef: z.string().default('CALENDAR_GOOGLE_CLIENT_SECRET'),
+    googleClientSecretRef: z.any().default('CALENDAR_GOOGLE_CLIENT_SECRET'),
     /** Microsoft sign-in: the application (client) id of the user's own app registration, with public client flows on. */
-    microsoftClientId: z.string().default(''),
+    microsoftClientId: z.any().default(''),
     /** Microsoft tenant: 'common' for work, school and personal accounts, or a tenant id. */
-    microsoftTenant: z.string().default('common'),
+    microsoftTenant: z.any().default('common'),
     /** Test servers in place of Google's and Microsoft's: tests only, and only on this computer. */
-    googleApiBase: z.string(),
-    googleAuthorizeUrl: z.string(),
-    googleTokenUrl: z.string(),
-    googleUserinfoUrl: z.string(),
-    googleRevokeUrl: z.string(),
-    microsoftGraphBase: z.string(),
-    microsoftLoginBase: z.string(),
+    googleApiBase: z.any().default(''),
+    googleAuthorizeUrl: z.any().default(''),
+    googleTokenUrl: z.any().default(''),
+    googleUserinfoUrl: z.any().default(''),
+    googleRevokeUrl: z.any().default(''),
+    microsoftGraphBase: z.any().default(''),
+    microsoftLoginBase: z.any().default(''),
 });
-
-const TEST_ENDPOINTS = ['googleApiBase', 'googleAuthorizeUrl', 'googleTokenUrl', 'googleUserinfoUrl', 'googleRevokeUrl', 'microsoftGraphBase', 'microsoftLoginBase'];
 
 /** The credential record that holds one account's password or sign-in. */
 const recordOf = (accountId) => `calendar/${accountId}`;
 
-export function apply(ctx, config) {
-    if (!config.enabled) return;
+export function apply(ctx, raw) {
+    // Each setting checked in words; a wrong one never stops the plugin: it uses the safe choice and says so.
+    const { settings: config, problems } = checkConfig(raw);
+    for (const problem of problems) ctx.logger?.warn?.('calendar: setting %s is wrong: %s', problem.key, problem.text);
+    if (!config.enabled) {
+        // Switched off: no sync, no file, no tools. The window's calls say so in words rather than going unanswered.
+        ctx.inject(['typertGateway'], (scope) => {
+            // A wrong value switches it off too, and says so (config.js).
+            scope.provide(SERVICE, new CalendarOff(scope, problems.find((p) => p.key === 'enabled')?.text));
+        });
+        return;
+    }
+    // Its files in DSH's data folder, as DSH resolves it (DSH_HOME, else the home's DSH folder).
+    const home = dshHomePath();
+    config.storeFile = dataPath(config.storeFile, home);
+    config.logFile = dataPath(config.logFile, home);
 
     // Each account's secret, in DSH's credential store as a record of this plugin's own.
     const secrets = {
@@ -138,6 +166,7 @@ export function apply(ctx, config) {
     };
 
     manager = new CalendarManager({ config, secrets, clientSettings, logger: ctx.logger });
+    for (const problem of problems) manager.log(`setting wrong ${problem.key}`);
     // Switched off or reloaded: this manager stops (writing what it holds), and the next start reads the files.
     ctx.effect(() => () => manager.dispose(), 'calendar.manager()');
 
@@ -147,6 +176,8 @@ export function apply(ctx, config) {
     const setup = {
         /** Whether chats' emailing changes ask the user first (askBeforeEmails), for the window to say when they don't. */
         askBeforeEmails: () => askEmails,
+        /** The settings that are wrong, in words, for the window to say ([{key, text}]). */
+        settingsProblems: () => problems,
         /** What each sign-in still needs; the credential store is read for the Google secret at most every half minute. */
         async signInReady() {
             const stale = secretSeen === undefined || Date.now() - secretSeen.at > 30_000;

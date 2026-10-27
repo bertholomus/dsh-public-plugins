@@ -6,6 +6,8 @@
  *   when any suite plugin's channel moves (or after `timeoutMs`), so each
  *   plugin's window reads its own state only when something changed.
  * - `sessions()`: every session with its state word, for the suite's pages.
+ * - `deliveries(sessionId, limit)`: what it put into sessions and what
+ *   became of each, newest first, from its journal.
  * - `status()`: that the watcher runs, and a setting of its that is wrong.
  *
  * Parameters are plain names: the gateway reads them from the method source.
@@ -47,6 +49,12 @@ export class SessionWatchRemote {
         return { items: await this.watch.list() };
     }
 
+    /** What it put into sessions and what became of each, newest first (at most 200; one session's when `sessionId` is given). */
+    async deliveries(sessionId, limit) {
+        const n = Number.isSafeInteger(limit) ? Math.min(Math.max(limit, 1), 200) : 50;
+        return { items: this.watch.deliveries({ ...(typeof sessionId === 'string' && sessionId ? { sessionId } : {}), limit: n }) };
+    }
+
     /** That the watcher runs (the suite's pages ask when their own plugin does not answer), and a wrong setting, if any. */
     async status() {
         const problem = this.watch.settings?.problem;
@@ -63,4 +71,4 @@ function markRemote(Class, names) {
         });
     }
 }
-markRemote(SessionWatchRemote, ['wait', 'sessions', 'status']);
+markRemote(SessionWatchRemote, ['wait', 'sessions', 'deliveries', 'status']);

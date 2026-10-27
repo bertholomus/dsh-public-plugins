@@ -33,7 +33,9 @@
  *   as started and gives its session no turn; a path that is not a program
  *   is refused before anything is made.
  * - The window: the Coding agents page (counts, agents, messages, the start
- *   form with the programs found here), light and dark and narrow; the
+ *   form with the programs found here), light and dark and narrow; with a
+ *   Wallpaper stand-in over a light and a dark picture at tint .2 (every
+ *   card on tint + .2, the small text measured) and with Wallpaper off; the
  *   session row's mark, hover line and menu item beside the neighbour's; a
  *   terminal tab beside the session that shows the agent's screen.
  * - A tool call waiting in the terminal: waiting on you on the page, the
@@ -52,17 +54,32 @@
  * - A wrong setting saved while DSH runs: the agents keep running, read
  *   "running, not followed" with no buttons that would act, and are picked
  *   up where they are once it is fixed.
+ * - Switched off while DSH runs, as Plugins writes it: Session Watch, then
+ *   Agent Terminals itself (its mark leaves the row, the neighbour's stays),
+ *   then `enabled: false` (its cards still show, not followed, and open the
+ *   terminal): the same program keeps running, What happened names each
+ *   cause both ways, and each pick-up types nothing twice.
  * - A DSH restart in the middle of a job and of an approval prompt: the
  *   agents come back idle (the job said cut off), the messages held for
  *   them go in once and are proven, and no question is left in Decisions.
+ * - An agent started without a message (no conversation yet): Stop, a
+ *   closed tab and a restart bring it back under the same id, never with a
+ *   resume its program would refuse.
+ * - The continue way (a stand-in that resumes its folder's latest
+ *   conversation): typed in, and resumed with --continue after a restart.
  * - A DSH restart: every running agent starts again under the same terminal
  *   id and resumes its conversation; a program that cannot resume is not
- *   started again, and says why; the window's tab shows the resumed agent.
+ *   started again, and says why; the window's tab shows the resumed agent;
+ *   a restart inside a session's first turn leaves that entry settled;
+ *   What happened logs it as DSH quitting, then starting it.
+ * - Two restarts in a row after a job was cut: the cut is logged once.
  * - Typing through DSH's terminal input (`typing: attached`): on DSH 0.2.0
  *   a message goes in and the tab gets its keyboard back; on later builds,
  *   which have no such input for plugins, it says what to set.
- * - A wrong setting: no agent runs, each says why, and the page says which
- *   setting; saving a good one in Plugins brings the agents back.
+ * - A wrong setting (a number in quotes, the wrong type): no agent runs,
+ *   each says why, and the page says which setting and its value; saving a
+ *   good one in Plugins brings the agents back.
+ * - Every quit of DSH ends by itself within its grace, never by a kill.
  * - Session Watch off in the profile, and `enabled: false`: loaded, idle,
  *   and the page says what to do.
  * - Its folder is 700 and its files 600.
@@ -125,7 +142,7 @@ ${off.includes('session-watch') ? '  disabled: true\n' : ''}  config:
   config:
     windowHours: 72
 - id: agent-terminals
-  config:
+${off.includes('agent-terminals') ? '  disabled: true\n' : ''}  config:
 ${Object.entries({ proofSeconds: 2, askAfterSeconds: 5, ...at }).map(([key, value]) => `    ${key}: ${json(value)}`).join('\n')}
 `;
 
@@ -144,6 +161,18 @@ const run = new DshRun({
     },
 });
 run.rows = rowsWith();
+/** Every quit of DSH in this run: how long it took, and whether it had to be killed (the harness kills after 20 s). */
+const quits = [];
+{
+    const stop = run.stop.bind(run);
+    run.stop = async () => {
+        const child = run.child;
+        if (!child || child.exitCode !== null || child.signalCode !== null) return stop();
+        const began = Date.now();
+        await stop();
+        quits.push({ ms: Date.now() - began, killed: child.signalCode === 'SIGKILL' });
+    };
+}
 
 // ── The computer the agents run on: a home folder, the stand-ins, the projects ──
 
@@ -176,7 +205,7 @@ function standIn(name, style) {
     chmodSync(file, 0o755);
     return file;
 }
-const programs = { flags: standIn('standin', 'flags'), events: standIn('standin-events', 'subcommand'), plain: standIn('standin-plain', 'plain') };
+const programs = { flags: standIn('standin', 'flags'), events: standIn('standin-events', 'subcommand'), plain: standIn('standin-plain', 'plain'), cont: standIn('standin-continue', 'flags') };
 // Conversations each kept before: how Agent Terminals finds a CLI on this computer (never by its name).
 const long = Date.now() - 3 * 86400000;
 const seed = (file, line) => {
@@ -189,10 +218,13 @@ seed(join(user, '.standin-events', 'sessions', '2026', '10', '14', 'rollout-2026
 run.env = { HOME: user, ZDOTDIR: user, PATH: `${binDir}${delimiter}${process.env.PATH ?? ''}` };
 
 const ws = {};
-for (const name of ['app', 'swallow', 'events', 'plain', 'missing', 'long']) {
+for (const name of ['app', 'swallow', 'events', 'plain', 'missing', 'long', 'quiet', 'cont']) {
     ws[name] = join(run.root, 'projects', name);
     mkdirSync(ws[name], { recursive: true });
 }
+// A session's first turn names the agent's folder: this one's name keeps the scripted model's reply open (E2E:slow).
+ws.slow = join(run.root, 'projects', 'first-turn E2E:slow');
+mkdirSync(ws.slow, { recursive: true });
 const real = (path) => {
     try { return realpathSync(path); } catch { return path; }
 };
@@ -240,6 +272,28 @@ function transcriptUsers(path) {
     return out;
 }
 const history = async (test) => (await state()).history.filter(test);
+/** Its log as its file holds it, newest first: read while its endpoints are gone (switched off, Session Watch off). */
+function readLog() {
+    const byId = new Map();
+    let text = '';
+    try { text = readFileSync(join(run.home, 'agent-terminals', 'events.jsonl'), 'utf8'); } catch { return []; }
+    for (const line of text.split('\n')) {
+        let row;
+        try { row = JSON.parse(line); } catch { continue; }
+        if (row?.add?.id) byId.set(row.add.id, { ...row.add });
+        else if (typeof row?.set === 'string' && byId.has(row.set)) Object.assign(byId.get(row.set), row.patch);
+    }
+    return [...byId.values()].reverse();
+}
+/** The processes whose command line holds this text (an agent's program, by its conversation id), in order. */
+function programPids(text) {
+    try {
+        return execFileSync('/usr/bin/pgrep', ['-f', text], { encoding: 'utf8' }).split('\n').map(Number).filter((pid) => pid > 1 && pid !== process.pid).sort((a, b) => a - b);
+    } catch {
+        return [];
+    }
+}
+const samePids = (a, b) => a.length > 0 && json(a) === json(b);
 const watchRow = async (sessionId) => {
     const r = await run.api('dsh-plugin-session-watch/sessions');
     return r.ok ? r.value.items.find((row) => row.sessionId === sessionId) : undefined;
@@ -278,6 +332,130 @@ function endOurs() {
     return pids.length;
 }
 
+// ── Wallpaper, stood in for in this test window only ──
+
+/** Pictures for the Wallpaper stand-in: a light one and a dark one. */
+const PICTURES = {
+    light: 'radial-gradient(circle at 20% 25%,#fde68a 0,transparent 40%),radial-gradient(circle at 80% 70%,#bae6fd 0,transparent 45%),linear-gradient(135deg,#f5f0e6,#dde7ee)',
+    dark: 'radial-gradient(circle at 25% 30%,#1d4ed8 0,transparent 40%),radial-gradient(circle at 75% 70%,#9d174d 0,transparent 45%),linear-gradient(135deg,#0b1020,#1f2937)',
+};
+/**
+ * Wallpaper's public values on <body> (as DESIGN.md names them), a picture behind DSH, DSH's frame clear, and
+ * Wallpaper's own glass on DSH's sidebar and right dock (its rules, copied: a stand-in without them would show DSH's
+ * sidebar text on the bare picture, which Wallpaper never does).
+ */
+const wallpaperOn = (page, picture, tint) => page.evaluate(({ picture, tint }) => {
+    const b = document.body;
+    b.classList.add('wp-on');
+    b.style.setProperty('--wp-blur', '22px');
+    b.style.setProperty('--wp-tint', String(tint));
+    let wall = document.getElementById('test-wall');
+    if (!wall) {
+        wall = document.createElement('div');
+        wall.id = 'test-wall';
+        document.body.prepend(wall);
+        const style = document.createElement('style');
+        style.id = 'test-wall-style';
+        const glass = (sel) => `body.wp-on ${sel}{background:rgba(14,18,17,var(--wp-tint,.55))!important;-webkit-backdrop-filter:blur(var(--wp-blur,22px)) saturate(140%);`
+            + `backdrop-filter:blur(var(--wp-blur,22px)) saturate(140%);border:1px solid var(--dsw-alias-border-l2)!important;border-radius:18px;box-sizing:border-box}`
+            + `body.wp-on:not([data-ds-dark-theme]) ${sel}{background:rgba(250,250,246,var(--wp-tint,.55))!important}`;
+        style.textContent = 'body.wp-on #root{position:relative;z-index:1}'
+            + 'body.wp-on [class*="_frame"],body.wp-on [class*="_centerCol"],body.wp-on [class*="_sidebarCol"],body.wp-on [class*="_rightbarCol"],'
+            + 'body.wp-on [data-slot="main"]{background:transparent!important;border:0!important;box-shadow:none!important}'
+            + glass('[data-slot="sidebar"] > div') + glass('[data-slot="rightbar.session"] > [class*="_panel"]')
+            // DSH's fades into its opaque grounds (the session list's foot, the composer's seat), which Wallpaper takes away.
+            + 'body.wp-on [data-slot="sidebar.workspaces"] [class*="_fade"],body.wp-on [data-slot="main.conversation"] [class*="_composerSeat"]{background:none!important}';
+        document.head.append(style);
+    }
+    wall.style.cssText = `position:fixed;inset:0;z-index:0;background:${picture}`;
+}, { picture, tint });
+/** The page at its top, with nothing focused that would scroll it back. */
+const toTop = (page) => page.locator('[data-agent-terminals-page]').evaluate((el) => {
+    document.activeElement?.blur?.();
+    for (let node = el; node; node = node.parentElement) if (node.scrollHeight > node.clientHeight) node.scrollTop = 0;
+});
+const wallpaperOff = (page) => page.evaluate(() => {
+    document.body.classList.remove('wp-on');
+    document.body.style.removeProperty('--wp-blur');
+    document.body.style.removeProperty('--wp-tint');
+    document.getElementById('test-wall')?.remove();
+    document.getElementById('test-wall-style')?.remove();
+});
+/**
+ * The lowest contrast of the page's small text (13 px and under) over what is behind it: its own layers down to an
+ * opaque one, or down to the page's root over `ground` (a picture's colour behind the glass). How many it measured,
+ * the three lowest, and the lowest of its secondary text (in the page's deepened secondary colour). DSH's own
+ * buttons (DSH's colours) and controls that are switched off (WCAG leaves them out) are not counted.
+ */
+const smallTextContrast = (page, ground) => page.evaluate((ground) => {
+    const root = document.querySelector('[data-agent-terminals-page]');
+    if (!root) return { count: 0, ratio: 0, low: [], secondary: { count: 0, ratio: 0 } };
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--dshat-text-2)';
+    root.append(probe);
+    const second = getComputedStyle(probe).color;
+    probe.remove();
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const c = canvas.getContext('2d', { willReadFrequently: true });
+    const pixel = () => [...c.getImageData(0, 0, 1, 1).data];
+    const alphaOf = (css) => {
+        c.clearRect(0, 0, 1, 1);
+        c.fillStyle = css;
+        c.fillRect(0, 0, 1, 1);
+        return pixel()[3];
+    };
+    const channel = (v) => {
+        const x = v / 255;
+        return x <= 0.04045 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+    };
+    const lum = ([r, g, b]) => 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+    const all = [];
+    for (const el of root.querySelectorAll('*')) {
+        const own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+        const style = getComputedStyle(el);
+        if (!own || parseFloat(style.fontSize) > 13 || style.visibility === 'hidden' || !el.getClientRects().length) continue;
+        if (el.closest('.xterm, [aria-hidden="true"], [data-suite-settings], button:not([class*="dshat-"]), :disabled, [aria-disabled="true"]')) continue;
+        const layers = [];
+        for (let node = el; node; node = node.parentElement) {
+            const bg = getComputedStyle(node).backgroundColor;
+            const alpha = alphaOf(bg);
+            if (alpha > 0) layers.push(bg);
+            if (alpha === 255 || (ground && node === root)) break;
+        }
+        c.clearRect(0, 0, 1, 1);
+        c.fillStyle = ground ?? '#ffffff';
+        c.fillRect(0, 0, 1, 1);
+        for (const bg of [...layers].reverse()) {
+            c.fillStyle = bg;
+            c.fillRect(0, 0, 1, 1);
+        }
+        const back = pixel().slice(0, 3);
+        c.fillStyle = style.color;
+        c.fillRect(0, 0, 1, 1);
+        const text = pixel().slice(0, 3);
+        const [hi, lo] = [lum(text), lum(back)].sort((a, b) => b - a);
+        all.push({ word: el.textContent.trim().slice(0, 30), cls: [...el.classList].filter((x) => x.startsWith('dshat-')).join('.'), secondary: style.color === second, ratio: Math.round(((hi + 0.05) / (lo + 0.05)) * 100) / 100 });
+    }
+    all.sort((a, b) => a.ratio - b.ratio);
+    const secondary = all.filter((x) => x.secondary);
+    return { count: all.length, ratio: all[0]?.ratio ?? 0, low: all.slice(0, 3).map((x) => `${x.cls || 'text'} “${x.word}” ${x.ratio}`), secondary: { count: secondary.length, ratio: secondary[0]?.ratio ?? 0 } };
+}, ground ?? null);
+/** The opacity of each card's ground on the page (its glass), from 0 to 1. */
+const cardGlass = (page) => page.evaluate(() => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1;
+    canvas.height = 1;
+    const c = canvas.getContext('2d', { willReadFrequently: true });
+    return [...document.querySelectorAll('[data-agent-terminals-page] .dshat-card')].filter((el) => el.getClientRects().length).map((el) => {
+        c.clearRect(0, 0, 1, 1);
+        c.fillStyle = getComputedStyle(el).backgroundColor;
+        c.fillRect(0, 0, 1, 1);
+        return Math.round((c.getImageData(0, 0, 1, 1).data[3] / 255) * 100) / 100;
+    });
+});
+
 // ── The window ──
 
 let window;
@@ -313,7 +491,13 @@ async function terminalShows(page, want, timeout = 20000) {
     }, `the terminal tab to show “${want}”`, timeout, 300);
 }
 const terminalTab = (page, title) => page.locator('[role="tab"]', { hasText: title });
-const suiteErrors = () => errors.filter((text) => /agent-terminals|session-watch|suite-kit|dshat/i.test(text));
+/**
+ * Whether a window error is the suite's: its words or its stack name the suite. DSH serves every plugin's browser
+ * half in one combined file whose address lists them all, so an error of DSH's own carries the suite's names in its
+ * addresses: they are left out.
+ */
+const isSuiteError = (text, names = /agent-terminals|session-watch|suite-kit|dshat/i) => names.test(String(text).replace(/\bhttps?:\/\/\S+/g, ''));
+const suiteErrors = () => errors.filter((text) => isSuiteError(text));
 
 const ids = {};
 const agents = {};
@@ -382,7 +566,9 @@ try {
         }, 'its session\'s first turn to end', 30000, 300);
         check('DSH has its session: named after the agent, in its folder', session.title === 'App agent' && real(session.cwd) === real(ws.app), json(session));
         const events = await run.events(ids.app);
-        const note = events.find((e) => e.type === 'user/message' && /^A coding agent runs in this session's terminal: standin in /.test(e.text ?? ''));
+        const note = events.find((e) => e.type === 'user/message' && /^A coding agent runs in this session's terminal tab: standin in /.test(e.text ?? ''));
+        // Its model is given the one line to answer and told no answer is needed, so its reply asks nothing (a reply that asks would make a Decisions card for nothing).
+        check('the listing note gives its model the one line to answer and asks nothing of anyone', Boolean(note) && note.text.includes('Reply with exactly this one line and nothing else: The coding agent runs in its terminal tab.') && note.text.includes('there is no task here, and no answer is needed') && !/DECISION NEEDED|\?/.test(note.text), note?.text);
         // Session Watch reads DSH's list again when it is older than 1.5 s: the row turns from blank within a few seconds.
         const listed = await waitFor(async () => ((await watchRow(ids.app))?.blank === false ? true : null), 'its session\'s row to stop being blank', 10000, 300).catch(() => false);
         check('its session got one short turn by its model, so DSH lists it', Boolean(note) && session.turns.started >= 1 && session.turns.started === session.turns.ended && listed === true, json({ turns: session.turns, note: note?.text, blank: (await watchRow(ids.app))?.blank }));
@@ -565,6 +751,53 @@ try {
             await page.setViewportSize({ width: 1280, height: 860 });
         }, async () => {
             if (window?.page) await shot(window.page, shots, 'failed-page');
+        });
+
+        await step('Wallpaper on and off (a stand-in, in this window only): its page over a light and a dark picture at a low tint, light and dark; its cards on the reading glass, the small text measured', async () => {
+            const page = await openAgents();
+            await cardOf(page, agents.app).waitFor({ state: 'visible', timeout: 15000 });
+            const off = {};
+            for (const mode of ['light', 'dark']) {
+                await setDark(page, mode === 'dark');
+                await page.waitForTimeout(300);
+                off[mode] = await smallTextContrast(page);
+                await toTop(page);
+                await shot(page, shots, `wallpaper-off-${mode}`);
+            }
+            // At a low tint (.2): pictures over each picture, light and dark. Every card stands on tint + .2 (DESIGN.md:
+            // small secondary text stays off the plain tint). Measured over a mid grey (lighter in dark, darker in
+            // light: where tint + .2 carries small text and the plain tint does not) and over each picture's far end;
+            // how far a low tint may go over such ends is DESIGN.md's open question (a floor for the tint slider).
+            const glass = {};
+            const low = {};
+            const ends = {};
+            try {
+                for (const mode of ['light', 'dark']) {
+                    await setDark(page, mode === 'dark');
+                    for (const picture of ['light', 'dark']) {
+                        await wallpaperOn(page, PICTURES[picture], 0.2);
+                        await page.waitForTimeout(300);
+                        await toTop(page);
+                        await shot(page, shots, `wallpaper-${mode}-on-${picture}-picture`);
+                    }
+                    glass[mode] = await cardGlass(page);
+                    low[mode] = await smallTextContrast(page, mode === 'dark' ? 'rgb(140, 140, 140)' : 'rgb(180, 180, 180)');
+                    ends[mode] = { overLight: (await smallTextContrast(page, 'rgb(240, 236, 228)')).ratio, overDark: (await smallTextContrast(page, 'rgb(20, 24, 36)')).ratio };
+                }
+            } finally {
+                await wallpaperOff(page);
+                await setDark(page, false);
+            }
+            console.log(`# small text, lowest contrast: Wallpaper off ${json(off)}; tint .2 over a mid grey ${json(low)}; over the pictures' far ends (all small text) ${json(ends)}; cards' glass at tint .2 ${json(glass)}`);
+            check('Wallpaper off: the page\'s small text reads at 4.5:1 or more, light and dark', ['light', 'dark'].every((m) => off[m].count > 10 && off[m].ratio >= 4.5), json(off));
+            check('Wallpaper on at a low tint (.2): every card of its page stands on the reading glass (tint + .2), none on the plain tint, light and dark', ['light', 'dark'].every((m) => glass[m].length >= 3 && glass[m].every((a) => a >= 0.38 && a <= 0.42)), json(glass));
+            check('Wallpaper on at a low tint (.2) over a mid picture: its secondary small text reads at 4.5:1 or more, light and dark', ['light', 'dark'].every((m) => low[m].secondary.count > 5 && low[m].secondary.ratio >= 4.5), json(low));
+        }, async () => {
+            if (window?.page) {
+                await wallpaperOff(window.page).catch(() => {});
+                await setDark(window.page, false).catch(() => {});
+                await shot(window.page, shots, 'failed-wallpaper');
+            }
         });
 
         await step('the session row: its mark, hover line and menu item, beside a neighbour\'s; the panel and the footer keep theirs', async () => {
@@ -875,6 +1108,66 @@ try {
         check('no errors from the suite in the window', suiteErrors().length === 0, suiteErrors().join('\n'));
     }
 
+    // ── An agent with no message yet, and the continue way ─────────────
+    await step('an agent started without a message: Stop, a closed tab and Start again bring it back under its id, never told to resume what it does not have', async () => {
+        const quiet = await start({ program: 'standin', style: 'flags', folder: ws.quiet, name: 'Quiet agent' });
+        agents.quiet = quiet.agent.key;
+        ids.quiet = quiet.agent.sessionId;
+        const id = quiet.agent.conversationId;
+        const ready = await waitAgent(agents.quiet, (a) => a.status === 'idle' && a.ready, 'the quiet agent to be ready', 30000);
+        check('with no message yet it has no conversation to resume, and says what Start again does', ready.canResume === false
+            && ready.again === 'Start again starts it again (it has no conversation to resume yet).', json({ canResume: ready.canResume, again: ready.again }));
+        await api('stop', { key: agents.quiet });
+        const stopped = await waitAgent(agents.quiet, (a) => a.status === 'stopped', 'the quiet agent to stop', 20000);
+        check('Stop says that Start again starts it again, not that it resumes', stopped.ended?.text === 'You stopped it. Start again starts it again (it has no conversation to resume yet).', json(stopped.ended));
+        const again = await api('startAgain', { key: agents.quiet, fresh: false });
+        const back = await waitAgent(agents.quiet, (a) => a.status === 'idle' && a.ready && a.launches === stopped.launches + 1, 'the quiet agent to come back', 30000);
+        const lines = await screen(agents.quiet);
+        check('Start again starts it under the same id, not with a resume its program would refuse', again.ok && !again.value?.problem && back.conversationId === id
+            && shows(lines, `exec standin --session-id ${id}`) && !shows(lines, '--resume') && !shows(lines, 'No conversation found'), lines);
+        const log = await history((e) => e.agent === agents.quiet && e.kind === 'start');
+        check('What happened says it started again under the same id, and why', log[0]?.text === 'Started Quiet agent again' && log[0]?.state === 'done'
+            && log[0]?.why === 'You started it again under the same id: it had no conversation to resume yet (its program writes one with its first message).', json(log[0]));
+        if (!window?.page) return;
+        const page = await openAgents();
+        await cardOf(page, agents.quiet).getByRole('button', { name: 'Quiet agent', exact: true }).click();
+        const tab = terminalTab(page, 'Quiet agent').first();
+        await tab.waitFor({ state: 'visible', timeout: 20000 });
+        await tab.hover();
+        await tab.locator('[data-dockkit-tab-close]').click();
+        const dialog = page.locator('[role="alertdialog"], [role="dialog"]');
+        await dialog.first().waitFor({ state: 'visible', timeout: 2500 }).catch(() => {});
+        if (await dialog.count()) {
+            const confirm = dialog.first().getByRole('button', { name: /^(Close|Terminate|End|Kill|OK)/i });
+            if (await confirm.count()) await confirm.first().click().catch(() => {});
+        }
+        const closed = await waitAgent(agents.quiet, (a) => a.status === 'stopped', 'the quiet agent to end with its tab', 20000);
+        check('closing its tab ends it, and says that Start again starts it again', closed.ended?.why === 'closed'
+            && closed.ended?.text === 'Its terminal was closed (closing an agent\'s terminal tab ends the agent). Start again starts it again (it has no conversation to resume yet).', json(closed.ended));
+        await openAgents();
+        const card = cardOf(page, agents.quiet);
+        await card.getByRole('button', { name: 'Start again', exact: true }).waitFor({ state: 'visible', timeout: 15000 });
+        check('its card offers Start again and no Start anew: there is nothing to resume yet', (await card.getByRole('button', { name: 'Start anew' }).count()) === 0, await card.innerText());
+        await card.getByRole('button', { name: 'Start again', exact: true }).click();
+        const backAgain = await waitAgent(agents.quiet, (a) => a.status === 'idle' && a.ready && a.launches > back.launches, 'it to come back after its tab closed', 30000);
+        check('Start again after its tab closed: running and idle, under the same id', backAgain.conversationId === id && shows(await screen(agents.quiet), `exec standin --session-id ${id}`), json({ status: backAgain.status, launches: backAgain.launches }));
+        await card.scrollIntoViewIfNeeded().catch(() => {});
+        await shot(page, shots, 'no-message-light');
+    }, async () => {
+        if (window?.page) await shot(window.page, shots, 'failed-no-message');
+    });
+
+    await step('the continue way: its message is typed in, and it says what Start again does', async () => {
+        const cont = await start({ program: 'standin-continue', style: 'continue', folder: ws.cont, name: 'Continue agent', task: 'Hello continue #work=100' });
+        agents.cont = cont.agent.key;
+        const running = await waitAgent(agents.cont, (a) => a.status === 'running' && a.ready, 'the continue agent to run', 30000);
+        const first = await waitDelivery(agents.cont, cont.agent.deliveries[0].id, ['typed'], 'its first message typed in', 30000);
+        await waitFor(async () => (shows(await screen(agents.cont), 'agent: Done: Hello continue') ? true : null), 'it to answer on its screen', 20000, 300);
+        check('it runs and is typed to (no transcript is read, so its message is "typed in"), and Start again resumes its folder\'s latest conversation',
+            running.keepsTranscript === false && running.canResume === true && running.again === 'Start again resumes the latest conversation in its folder.' && /^(Typed|Pasted) in, then Enter\./.test(first.why ?? ''),
+            json({ again: running.again, first }));
+    });
+
     // ── A DSH restart ──────────────────────────────────────────────────
     await step('a wrong setting saved while DSH runs: the agents keep running, read "not followed" with nothing that would act on them, and are picked up where they are', async () => {
         const before = await idleAgent(agents.app);
@@ -913,22 +1206,165 @@ try {
         if (window?.page) await shot(window.page, shots, 'failed-not-followed');
     });
 
+    await step('switched off while DSH runs, as Plugins does it (Session Watch, then Agent Terminals itself, then enabled: false): the agents keep running, What happened names each cause, its cards say why and still open the terminal; on again, each picks them up in place, nothing typed twice', async () => {
+        const before = await idleAgent(agents.app, 'the app agent to be idle');
+        const pids = programPids(before.conversationId);
+        const typed = before.deliveries.length;
+        const since = Date.now();
+        const errorsBefore = errors.length;
+        const switches = (test) => readLog().filter((e) => e.kind === 'switch' && e.at >= since && test(e));
+        const nextSwitch = (state, after, what) => waitFor(async () => switches((e) => e.state === state && e.at > after)[0] ?? null, what, 45000, 300);
+        const pickedUp = async (what) => {
+            const back = await waitAgent(agents.app, (a) => a.status === 'idle' && a.followed === true, what, 40000);
+            return { ok: back.terminalId === before.terminalId && back.launches === before.launches && back.deliveries.length === typed && samePids(programPids(before.conversationId), pids), back };
+        };
+        check('its agent\'s program is found by its conversation id', pids.length === 1, json(pids));
+
+        // 1. Session Watch switched off (the Plugins switch writes disabled: true in the profile, and DSH applies the file).
+        run.rows = rowsWith({ off: ['session-watch'] });
+        run.writeProfile(model.port);
+        const watchOff = await nextSwitch('stopped', since - 1, 'Agent Terminals to stop following, with Session Watch off');
+        check('Session Watch switched off: What happened says Agent Terminals stopped following its agents because Session Watch stopped', watchOff.text === 'Agent Terminals stopped following its agents'
+            && watchOff.cause === 'watch' && watchOff.why.startsWith('Session Watch stopped, and Agent Terminals needs it to follow its agents.'), json(watchOff));
+        check('meanwhile its agent keeps running in its terminal: the same program', samePids(programPids(before.conversationId), pids), json({ pids, now: programPids(before.conversationId) }));
+        run.rows = rowsWith();
+        run.writeProfile(model.port);
+        const watchOn = await nextSwitch('done', watchOff.at, 'Agent Terminals to follow its agents again, with Session Watch back');
+        check('Session Watch on again: it follows its agents again, and says why', watchOn.cause === 'watch' && watchOn.why === 'Session Watch is running now: it picks up every agent where it is.', json(watchOn));
+        let back = await pickedUp('the agent picked up after Session Watch came back');
+        check('picked up in place: the same terminal and program, not started again, nothing typed twice', back.ok, json({ terminalId: back.back.terminalId, launches: back.back.launches, typed: back.back.deliveries.length }));
+
+        // 2. Agent Terminals itself switched off, as the Plugins switch does it, beside the neighbour.
+        run.rows = rowsWith({ off: ['agent-terminals'] });
+        run.writeProfile(model.port);
+        const selfOff = await nextSwitch('stopped', watchOn.at, 'Agent Terminals to stop following, switched off');
+        check('switched off: What happened says it was switched off, and that its agents keep running', selfOff.cause === 'off' && selfOff.why.startsWith('It was switched off. While DSH runs, the agents keep running in their terminals'), json(selfOff));
+        await waitFor(async () => ((await api('state')).ok ? null : true), 'its endpoints to go', 20000, 300);
+        check('its agent keeps running in its terminal while it is off', samePids(programPids(before.conversationId), pids), json({ pids, now: programPids(before.conversationId) }));
+        if (window) {
+            const page = window.page;
+            await rowOf(page, ids.app).waitFor({ state: 'attached', timeout: 20000 });
+            const gone = await waitFor(async () => ((await rowOf(page, ids.app).locator('[data-agent-terminals-mark]').count()) === 0 ? true : null), 'its mark to leave the row', 20000, 300).catch(() => false);
+            check('switched off: its mark leaves the row, and the neighbour\'s mark stays', gone === true && (await rowOf(page, ids.app).locator('[data-neighbour="mark"]').count()) === 1);
+        }
+        run.rows = rowsWith();
+        run.writeProfile(model.port);
+        const selfOn = await nextSwitch('done', selfOff.at, 'Agent Terminals to follow its agents again, switched on');
+        check('switched on again: it says so', selfOn.cause === 'on' && selfOn.why === 'It was switched on: it picks up every agent where it is.', json(selfOn));
+        back = await pickedUp('the agent picked up after Agent Terminals was switched on');
+        check('switched on: its agent is picked up in place, the same terminal and program, nothing typed twice', back.ok, json({ terminalId: back.back.terminalId, launches: back.back.launches, typed: back.back.deliveries.length }));
+        if (window) {
+            const page = window.page;
+            const markBack = () => waitFor(async () => ((await rowOf(page, ids.app).locator('[data-agent-terminals-mark]').count()) === 1 ? true : null), 'its mark to come back', 30000, 300).catch(() => false);
+            let mark = await markBack();
+            // A DSH that loads a plugin's browser half only with the window: the window is opened again, and that is said.
+            let reloaded = false;
+            if (mark !== true) {
+                reloaded = true;
+                await page.reload({ waitUntil: 'domcontentloaded' });
+                await page.getByRole('button', { name: 'Coding agents', exact: true }).first().waitFor({ state: 'visible', timeout: 60000 });
+                mark = await markBack();
+            }
+            console.log(`# switched on: its mark came back ${reloaded ? 'after the window was opened again' : 'in the open window'}`);
+            check('switched on: its mark is back on the row, beside the neighbour\'s, which kept its seat', mark === true && (await rowOf(page, ids.app).locator('[data-neighbour="mark"]').count()) === 1, reloaded ? 'after a reload' : 'no reload');
+        }
+
+        // 3. enabled: false in its entry while DSH runs: loaded, but following and typing nothing; its cards still show.
+        run.rows = rowsWith({ at: { enabled: false } });
+        run.writeProfile(model.port);
+        const profileOff = await nextSwitch('stopped', selfOn.at, 'Agent Terminals to stop following, with enabled: false');
+        check('enabled: false: What happened says its settings changed in DSH\'s profile', profileOff.cause === 'profile' && profileOff.why.startsWith('Its settings changed in DSH\'s profile, so DSH starts it again with them.'), json(profileOff));
+        const off = await waitFor(async () => {
+            const r = await api('state');
+            return r.ok && r.value.enabled === false ? r.value : null;
+        }, 'Agent Terminals with enabled: false', 30000, 300);
+        const kept = off.agents.find((a) => a.key === agents.app);
+        check('the page still lists its agent: running in its terminal, not followed, and where to switch Agent Terminals on', kept?.status === 'running' && kept.followed === false
+            && kept.detail === 'Running in its terminal, not followed: Agent Terminals is switched off in DSH\'s profile (enabled: false). Set enabled to true there and it picks it up where it is.', json(kept && { status: kept.status, followed: kept.followed, detail: kept.detail }));
+        if (window) {
+            const page = await openAgents();
+            await page.locator('[data-agent-terminals-header="off"]').waitFor({ state: 'visible', timeout: 20000 });
+            const card = cardOf(page, agents.app);
+            await card.waitFor({ state: 'visible', timeout: 20000 });
+            const names = (await card.getByRole('button').allInnerTexts()).map((n) => n.trim());
+            check('switched off, its card shows: running, not followed, with only Open its terminal', names.includes('Open its terminal') && !names.some((n) => /^(Stop|Start again|Start anew|Forget|Send)$/.test(n))
+                && /Running in its terminal, not followed: Agent Terminals is switched off in DSH's profile \(enabled: false\)/.test(await card.innerText()), json(names));
+            check('and nothing to start while it is off', (await page.locator('[data-agent-terminals-start]').count()) === 0);
+            await shot(page, shots, 'enabled-false-running-light');
+            await card.getByRole('button', { name: 'Open its terminal' }).click();
+            const tab = terminalTab(page, 'App agent');
+            await tab.first().waitFor({ state: 'visible', timeout: 20000 });
+            check('Open its terminal still opens its session with its terminal tab while it is off', (await tab.count()) === 1 && (await page.locator('.xterm-rows:visible').count()) >= 1, String(await tab.count()));
+            await shot(page, shots, 'enabled-false-open-terminal-light');
+        }
+        run.rows = rowsWith();
+        run.writeProfile(model.port);
+        const profileOn = await nextSwitch('done', profileOff.at, 'Agent Terminals to follow its agents again, with enabled: true');
+        check('enabled back to true: DSH started it again with the settings in its profile, and it says so', profileOn.cause === 'profile' && profileOn.why === 'DSH started it again with the settings in its profile: it picks up every agent where it is.', json(profileOn));
+        back = await pickedUp('the agent picked up after enabled: true');
+        check('enabled back to true: its agent is picked up in place, the same terminal and program, nothing typed twice', back.ok, json({ terminalId: back.back.terminalId, launches: back.back.launches, typed: back.back.deliveries.length }));
+        check('DSH reports no failure for Agent Terminals through all of it', !/agent-terminals[^\n]*(fail|error)/i.test(run.logText()), run.logText().split('\n').filter((l) => /agent-terminals/.test(l)).slice(-5).join('\n'));
+        // The window's errors meanwhile: none from Agent Terminals' browser half. Another plugin's, while the test had it
+        // switched off (Session Watch), are said here and left out of the run's last check, which is about the rest.
+        const fresh = errors.slice(errorsBefore);
+        const ours = fresh.filter((text) => isSuiteError(text, /agent-terminals|dshat/i));
+        check('no error from Agent Terminals\' browser half while parts of DSH were switched off and on', ours.length === 0, ours.join('\n'));
+        const others = fresh.filter((text) => !ours.includes(text) && isSuiteError(text, /session-watch|suite-kit/i));
+        if (others.length) console.log(`# while Session Watch was switched off, the window logged: ${others.slice(0, 3).join(' | ')}`);
+        for (const text of others) errors.splice(errors.indexOf(text), 1);
+    }, async () => {
+        if (window?.page) await shot(window.page, shots, 'failed-switched-off');
+    });
+
     await step('a DSH restart: running agents start again under the same terminal id and resume; one that cannot resume says why', async () => {
         const before = await agentOf(agents.app);
         const plainBefore = await agentOf(agents.plain);
+        const quietBefore = await agentOf(agents.quiet);
+        // A new agent whose session's first turn is still running (its model holds its reply) when DSH quits.
+        const slow = await start({ program: 'standin', style: 'flags', folder: ws.slow, name: 'Slow first turn' });
+        agents.slow = slow.agent.key;
+        ids.slow = slow.agent.sessionId;
+        await waitFor(async () => ((await run.session(ids.slow)).turns.started >= 1 ? true : null), 'its first turn to start', 30000, 300);
+        const sending = await waitFor(async () => (await history((e) => e.agent === agents.slow && e.kind === 'session' && e.state === 'sending'))[0], 'its first turn logged as sending', 15000, 300);
+        const restartedAt = Date.now();
         await run.stop();
         await run.boot('a restart');
         await waitFor(async () => (await api('state')).ok, 'Agent Terminals after the restart', 30000);
         const back = await waitAgent(agents.app, (a) => a.status === 'idle' && a.ready, 'the agent to be back', 40000);
+        const turns = (await history((e) => e.kind === 'switch' && e.at >= restartedAt)).reverse();
+        check('What happened says it stopped following its agents as DSH quit, and followed them again when it started with DSH', turns[0]?.cause === 'quit' && turns[0].why.startsWith('DSH is quitting')
+            && turns[1]?.cause === 'dsh' && turns[1].why === 'It started with DSH: it picks up every agent where it is.', json(turns.map((e) => [e.text, e.cause, e.why])));
         const lines = await screen(agents.app);
         check('it starts again in a terminal with the same id, resuming its conversation', back.terminalId === before.terminalId && back.conversationId === before.conversationId
             && shows(lines, `exec standin --resume ${before.conversationId}`) && shows(lines, `Resumed conversation ${before.conversationId}`), lines);
-        const log = await history((e) => e.agent === agents.app && e.kind === 'restart');
-        check('What happened says it started again after the restart, and why', log[0]?.text === 'Started App agent again after DSH restarted'
-            && log[0]?.why === 'DSH ended its terminal when it quit. It resumes its conversation in a new terminal with the same name, so its tab finds it.', json(log[0]));
+        // Started again is said once the program holds (its screen settles and it still runs), so the entry may follow its screen.
+        const log = await waitFor(async () => (await history((e) => e.agent === agents.app && e.kind === 'restart' && e.at >= restartedAt))[0], 'its restart logged once it holds', 30000, 300);
+        check('What happened says it started again after the restart, once it held, and why', log.text === 'Started App agent again after DSH restarted' && log.state === 'done'
+            && log.why === 'DSH ended its terminal when it quit. It resumes its conversation in a new terminal with the same name, so its tab finds it.', json(log));
         const plain = await waitAgent(agents.plain, (a) => a.status === 'stopped', 'the plain agent to be stopped');
         check('a program that cannot resume is not started again, and says why', plainBefore.status === 'running' && plain.ended?.why === 'restart'
             && plain.ended.text === 'DSH restarted, which ended its terminal. This program cannot resume a conversation, so it was not started again: Start again runs it anew.', json(plain.ended));
+        const quiet = await waitAgent(agents.quiet, (a) => a.status === 'idle' && a.ready, 'the quiet agent to be back', 40000);
+        const quietLines = await screen(agents.quiet);
+        check('an agent that never got a message starts again under its id after the restart, not with a resume', quiet.conversationId === quietBefore.conversationId && quiet.terminalId === quietBefore.terminalId
+            && shows(quietLines, `exec standin --session-id ${quietBefore.conversationId}`) && !shows(quietLines, '--resume'), quietLines);
+        const quietLog = await waitFor(async () => (await history((e) => e.agent === agents.quiet && e.kind === 'restart'))[0], 'its restart logged once it holds', 30000, 300);
+        check('What happened says it started again after the restart under the same id, once it held', quietLog.text === 'Started Quiet agent again after DSH restarted' && quietLog.state === 'done'
+            && /It had no conversation to resume yet \(its program writes one with its first message\), so it starts again under the same id/.test(quietLog.why ?? '')
+            && !(await history((e) => e.agent === agents.quiet && e.at >= restartedAt && (e.kind === 'ended' || e.state === 'failed'))).length, json(quietLog));
+        const cont = await waitAgent(agents.cont, (a) => a.status === 'running' && a.ready, 'the continue agent to be back', 40000);
+        const contLines = await screen(agents.cont);
+        check('the continue way starts again with --continue, in the same folder, and resumes its latest conversation', cont.launches >= 1 && shows(contLines, 'exec standin-continue --continue') && shows(contLines, 'Resumed conversation'), contLines);
+        const settled = await waitFor(async () => {
+            const entry = (await history((e) => e.id === sending.id))[0];
+            return entry && entry.state !== 'sending' ? entry : null;
+        }, 'the first turn the restart cut to be settled', 30000, 300);
+        const slowRow = await waitFor(async () => ((await watchRow(ids.slow))?.blank === false ? true : null), 'its session to be listed', 15000, 300).catch(() => false);
+        check('a first turn cut by the restart is settled, not left "sending", and its session is listed all the same', settled.state === 'stopped'
+            && /^Its session's first turn (was cut off|did not finish)$/.test(settled.text) && /The session is listed in the sidebar all the same\.$/.test(settled.reason ?? '') && slowRow === true, json(settled));
+        // A reply still held (if DSH took the cut turn up again) is let go, so no later quit waits on it.
+        model.release();
+        await api('stop', { key: agents.slow });
         const next = await send(agents.app, 'After the restart #work=100');
         await waitDelivery(agents.app, next.id, ['delivered'], 'a message after the restart', 30000);
         check('a message after the restart goes into the same conversation', transcriptUsers(before.transcript).includes('After the restart #work=100'), '');
@@ -1037,6 +1473,16 @@ try {
         const cutIdle = (a) => a.status === 'idle' && a.ready && /was cut off when its program ended/.test(a.detail ?? '');
         await waitAgent(agents.app, cutIdle, 'the approval cut', 40000);
         await waitAgent(agents.long, cutIdle, 'the job cut', 40000);
+        // A second restart before any message: the jobs it finds cut are the same ones, and are not logged again.
+        const secondAt = Date.now();
+        await run.stop();
+        await run.boot('a second restart in a row');
+        await waitFor(async () => (await api('state')).ok, 'Agent Terminals after the second restart', 30000);
+        await waitAgent(agents.app, cutIdle, 'the approval cut, after the second restart', 40000);
+        await waitAgent(agents.long, cutIdle, 'the job cut, after the second restart', 40000);
+        await waitFor(async () => ((await history((e) => e.agent === agents.long && e.kind === 'restart' && e.state === 'done' && e.at >= secondAt)).length >= 1 ? true : null), 'the second restart logged', 30000, 300);
+        const cuts = await history((e) => e.kind === 'cut' && /before a pick-up/.test(e.why ?? ''));
+        check('two restarts in a row: each cut job is logged once', cuts.filter((e) => e.agent === agents.app).length === 1 && cuts.filter((e) => e.agent === agents.long).length === 1, json(cuts.map((e) => [e.agent, e.text, e.why])));
         // A pick-up without a launch: a wrong setting saved, then fixed (as switching off and on in Plugins does).
         run.rows = rowsWith({ at: { proofSeconds: 500 } });
         run.writeProfile(model.port);
@@ -1099,11 +1545,13 @@ try {
     });
 
     // ── A wrong setting ────────────────────────────────────────────────
-    await step('a wrong setting: no agent runs, each says why, and the page says which setting; saving a good one brings them back', async () => {
-        await restartWith(rowsWith({ at: { proofSeconds: 1 } }), 'a wrong setting');
+    await step('a wrong setting (a number in quotes): no agent runs, each says why, and the page says which setting; saving a good one brings them back', async () => {
+        // The wrong type, as a hand edit of the profile makes it: DSH starts Agent Terminals all the same.
+        await restartWith(rowsWith({ at: { proofSeconds: '8' } }), 'a wrong setting');
         await waitFor(async () => (await api('state')).ok, 'Agent Terminals with a wrong setting', 30000);
         const s = await state();
-        check('it starts and says which setting is wrong and what it must be', s.problem?.key === 'proofSeconds' && /Seconds without proof before Enter is pressed again/.test(s.problem?.text ?? '') && /\b2\b.*\b120\b/.test(s.problem?.text ?? ''), json(s.problem));
+        check('it starts and says which setting is wrong, what it must be, and the value it has', s.problem?.key === 'proofSeconds'
+            && s.problem?.text === 'Seconds without proof before Enter is pressed again (proofSeconds) must be a whole number of seconds from 2 to 120 (it is "8")', json(s.problem));
         const app = s.agents.find((a) => a.key === agents.app);
         check('no agent runs, and each says why', app?.status === 'stopped' && app.detail === 'Not running: Agent Terminals waits for a setting to be fixed (see the top of this page), then picks it up again.', json({ status: app?.status, detail: app?.detail }));
         const refused = await api('start', { input: { program: 'standin', style: 'flags', folder: ws.app } });
@@ -1119,9 +1567,15 @@ try {
         await header.getByRole('button', { name: /settings/i }).first().click();
         const form = page.locator('[data-suite-settings="dsh-plugin-agent-terminals"]');
         await form.waitFor({ state: 'visible', timeout: 20000 });
-        await form.getByLabel('Seconds without proof before Enter is pressed again', { exact: true }).fill('3');
+        // The natural fix: the form shows the value as saved, in its quotes, flagged; typed without them, one Save stores the number.
+        const field = form.getByLabel('Seconds without proof before Enter is pressed again', { exact: true });
+        const flagged = await waitFor(async () => (/It is saved as text, in quotes\. Type a whole number from 2 to 120, without the quotes, then save\./.test(await form.innerText()) ? true : null), 'the form to flag the number in quotes', 10000, 300).catch(() => false);
+        check('the form flags the number saved in quotes as it opens, and says what to type', flagged === true && (await field.inputValue()) === '"8"', `${await field.inputValue()} | ${(await form.innerText()).replace(/\n+/g, ' ').slice(0, 600)}`);
+        await shot(page, shots, 'wrong-type-form-light');
+        await field.fill('8');
         await form.getByRole('button', { name: 'Save' }).click();
         await waitFor(async () => !(await state()).problem, 'the setting to be fixed', 15000, 300);
+        check('typed without its quotes and saved once, it is stored as the number', (await state()).settings.proofSeconds === 8, json((await state()).settings));
         const back = await waitAgent(agents.app, (a) => a.status === 'idle' && a.ready, 'the agent to come back once it is fixed', 40000);
         check('saved: the problem is gone and the agents come back, resuming', back.terminal?.state === 'running' && shows(await screen(agents.app), 'Resumed conversation'), json({ status: back.status }));
     }, async () => {
@@ -1172,12 +1626,39 @@ try {
         const header = page.locator('[data-agent-terminals-header="off"]');
         await header.waitFor({ state: 'visible', timeout: 20000 });
         const words = (await header.innerText()).replace(/\n+/g, ' ');
-        check('the page says it is switched off and how to change it', words.includes('Agent Terminals is switched off in DSH\'s profile (enabled: false in its entry in cordis.patch.yml), so it starts, reads and types nothing. To use it, set enabled to true there and restart DSH.'), words);
+        check('the page says it is switched off and how to change it', words.includes('Agent Terminals is switched off in DSH\'s profile (enabled: false in its entry in cordis.patch.yml), so it starts, reads and types nothing. To use it, set enabled to true there; DSH applies it when you save the file.'), words);
         await shot(page, shots, 'disabled-light');
     }, async () => {
         if (window?.page) await shot(window.page, shots, 'failed-disabled');
     });
+
+    await step('enabled set back to true in the profile while DSH runs: DSH applies the file, with no restart, and the agents it ended start again', async () => {
+        const pid = run.child?.pid;
+        run.rows = rowsWith();
+        run.writeProfile(model.port);
+        const back = await waitFor(async () => {
+            const r = await api('state');
+            return r.ok && r.value.enabled === true && !r.value.problem ? r.value : null;
+        }, 'Agent Terminals to work again with the saved file', 45000, 500);
+        check('DSH applies the saved file without a restart: Agent Terminals is on again', back.enabled === true && run.child?.pid === pid, json({ enabled: back.enabled, samePid: run.child?.pid === pid }));
+        const line = (await history((e) => e.kind === 'settings'))[0];
+        check('What happened says what the edit of the profile changed, once', line?.text === 'Settings changed in DSH\'s profile: “Agent Terminals on”' && line.why === 'Agent Terminals started again with them.'
+            && (await history((e) => e.kind === 'settings' && e.at >= line.at)).length === 1, json(line));
+        const app = await waitAgent(agents.app, (a) => a.status === 'idle' && a.ready, 'the app agent to start again', 40000);
+        check('the agent DSH ended while Agent Terminals was off starts again and resumes its conversation', shows(await screen(agents.app), `Resumed conversation ${app.conversationId}`), json({ status: app.status, launches: app.launches }));
+        if (window?.page) {
+            await window.page.locator('[data-agent-terminals-header="on"]').waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
+            await shot(window.page, shots, 'profile-on-again-light');
+        }
+    }, async () => {
+        if (window?.page) await shot(window.page, shots, 'failed-profile-on-again');
+    });
+    const dshOwn = errors.filter((text) => !isSuiteError(text));
+    if (dshOwn.length) console.log(`# the window's other errors (DSH's own or the neighbour's; not the suite's): ${dshOwn.length}: ${dshOwn.slice(0, 4).map((t) => String(t).split('\n')[0].slice(0, 160)).join(' | ')}`);
     check('no errors from the suite in the window', suiteErrors().length === 0, suiteErrors().join('\n'));
+    // Every quit of DSH in this run (restarts with agents running, in a job, in a first turn) ended by itself.
+    console.log(`# DSH quits: ${quits.map((q) => `${(q.ms / 1000).toFixed(1)} s${q.killed ? ' (killed)' : ''}`).join(', ')}`);
+    check('every quit of DSH ended by itself within its grace (20 s), never by a kill', quits.length >= 8 && quits.every((q) => !q.killed && q.ms < 20000), json(quits));
 } catch (error) {
     check('the run finished', false, error?.stack ?? error);
     if (window?.page) await shot(window.page, shots, 'failed').catch(() => {});

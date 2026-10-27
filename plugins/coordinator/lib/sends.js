@@ -1331,6 +1331,11 @@ function remote(name, args, label = name, ctx = {}) {
         return { kind: 'remote', program: name, what: `opens a raw connection to ${positionals(args, new Set([...'ipsswWxXqI']))[0] ?? 'another machine'} (nc)` };
     }
     if (['socat', 'telnet', 'websocat', 'wscat'].includes(name)) return { kind: 'remote', program: name, what: `opens a connection that can send anything (${name})` };
+    // OpenSSL's TLS client is a raw connection too (what it reads in goes out); its other commands work on files here.
+    if (name === 'openssl') {
+        if (args[0] !== 's_client') return null;
+        return { kind: 'remote', program: name, what: `opens a raw connection to ${placeOf(optionValue(args, ['-connect']) ?? '') || 'another machine'} (openssl s_client)` };
+    }
     if (name === 'grpcurl') return args.some((a) => a === 'list' || a === 'describe') ? null : { kind: 'request', program: name, what: 'calls a remote service (grpcurl)' };
     return null;
 }
@@ -1349,6 +1354,9 @@ const CODE_SENDS = [
     [/\$fetch\s*\.\s*(post|put|patch|delete)\s*\(/i, (m) => `a ${m[1].toUpperCase()}`],
     [/\bNet::HTTP::(Post|Put|Patch|Delete)\b|\b(?:HTTParty|Faraday|RestClient)\s*\.\s*(post|put|patch|delete)\b/, (m) => `a ${(m[1] ?? m[2]).toUpperCase()}`],
     [/\bHTTP::Request->new\(\s*['"]?(POST|PUT|PATCH|DELETE)/, (m) => `a ${m[1]}`],
+    // Perl's web clients: `LWP::UserAgent->new->post(…)`, HTTP::Tiny's `->request('POST', …)`, HTTP::Request::Common's `->request(POST $url, …)`.
+    [/\b(?:LWP::UserAgent|HTTP::Tiny|Mojo::UserAgent|Furl)\b[^]{0,4000}?->\s*(post|put|patch|delete)(?:_form)?\s*\(/, (m) => `a ${m[1].toUpperCase()}`],
+    [/->\s*request\s*\(\s*(?:['"](POST|PUT|PATCH|DELETE)['"]|(POST|PUT|PATCH|DELETE)\b)/, (m) => `a ${m[1] ?? m[2]}`],
     [/\bCURLOPT_(?:POST|POSTFIELDS|UPLOAD|CUSTOMREQUEST)\b/, () => 'a request that changes something'],
     [/\bInvoke-(?:WebRequest|RestMethod)\b[^\n]*-Method\s+['"]?(Post|Put|Patch|Delete)\b/i, (m) => `a ${m[1].toUpperCase()}`],
     // .NET's WebClient, from PowerShell: `(New-Object System.Net.WebClient).UploadFile(…)`.
@@ -1903,7 +1911,7 @@ function commandSendOf(rawWords, ctx, inputs) {
         case 'flutter': case 'dart': case 'mix': case 'swift': case 'changeset': case 'lerna': case 'eas':
             return table(PUBLISH[name], args, name, 'publish');
         case 'ssh': case 'mosh': case 'autossh': case 'rsh': case 'scp': case 'rsync': case 'rclone': case 's3cmd': case 'gsutil': case 'azcopy':
-        case 'sftp': case 'ftp': case 'lftp': case 'tftp': case 'nc': case 'socat': case 'telnet': case 'websocat': case 'wscat': case 'grpcurl':
+        case 'sftp': case 'ftp': case 'lftp': case 'tftp': case 'nc': case 'socat': case 'telnet': case 'websocat': case 'wscat': case 'grpcurl': case 'openssl':
             return remote(name, args, name, ctx);
         case 'sendmail': case 'mail': case 'msmtp': case 'swaks': case 'ssmtp': case 'esmtp': return mail(name, args);
         case 'heroku': case 'fly': case 'vercel': case 'firebase': case 'stripe': case 'goreleaser': case 'semantic-release': case 'releaseIt':

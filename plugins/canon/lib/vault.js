@@ -6,7 +6,8 @@
  * folder's notes listed for the page, never indexed.
  *
  * Reading never writes and never throws at its callers: a folder that is
- * missing or may not be read is a state with words for the page. Nothing
+ * missing or may not be read is a state with words for the page, and a
+ * folder inside the vault that may not be listed is named on it. Nothing
  * blocks DSH: every read is asynchronous, a recall waits at most a moment
  * for a fresh read and otherwise uses the index it has.
  *
@@ -16,8 +17,8 @@ import { open, readdir, realpath, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { displayPath } from './config.js';
 import { field, noteOf, parseNote } from './frontmatter.js';
-import { Index, folderKeys } from './search.js';
-import { distinctTerms, terms } from './text.js';
+import { Index, folderKeys, projectsOf } from './search.js';
+import { EVERYDAY, distinctTerms, terms } from './text.js';
 
 /** The most notes Canon reads; past it the page says the vault was cut short. */
 export const MAX_NOTES = 20000;
@@ -27,6 +28,8 @@ export const MAX_NOTE_BYTES = 256 * 1024;
 export const STALE_MS = 5000;
 /** How long a recall waits for a fresh read before it uses the index it has. */
 export const WAIT_MS = 800;
+/** Folders inside the vault that may not be listed, named at most (all are counted). */
+export const MAX_CLOSED_NAMED = 20;
 /** Drafts listed on the page, at most. */
 const MAX_DRAFTS = 200;
 
@@ -68,11 +71,52 @@ export function folderProblem(error, display) {
     return { code: 'unreadable', text: `Canon could not read ${display} (${String(error?.message ?? error).slice(0, 160)}). Check the folder, then read it again.` };
 }
 
+/**
+ * What What happened says about the folders inside the vault Canon may not
+ * list, against the set it said last (Canon keeps that set across
+ * restarts): nothing when the set is the same, so a restart, a fixed
+ * setting or another read that finds the same folders adds nothing; once
+ * when every folder reads again. `kept` is the set to keep from now on.
+ * @param {{ vault: string, names: string[], count: number } | undefined} last - the set said last.
+ * @param {object} after - the vault's status now (Vault.status()).
+ * @returns {{ kept: { vault: string, names: string[], count: number }, entry?: object } | undefined}
+ */
+export function closedChange(last, after) {
+    const same = last?.vault !== undefined && last.vault === after.path;
+    const was = same ? last.names ?? [] : [];
+    const wasCount = same ? last.count ?? 0 : 0;
+    const now = after.closed ?? [];
+    const count = after.counts?.closed ?? now.length;
+    const kept = { vault: after.path, names: now, count };
+    if (was.join('\n') === now.join('\n') && wasCount === count) return same || count > 0 ? undefined : { kept };
+    if (count === 0) return { kept, ...(wasCount > 0 ? { entry: { kind: 'vault', state: 'done', text: 'Every folder in the vault can be read again' } } : {}) };
+    return { kept, entry: { kind: 'vault', state: 'failed', text: closedText(now, count), why: closedWhat(count) } };
+}
+
+/** closedChange's entry, against the vault's state before a read (as Vault.read() keeps it). */
+export function closedEntry(before, after) {
+    const last = before?.vault !== undefined ? { vault: before.vault, names: before.closed ?? [], count: before.closedCount ?? 0 } : undefined;
+    return closedChange(last, after)?.entry;
+}
+
+/** "1 folder Canon may not read: Projects/osprey-mobile" (the first few named). */
+export function closedText(names, count = names.length) {
+    const shown = names.slice(0, 5);
+    const more = count - shown.length;
+    return `${count} folder${count === 1 ? '' : 's'} Canon may not read: ${shown.join(', ')}${more > 0 ? `, and ${more} more` : ''}`;
+}
+
+/** What to do about folders Canon may not read. */
+export const closedWhat = (count) => `${count === 1 ? 'Its' : 'Their'} notes are never added to turns. Give DSH access to ${count === 1 ? 'it' : 'them'} (${count === 1 ? 'its' : 'their'} permissions, or on a Mac System Settings, Privacy & Security, Files and Folders), then read the vault again.`;
+
 /** Whether a vault path is in the drafts folder (compared without case: a Mac's disk ignores it). */
 const inFolder = (rel, folder) => Boolean(folder) && (rel.toLowerCase() === folder.toLowerCase() || rel.toLowerCase().startsWith(`${folder.toLowerCase()}/`));
 
-/** How much of a draft's words the page shows. */
+/** How much of a draft's words the page shows: in its row, and when a person opens the whole draft. */
 const PREVIEW_CHARS = 240;
+export const DRAFT_BODY_CHARS = 8000;
+/** A note shares a draft's subject when it covers this much of what the draft says (search.js's share). */
+const RELATED_SHARE = 1 / 3;
 
 /**
  * Markdown as the plain words a person reads in a preview: no title line,
@@ -118,6 +162,8 @@ function draftOf(rel, text, file) {
         turn: Number.isSafeInteger(source.turn) ? source.turn : undefined,
         folder: typeof source.folder === 'string' ? source.folder.slice(0, 400) : '',
         preview: cut(plainText(body), PREVIEW_CHARS),
+        // The whole draft as written, for a person to read before Promote or Discard (its title line is the row's title).
+        body: cut(String(body ?? '').replace(/^\s*#\s+[^\n]*\n?/, '').trim(), DRAFT_BODY_CHARS),
         mtimeMs: file.mtimeMs,
     };
 }
@@ -163,16 +209,24 @@ export class Vault {
     status() {
         const where = this.where();
         const own = this.state.state === 'unset' ? !where.vault : this.state.vault === where.vault;
-        const counts = { notes: 0, active: 0, drafts: 0, other: 0, unreadable: 0 };
+        const counts = { notes: 0, active: 0, drafts: 0, other: 0, unreadable: 0, closed: 0, addressed: 0 };
+        const addressed = [];
         if (own) {
-            Object.assign(counts, { notes: this.files.size, active: this.index.size, drafts: this.draftsByPath.size });
-            for (const f of this.files.values()) {
+            Object.assign(counts, { notes: this.files.size, active: this.index.size, drafts: this.draftsByPath.size, closed: this.state.closedCount ?? 0 });
+            for (const [rel, f] of this.files) {
                 if (f.kind === 'other') counts.other += 1;
                 else if (f.kind === 'unreadable') counts.unreadable += 1;
+                else if (f.addressed) addressed.push(rel);
             }
+            counts.addressed = addressed.length;
+            addressed.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
         }
         return {
             ...(own ? this.state : { state: 'reading' }),
+            // The folders inside the vault it may not list, by their vault paths (the first few).
+            closed: own ? this.state.closed ?? [] : [],
+            // The active notes with a line addressed to agents, which turns leave out (the first few).
+            addressed: addressed.slice(0, MAX_CLOSED_NAMED),
             path: where.vault,
             display: displayPath(where.vault, this.home),
             draftsFolder: where.draftsFolder,
@@ -248,12 +302,13 @@ export class Vault {
         let root;
         let listed;
         let truncated;
+        let closed;
         try {
             root = await realpath(where.vault);
             const st = await stat(root);
             if (!st.isDirectory()) throw Object.assign(new Error('not a folder'), { code: 'ENOTDIR' });
             // A folder that can be looked up may still refuse its listing (no access, a Mac's privacy rules).
-            ({ files: listed, truncated } = await this.walk(root));
+            ({ files: listed, truncated, closed } = await this.walk(root));
         } catch (error) {
             if (generation !== this.generation) return;
             this.reset('');
@@ -307,24 +362,33 @@ export class Vault {
             const note = noteOf(file.rel, text);
             if (note.active) {
                 this.index.add(note, file);
-                this.files.set(file.rel, { mtimeMs: file.mtimeMs, size: file.size, kind: 'note' });
+                const addressed = addressedLines(note.body);
+                this.files.set(file.rel, { mtimeMs: file.mtimeMs, size: file.size, kind: 'note', ...(addressed ? { addressed } : {}) });
             } else {
                 this.index.remove(file.rel);
                 this.files.set(file.rel, { mtimeMs: file.mtimeMs, size: file.size, kind: 'other' });
             }
         });
         if (generation !== this.generation) return;
-        this.state = { state: 'ok', readAt: this.now(), took: this.now() - started, truncated, changed: stale.length, vault: where.vault };
-        if (before.state !== 'ok' || stale.length > 0 || before.truncated !== truncated) this.changed(before.state === 'ok' ? 'changed' : 'ok', before);
+        const named = closed.slice(0, MAX_CLOSED_NAMED);
+        const closedNow = (before.closed ?? []).join('\n') !== named.join('\n') || (before.closedCount ?? 0) !== closed.length;
+        this.state = { state: 'ok', readAt: this.now(), took: this.now() - started, truncated, changed: stale.length, vault: where.vault, closed: named, closedCount: closed.length };
+        if (before.state !== 'ok' || stale.length > 0 || before.truncated !== truncated || closedNow) this.changed(before.state === 'ok' ? 'changed' : 'ok', before);
     }
 
     changed(kind, before) {
         try { this.onChange?.({ kind, before, after: this.status() }); } catch { /* a listener never stops a read */ }
     }
 
-    /** The vault's Markdown files (vault paths), skipping hidden folders, links and other files; at most MAX_NOTES. */
+    /**
+     * The vault's Markdown files (vault paths), skipping hidden folders,
+     * links and other files, at most MAX_NOTES; and the folders inside it
+     * that may not be listed (no permission, a Mac's privacy rules), by
+     * their vault paths, sorted. The vault's own folder not listing throws.
+     */
     async walk(root) {
         const files = [];
+        const closed = [];
         const folders = [''];
         let truncated = false;
         while (folders.length && !truncated) {
@@ -334,6 +398,8 @@ export class Vault {
                 entries = await readdir(rel ? join(root, rel) : root, { withFileTypes: true });
             } catch (error) {
                 if (!rel) throw error;
+                // Gone since it was listed: nothing to say. Anything else keeps its notes out, so the page names it.
+                if (error?.code !== 'ENOENT' && error?.code !== 'ENOTDIR') closed.push(rel);
                 continue;
             }
             entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
@@ -350,7 +416,8 @@ export class Vault {
                 }
             }
         }
-        return { files, truncated };
+        closed.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+        return { files, truncated, closed };
     }
 
     /** The drafts folder's notes, newest first. */
@@ -359,51 +426,93 @@ export class Vault {
     }
 
     /**
+     * The active notes a draft shares its subject with: what a turn with the
+     * draft's words, in the folder it was saved from, would get.
+     * @param {{ title?: string, body?: string, folder?: string }} draft
+     * @returns {{ path: string, title: string }[]}
+     */
+    related(draft, limit = 2) {
+        const words = `${draft?.title ?? ''}\n\n${plainText(draft?.body ?? '').slice(0, 1500)}`.trim();
+        if (!words) return [];
+        try {
+            // Named only when it shares the subject, not just a project's name: two words of its own and a third of
+            // what the draft says.
+            const names = this.index.projectWords();
+            return this.search(words, { folder: draft.folder ?? '', limit: 10 }).results
+                .filter((r) => r.share >= RELATED_SHARE && new Set(r.matched.filter((t) => !names.has(t))).size >= 2)
+                .slice(0, limit).map((r) => ({ path: r.path, title: r.title }));
+        } catch {
+            return [];
+        }
+    }
+
+    /**
      * The active notes that fit a prompt (search.js), for a session's folder.
      * @param {string} prompt
      * @param {{ folder?: string, limit?: number }} [options]
      */
     search(prompt, { folder = '', limit = 10 } = {}) {
-        const keys = folderKeys(folder, this.home);
+        const keys = folderKeys(folder, this.home, (name) => this.index.projects.has(name));
         return { ...this.index.search(prompt, { folder: keys, limit }), folder: keys };
     }
 
+    /** How many lines of an active note are addressed to agents (0 when none, or not an active note). */
+    addressedIn(rel) {
+        const f = this.files.get(rel);
+        return f?.kind === 'note' ? f.addressed ?? 0 : 0;
+    }
+
     /**
-     * The passage of a note that best fits the prompt's terms, read fresh
-     * from the file: its best paragraph (and the next, when there is room),
-     * under the heading it sits in; the note's start when no paragraph has
-     * a prompt word. At most `budget` characters; undefined when the note
+     * The quote of a note for the prompt's terms (bestPassage), read fresh
+     * from the file, at most `budget` characters; undefined when the note
      * cannot be read or is no longer active.
      * @param {string} rel - the note's vault path.
      * @param {string[]} queryTerms
      * @param {number} budget
      */
     async passage(rel, queryTerms, budget) {
+        const note = await this.quotable(rel);
+        return note === undefined ? undefined : bestPassage(note.body, queryTerms, budget);
+    }
+
+    /**
+     * An active note as a turn may quote it, read fresh from the file: its
+     * body, its frontmatter, its projects and when the file last changed;
+     * undefined when it cannot be read or is no longer active.
+     * @param {string} rel - the note's vault path.
+     */
+    async quotable(rel) {
         if (!this.root || !this.index.has(rel)) return undefined;
+        const file = join(this.root, rel);
         let text;
+        let mtimeMs = 0;
         try {
-            text = await readHead(join(this.root, rel));
+            text = await readHead(file);
+            mtimeMs = (await stat(file)).mtimeMs;
         } catch {
             return undefined;
         }
         const note = noteOf(rel, text);
         if (!note.active) return undefined;
-        return bestPassage(note.body, queryTerms, budget);
+        return { body: note.body, data: note.data, projects: projectsOf(note), mtimeMs };
     }
 }
 
 /**
- * The paragraphs of a body, each with the heading it sits under; code
- * fences stay whole.
+ * The paragraphs of a body, each with the heading it sits under, that
+ * heading's level and its section (a number that changes at each heading);
+ * code fences stay whole.
  */
 export function paragraphs(body) {
     const out = [];
     let heading = '';
+    let level = 0;
+    let section = 0;
     let current = [];
     let fenced = false;
     const flush = () => {
         const text = current.join('\n').trim();
-        if (text) out.push({ heading, text });
+        if (text) out.push({ heading, level, section, text });
         current = [];
     };
     for (const line of String(body ?? '').split(/\r?\n/)) {
@@ -415,7 +524,9 @@ export function paragraphs(body) {
         }
         if (!fenced && /^#{1,6}\s+\S/.test(line)) {
             flush();
+            level = /^#+/.exec(line)[0].length;
             heading = line.replace(/^#{1,6}\s+/, '').replace(/[\s#]+$/, '').trim();
+            section += 1;
             continue;
         }
         if (!fenced && line.trim() === '') {
@@ -428,6 +539,9 @@ export function paragraphs(body) {
     return out;
 }
 
+/** Whether a text ends on a line that introduces what follows ("Today:", "Steps:"). */
+const opens = (text) => /:\s*$/.test(String(text ?? ''));
+
 /** Cut text to at most `max` characters, at a line or word end when one is near, with "…". */
 export function cut(text, max) {
     const t = String(text ?? '').trim();
@@ -435,29 +549,150 @@ export function cut(text, max) {
     if (max <= 1) return '';
     const head = t.slice(0, max - 1);
     const at = Math.max(head.lastIndexOf('\n'), head.lastIndexOf(' '));
-    return `${(at > max * 0.6 ? head.slice(0, at) : head).trimEnd()}…`;
+    let kept = (at > max * 0.6 ? head.slice(0, at) : head).trimEnd();
+    // Never on a line that introduces what it leaves out ("Today:…"): back to the line before it, when there is one.
+    if (opens(kept) && kept.includes('\n')) kept = kept.slice(0, kept.lastIndexOf('\n')).trimEnd();
+    return `${kept}…`;
 }
 
-/** The best passage of a body for a prompt's terms, at most `budget` characters. */
-export function bestPassage(body, queryTerms, budget) {
-    const wanted = new Set(queryTerms);
-    const parts = paragraphs(body);
+/** The characters a text takes as the block's quoted lines: "> " before each line, ">" alone for an empty one. */
+export function quotedLength(text) {
+    const lines = String(text ?? '').split('\n');
+    return lines.reduce((n, line) => n + (line.trim() ? line.length + 2 : 1), 0) + lines.length - 1;
+}
+
+/** `text` cut so that `size(text)` is at most `budget` (cut()'s rules). */
+function cutTo(text, budget, size) {
+    let max = Math.min(String(text ?? '').trim().length, budget);
+    let out = cut(text, max);
+    while (out && size(out) > budget && max > 1) {
+        max -= Math.max(1, size(out) - budget);
+        out = cut(text, max);
+    }
+    return size(out) <= budget ? out : '';
+}
+
+/**
+ * The quote of a note for a prompt's terms, at most `budget` characters
+ * as `size` measures them (plain length by default; the block measures
+ * quoted lines, quotedLength):
+ * - the whole note when it fits (its title heading aside: the block's
+ *   citation names the note), so a question that asks two things gets
+ *   both;
+ * - else the paragraph that fits the prompt best, and then, while there is
+ *   room, the paragraph that adds the most of the prompt's words not quoted
+ *   yet (so each half of a question that asks two things gets the
+ *   paragraph that answers it), in the note's own order;
+ * - the note's start when no paragraph has a prompt word.
+ * A paragraph that ends on a line introducing what follows ("Today:")
+ * always brings the next one. The first paragraph quoted from a section
+ * says its heading ("Changing a port: Edit …"). The words that say what
+ * the prompt is about choose; its everyday request words ("run",
+ * "check") only when it has no others. Lines addressed to agents are
+ * never in it.
+ */
+export function bestPassage(body, queryTerms, budget, size = (text) => text.length) {
+    const about = queryTerms.filter((t) => !EVERYDAY.has(t));
+    const wanted = new Set(about.length ? about : queryTerms);
+    // A paragraph keeps its other lines when one is addressed to agents; one with nothing else is gone.
+    const parts = paragraphs(body).map((p) => ({ ...p, text: unaddressed(p.text) })).filter((p) => p.text);
     if (parts.length === 0 || budget < 20) return '';
-    let best = -1;
-    let bestScore = 0;
-    parts.forEach((p, i) => {
+    // The note's own title heading says nothing the citation does not.
+    const titleSection = parts[0].level === 1 ? parts[0].section : -1;
+    const write = (chosen) => {
+        const order = [...new Set(chosen)].sort((a, b) => a - b);
+        return order.map((i, k) => {
+            const p = parts[i];
+            const first = k === 0 || parts[order[k - 1]].section !== p.section;
+            return first && p.heading && p.section !== titleSection ? `${p.heading}: ${p.text}` : p.text;
+        }).join('\n');
+    };
+    const every = parts.map((_, i) => i);
+    if (size(write(every)) <= budget) return write(every);
+    const scores = parts.map((p) => {
         const hits = distinctTerms(`${p.heading} ${p.text}`).filter((t) => wanted.has(t)).length;
         const all = terms(p.text).filter((t) => wanted.has(t)).length;
-        const score = hits * 2 + Math.min(all, 6) * 0.25;
-        if (score > bestScore) {
-            best = i;
-            bestScore = score;
-        }
+        return hits * 2 + Math.min(all, 6) * 0.25;
     });
-    const start = best < 0 ? 0 : best;
-    const chosen = parts[start];
-    let text = chosen.heading && best >= 0 ? `${chosen.heading}: ${chosen.text}` : chosen.text;
-    const next = parts[start + 1];
-    if (next && next.heading === chosen.heading && text.length + next.text.length + 1 <= budget) text = `${text}\n${next.text}`;
-    return cut(text, budget);
+    // A prompt word in a section's own heading says the section is about it (the note's title heading says that of
+    // the whole note, not of one paragraph).
+    const headed = parts.map((p) => (p.section === titleSection ? 0 : distinctTerms(p.heading).filter((t) => wanted.has(t)).length));
+    // A paragraph that introduces what follows comes with it.
+    const unit = (i) => (opens(parts[i].text) && i + 1 < parts.length ? [i, i + 1] : [i]);
+    let best = -1;
+    scores.forEach((score, i) => { if (score > 0 && (best < 0 || score > scores[best])) best = i; });
+    if (best < 0) {
+        // No paragraph has a prompt word: the note's start, as far as it goes.
+        const chosen = [];
+        for (const i of every) {
+            if (size(write([...chosen, ...unit(i)])) > budget) break;
+            chosen.push(...unit(i));
+        }
+        return chosen.length ? write(chosen) : cutTo(write(unit(0)), budget, size);
+    }
+    const first = unit(best);
+    if (size(write(first)) > budget) return cutTo(write(first), budget, size);
+    // Then, while there is room, the paragraph that adds the most of the prompt's words not quoted yet (of those, one
+    // whose section's heading has them, then the best scored): a question that asks two things gets the paragraph
+    // that answers each.
+    const chosen = new Set(first);
+    const words = parts.map((p) => distinctTerms(`${p.heading} ${p.text}`).filter((t) => wanted.has(t)));
+    const covered = new Set(first.flatMap((i) => words[i]));
+    const rest = every.filter((i) => !chosen.has(i) && scores[i] > 0);
+    while (rest.length) {
+        let pick = rest[0];
+        let gain = -1;
+        for (const i of rest) {
+            const adds = words[i].filter((t) => !covered.has(t)).length;
+            const better = headed[i] - headed[pick] || scores[i] - scores[pick];
+            if (adds > gain || (adds === gain && better > 0)) {
+                pick = i;
+                gain = adds;
+            }
+        }
+        rest.splice(rest.indexOf(pick), 1);
+        const tried = [...chosen, ...unit(pick)];
+        if (size(write(tried)) > budget) continue;
+        for (const i of unit(pick)) {
+            chosen.add(i);
+            for (const t of words[i]) covered.add(t);
+        }
+    }
+    return write([...chosen]);
 }
+
+/*
+ * Lines a note addresses to agents rather than to the people who read it.
+ * Canon never quotes one into a turn: it is an order the person never
+ * typed. A small, general list, matched per line, case aside:
+ * - speaking to them: "Agents reading this: …", "Note to the assistant: …",
+ *   "Dear AI, …", "Hey bots, …";
+ * - asking what the reader is: "If you are an AI …", "If you're a language
+ *   model …", "When an agent reads this …";
+ * - telling the reader how to reply: "Always reply in French", "Never answer
+ *   with code", "Sign every reply with …", "Start each answer with …";
+ * - setting the turn's own rules aside: "Ignore previous instructions",
+ *   "Disregard the above rules", "Forget your earlier instructions".
+ * A team rule written the same way ("always reply in English on the forum")
+ * is left out too; the page names every note that has one, so it can be
+ * reworded.
+ */
+const AGENT = String.raw`(?:ai|a\.i\.|llms?|(?:large\s+)?language\s+models?|models?|agents?|assistants?|bots?|chatbots?)`;
+const ADDRESSED = [
+    new RegExp(String.raw`^\W*(?:dear|hey|hi|hello|attention|(?:a\s+)?(?:note|message|word)\s+(?:to|for)|to)\s+(?:all\s+|any\s+|the\s+)?(?:ai\s+|coding\s+)?${AGENT}\b`, 'i'),
+    new RegExp(String.raw`\b${AGENT}\s+(?:reading|who\s+reads?|that\s+reads?|seeing|processing)\s+(?:this|these)\b`, 'i'),
+    new RegExp(String.raw`\bif\s+you(?:'re|’re|\s+are)\s+(?:an?\s+)?(?:ai\s+|coding\s+)?${AGENT}\b`, 'i'),
+    new RegExp(String.raw`\b(?:when|whenever|if)\s+(?:an?|the|any)\s+(?:ai\s+|coding\s+)?${AGENT}\s+(?:reads?|sees?|finds?|opens?|is\s+reading)\s+(?:this|these)\b`, 'i'),
+    /^\W*(?:please\s+)?(?:always|never)\s+(?:reply|respond|answer|sign)\s+(?:in|with|as|using|only|by)\b/i,
+    /\b(?:sign|end|start|begin|close|finish|open)\s+(?:every|each|all|any|your)\s+(?:reply|replies|answer|answers|response|responses)\b/i,
+    /\b(?:ignore|disregard|forget|override)\s+(?:all\s+|any\s+)?(?:of\s+)?(?:the\s+|your\s+)?(?:previous|prior|earlier|above|preceding|original|system|other)\s+(?:instructions?|rules|prompts?|directions|guidelines)\b/i,
+];
+
+/** Whether a line is addressed to agents (the list above). */
+export const addressedToAgents = (line) => ADDRESSED.some((re) => re.test(String(line ?? '')));
+
+/** A text without its lines addressed to agents. */
+export const unaddressed = (text) => String(text ?? '').split(/\r?\n/).filter((line) => !addressedToAgents(line)).join('\n').trim();
+
+/** How many of a body's lines are addressed to agents. */
+export const addressedLines = (body) => String(body ?? '').split(/\r?\n/).filter(addressedToAgents).length;

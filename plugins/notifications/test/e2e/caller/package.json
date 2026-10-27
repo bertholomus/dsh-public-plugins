@@ -1,0 +1,21 @@
+{
+  "name": "dsh-plugin-notifications-e2e-caller",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A stand-in caller for the notifications plugin's real-DSH test: it calls the notifications service the way other plugins do, from a window endpoint the test drives.",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" }
+  },
+  "engines": { "node": ">=20" },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-typert-protocol": "*"
+  }
+}

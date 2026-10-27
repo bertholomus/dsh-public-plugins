@@ -1,0 +1,21 @@
+{
+  "name": "dsh-plugin-session-watch-probe",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A stand-in user of Session Watch for its real-DSH test: it calls the watcher's service the way Autopilot, Decisions and Agent Terminals do, and serves what it gets to the test.",
+  "license": "MIT",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" }
+  },
+  "engines": { "node": ">=22" },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-typert-protocol": "*"
+  }
+}

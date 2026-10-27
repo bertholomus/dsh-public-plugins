@@ -18,8 +18,12 @@
  *   progress go on until the todos are done, with no back-off.
  * - Ask first raises a question instead; Off leaves the session alone; a
  *   last reply that asks the person something is left alone.
- * - A goal stopped by a failed turn is started again, and its next round
- *   runs (the goal completes).
+ * - A goal stopped by a failed turn gets a carry-on note first, which
+ *   spends no goal round; once that turn ends without an error the goal
+ *   starts again, proven by a round of the revision the start wrote, and
+ *   its next round runs (the goal completes). An outage (the round and
+ *   every note fail): no goal round goes to it, and Autopilot gives up as
+ *   the last try fails, tagged gave up.
  * - The switch: off, a session with open work gets nothing; on again, it
  *   gets its note.
  * - The page, from DSH's sidebar: the question with its answer buttons, the
@@ -33,7 +37,8 @@
  *   in its row, which takes the focus, and sends nothing; Try again nudges
  *   again and the focus stays in the page; a rule changed to Auto acts; the
  *   switch goes off and on. On a rule, an arrow key only shows the choice,
- *   Enter applies it and Escape takes it back, and focus stays on the rule.
+ *   Enter applies it and Escape takes it back, and focus stays on the rule;
+ *   a choice shown that way outlives a redraw that moves its row.
  * - A question open when DSH quits is set aside in the log as withdrawn (DSH
  *   stopped), and asked again after the start under the same entry and time.
  * - DSH quit under four running turns: a plain one, a goal round, one
@@ -45,7 +50,13 @@
  *   what did not happen; nothing handled before the quit is done again.
  * - DSH crashed (SIGKILL to its process group) under a running turn: the
  *   watcher's record of running turns names it, and after the start it gets
- *   its note.
+ *   its note. A question open at the kill is withdrawn at the start (a crash
+ *   or a forced quit named) and asked again under its one entry and first
+ *   time; a goal start left waiting for its round is checked against the
+ *   session's log and marked not started.
+ * - A number in quotes in the profile: the settings form shows it in quotes,
+ *   flagged as it opens; the number typed back saves and fixes it, and the
+ *   log says the new value and the one before.
  * - Autopilot's and the watcher's folders are 700 and their files 600.
  * - A quiet session that Autopilot leaves to the person says why on its row.
  * - A wrong setting in the profile: Autopilot starts but does no work, and
@@ -74,7 +85,7 @@
  * unless NO_WINDOW=1 says to run without the window checks (the summary
  * then says they were skipped).
  */
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { Script } from 'node:vm';
 import { DshRun, checks, dshBin, findPlaywright, modeOf, openWindow, pluginsDir, repoRoot, setDark, shot, sleep, waitFor } from '../../../../test/e2e/harness.mjs';
@@ -270,6 +281,11 @@ try {
     ids.off = await run.newSession(`E2E:todos ${todos(['Update the changelog', 'in_progress'])}\n#note=progress`, 'Changelog');
     ids.question = await run.newSession(`E2E:todos ${todos(['Deploy the fix', 'pending'])}\n#final=ask`, 'Deploy question');
     ids.fix = await run.newSession('E2E:goal Fix the failing build [r1=fail]', 'Build fix');
+    // Two sessions whose last reply is an offer (Off until it is written, so nothing acts on the reply before it).
+    ids.offerGo = await run.newSession(`E2E:todos ${todos(['Write the parser', 'in_progress'], ['Add tests', 'pending'])}\n#note=progress`, 'Offer, goes on');
+    await api('setRule', { sessionId: ids.offerGo, rule: 'off' });
+    ids.handOver = await run.newSession(`E2E:todos ${todos(['Write step 2', 'pending'], ['Write step 3', 'pending'])}`, 'Offer, hands over');
+    await api('setRule', { sessionId: ids.handOver, rule: 'off' });
     await api('setRule', { sessionId: ids.ask, rule: 'ask' });
     await api('setRule', { sessionId: ids.off, rule: 'off' });
 
@@ -312,10 +328,38 @@ try {
         const held = (await state()).sessions.find((x) => x.sessionId === ids.question);
         check('its row says why Autopilot leaves it to the person', held?.hold === 'waits for you: its last reply asks you something', JSON.stringify(held));
     });
-    await step('a goal stopped by a failed turn is started again, and its next round runs', async () => {
+    await step('an offer holds the nudge only when it hands the next step to you; one that says the agent goes on gets its note', async () => {
+        const say = async (sessionId, text) => {
+            const s0 = await idleSession(sessionId);
+            await run.bridge('POST', `/sessions/${encodeURIComponent(sessionId)}/prompt`, { text: `E2E:say ${text}` });
+            await waitFor(async () => {
+                const s = await run.session(sessionId);
+                return s.status !== 'running' && s.turns.ended > s0.turns.ended ? s : null;
+            }, `${sessionId} to reply`, 30000);
+        };
+        await say(ids.offerGo, 'All tests pass. Happy to keep going with the next todo.');
+        await say(ids.handOver, 'Step 1 is done. Let me know if you want me to continue with steps 2 and 3.');
+        await api('setRule', { sessionId: ids.offerGo, rule: 'auto' });
+        await api('setRule', { sessionId: ids.handOver, rule: 'auto' });
+        const note = await entryReaches(ids.offerGo, 'nudge', 'delivered', 1, 40000);
+        check('a reply that offers more but goes on ("Happy to keep going with the next todo.") gets its note, read into a turn',
+            note.state === 'delivered' && /and its last reply asked you nothing\.$/.test(note.why ?? ''), JSON.stringify(note));
+        await sleep((IDLE + 3) * 1000);
+        check('a reply that hands the next step to you ("Let me know if you want me to continue …") gets none', (await count(ids.handOver, 'nudge')) === 0, `${await count(ids.handOver, 'nudge')} notes`);
+        const row = (await state()).sessions.find((x) => x.sessionId === ids.handOver);
+        check('its row quotes the words that hold it',
+            row?.hold === 'waits for you: its last reply leaves the next step to you (“Let me know if you want me to continue with steps 2 and 3.”)', JSON.stringify(row));
+    });
+    await step('a goal stopped by a failed turn gets a carry-on note first (no goal round spent); once that turn ends cleanly, the goal starts again and its next round runs', async () => {
+        const note = await entryReaches(ids.fix, 'error', 'delivered', 1, 40000);
+        check('after the failed turn a carry-on note goes first, and its Why line names the error in plain words and says which round the goal starts with',
+            /^Turn 2 failed \(400: E2E: the scripted model refused this request\), which stops a goal; the goal “Fix the failing build \[r1=fail\]” is still active\. A note costs no goal round, so it goes first; the goal starts again \(round 2 of 6\) once a turn ends without an error\.$/.test(note.why ?? ''), note.why);
+        check('the note is read into a turn', await readIntoTurn(ids.fix, '[Autopilot] Your last turn (turn 2) failed'));
         const rearm = await entryReaches(ids.fix, 'rearm', 'started', 1, 40000);
-        check('a goal stopped by a failed turn is started again, proven by its next round', rearm.reason === 'round 2 began', JSON.stringify(rearm));
-        check('its Why line names the error in plain words, not the provider\'s JSON', /^Turn 2 failed \(400: E2E: the scripted model refused this request\.\), which stops a goal; the goal “Fix the failing build \[r1=fail\]” was still active\.$/.test(rearm.why ?? ''), rearm.why);
+        check('once the note\'s turn ended without an error, the goal starts again, proven by a round of the revision it wrote', rearm.reason === 'round 2 of 6 began' && rearm.goal?.round === 2 && rearm.at > note.at, JSON.stringify(rearm));
+        check('its Why line says which round the start begins', rearm.why === 'The turn after its carry-on note ended without an error, so its goal goes on: this start begins round 2 of 6.', rearm.why);
+        const rounds = (await run.events(ids.fix)).filter((e) => e.type === 'user/message' && e.source?.kind === 'goal').length;
+        check('the failed turn and the note spent no goal round: round 1 failed, round 2 is the start\'s', rounds === 2, `${rounds} goal rounds`);
         const ends = await waitFor(async () => {
             const events = await run.events(ids.fix, 'goal/change');
             return events.length >= 3 ? events : null;
@@ -406,7 +450,7 @@ try {
                     await page.locator('[data-autopilot-waiting]').evaluate((el) => el.classList.remove('dshap-main'));
                     const plain = await contrastsOf(page.locator(small('waiting')), { ground });
                     await page.locator('[data-autopilot-waiting]').evaluate((el) => el.classList.add('dshap-main'));
-                    lowTint[mode] = { ground, waiting: lowest(waiting), sessions: lowest(sessions), plain: lowest(plain), tags: lowest(tagsHere), count: waiting.length };
+                    lowTint[mode] = { ground, waiting: lowest(waiting), sessions: lowest(sessions), plain: lowest(plain), tags: lowest(tagsHere), tagCount: tagsHere.length, count: waiting.length };
                 }
             } finally {
                 await page.evaluate(() => document.documentElement.style.removeProperty('--wp-tint'));
@@ -416,6 +460,8 @@ try {
             check('at Wallpaper\'s tint .2 over a mid picture, the small text on the Waiting and Sessions cards (amber "waits for you" lines too) reads at 4.5:1 or more, light and dark',
                 ['light', 'dark'].every((mode) => lowTint[mode].count > 0 && lowTint[mode].waiting >= 4.5 && lowTint[mode].sessions >= 4.5), JSON.stringify(lowTint));
             check('on the plain tint the same text would read under 4.5:1 there, so the check can fail', ['light', 'dark'].every((mode) => lowTint[mode].plain < 4.5), JSON.stringify(lowTint));
+            check('at that tint the Waiting card\'s tags (backed off, gave up) read at 4.5:1 or more too, on their solid chips, light and dark',
+                ['light', 'dark'].every((mode) => lowTint[mode].tagCount > 0 && lowTint[mode].tags >= 4.5), JSON.stringify(lowTint));
             await page.locator('[data-autopilot-page]').evaluate((el) => el.scrollIntoView({ block: 'start' }));
             // A narrow window: the page reflows, nothing spills sideways.
             await page.setViewportSize({ width: 760, height: 900 });
@@ -495,6 +541,22 @@ try {
             await sleep(1500);
             check('an arrow key on a rule only shows the choice and says how to apply it: nothing is sent', (await ruleOf()) === 'auto', await ruleOf());
             await shot(page, shots, 'rule-keys-light', row);
+            // The list changes under the choice: a session lower down starts a turn and moves to the top, so the rows
+            // above it are moved. The choice is kept, the focus comes back to it, and Enter still applies it.
+            const orderOf = () => page.locator('[data-autopilot-sessions] [data-autopilot-session]').evaluateAll((els) => els.map((el) => el.getAttribute('data-autopilot-session')));
+            const orderBefore = await orderOf();
+            // Sessions with nothing left open, so the turn gives Autopilot nothing to do later.
+            const lower = orderBefore.slice(orderBefore.indexOf(ids.off) + 1).find((id) => [ids.ask, ids.progress].includes(id));
+            if (lower) await run.bridge('POST', `/sessions/${encodeURIComponent(lower)}/prompt`, { text: 'Thanks. One more check, please.' });
+            const moved = lower ? await waitFor(async () => {
+                const order = await orderOf();
+                return order.indexOf(lower) < order.indexOf(ids.off) ? order : null;
+            }, 'the list to change under the choice', 45000, 100).catch(() => null) : null;
+            await sleep(600);
+            const stillShown = await askHint.isVisible();
+            const onChoice = await focusedTab();
+            check('a choice made with the keyboard outlives a redraw that moves its row: the line under it stays, and the focus is back on it',
+                Boolean(moved) && stillShown && onChoice?.session === ids.off && onChoice.name === 'Ask first', JSON.stringify({ lower, orderBefore, moved, stillShown, onChoice }));
             await page.keyboard.press('Enter');
             await waitFor(async () => (await ruleOf()) === 'ask', 'Enter to apply Ask first', 15000, 200);
             await askHint.waitFor({ state: 'hidden', timeout: 5000 });
@@ -532,6 +594,20 @@ try {
         window = undefined;
     }
 
+    // ── An outage ──────────────────────────────────────────────────────
+    await step('an outage: the goal\'s round fails and each carry-on note fails too; no goal round goes to it, and Autopilot gives up at once after the last try, tagged gave up', async () => {
+        ids.outage = await run.newSession('E2E:goal Ship the hotfix [r1=fail]\n#note=fail', 'Hotfix');
+        const giveup = await entryReaches(ids.outage, 'giveup', 'gave up', 1, 60000);
+        const notes = await entriesOf(ids.outage, 'error');
+        check('two tries (errorRetrySeconds [2, 2]), each a carry-on note, then the give-up', notes.length === 2 && giveup.why === 'It failed again after 2 tries, so Autopilot stops retrying and leaves it to you.', JSON.stringify({ notes: notes.map((e) => [e.state, e.at]), giveup }));
+        const lastFail = (await run.events(ids.outage)).filter((e) => e.type === 'turn/end').at(-1);
+        check('the give-up comes as the last try fails, not after another wait', Math.abs(giveup.at - (lastFail?.time ?? 0)) < 1500, `${giveup.at} vs ${lastFail?.time}`);
+        const rounds = (await run.events(ids.outage)).filter((e) => e.type === 'user/message' && e.source?.kind === 'goal').length;
+        check('no goal round went to the outage: only round 1, which failed', rounds === 1 && (await count(ids.outage, 'rearm')) === 0, `${rounds} goal rounds`);
+        const row = (await state()).sessions.find((x) => x.sessionId === ids.outage);
+        check('its row says gave up, with no next try', row?.word === 'gave up' && row.next === undefined && row.last?.text === 'stopped retrying after errors', JSON.stringify(row));
+    });
+
     // ── A quit under running turns ──────────────────────────────────────
     // The report session goes back to backed off (no progress after Try again) before the quit, so nothing is in flight.
     await entryReaches(ids.report, 'backoff', 'backed off', 2, 60000).catch(() => {});
@@ -567,17 +643,22 @@ try {
     const openAsk = await entryReaches(ids.askQuit, 'ask', 'asked you', 1, 40000);
     const openAskAt = (await state()).asks.find((a) => a.sessionId === ids.askQuit)?.at;
     ids.cut = await run.newSession('E2E:slow', 'Long migration');
+    // No todos and no goal; DSH comes back before its gateway, so every note it gets fails.
+    ids.blip = await run.newSession('E2E:slow\n#note=fail', 'Power blip');
     ids.cutGoal = await run.newSession('E2E:goal Write the summary [r1=slow]', 'Summary goal');
     await waitFor(async () => (await run.session(ids.cut)).status === 'running', 'the long turn to run', 30000);
+    await waitFor(async () => (await run.session(ids.blip)).status === 'running', 'the power blip\'s turn to run', 30000);
+    // The round has begun once its message is in the log (DSH opens the turn first, then writes the round's message).
     await waitFor(async () => {
         const s = await run.session(ids.cutGoal);
-        return s.status === 'running' && s.turns.started >= 2;
+        if (s.status !== 'running' || s.turns.started < 2) return false;
+        return (await run.events(ids.cutGoal)).some((e) => e.type === 'user/message' && e.source?.kind === 'goal');
     }, 'the goal round to run', 30000);
     const before = (await state()).log.length;
     const reportNotes = await count(ids.report, 'nudge');
     const quitAt = Date.now();
     await run.stop();
-    check('DSH quits (SIGTERM) under four running turns', !run.alive(), `quit took ${Date.now() - quitAt} ms`);
+    check('DSH quits (SIGTERM) under five running turns', !run.alive(), `quit took ${Date.now() - quitAt} ms`);
     prompts.close();
     await run.boot('after a quit');
     await waitFor(async () => (await api('state')).ok, 'Autopilot\'s endpoints after the quit', 30000);
@@ -590,7 +671,20 @@ try {
         const goalNote = await entryReaches(ids.cutGoal, 'resume', 'delivered', 1, 40000);
         check('the goal\'s session gets its note too, naming the goal', /Still open: the goal “Write the summary \[r1=slow\]” \(round 1 of 6\)/.test(goalNote.note ?? ''), goalNote.note);
         const rearm = await entryReaches(ids.cutGoal, 'rearm', 'started', 1, 40000);
-        check('then its goal starts again, proven by the next round', rearm.reason === 'round 2 began', JSON.stringify(rearm));
+        check('once the note\'s turn has ended, its goal starts again, proven by a round of the revision it wrote', rearm.reason === 'round 2 of 6 began' && rearm.at > goalNote.at, JSON.stringify(rearm));
+        check('its Why line says which round the start begins', rearm.why === 'Its goal was active when DSH stopped, and the turn after its carry-on note has ended, so its goal goes on: this start begins round 2 of 6.', rearm.why);
+    });
+    await step('after a quit, an outage too (DSH back before its gateway): a carry-on turn with no todos and no goal that fails is tried again note-first, then given up, with Try again', async () => {
+        const resume = await entryReaches(ids.blip, 'resume', 'delivered', 1, 40000);
+        const giveup = await entryReaches(ids.blip, 'giveup', 'gave up', 1, 60000);
+        const notes = await entriesOf(ids.blip, 'error');
+        check('its carry-on note is read, its turn fails, and two tries follow, each a note saying it was carrying on after DSH stopped',
+            resume.state === 'delivered' && notes.length === 2 && notes.every((e) => /You were carrying on after DSH stopped under turn 1: check what already finished/.test(e.note ?? ''))
+                && notes.every((e, i) => new RegExp(`^Turn ${i + 2} failed \\(400: E2E: the scripted model refused this request\\) while it carried on after DSH stopped under turn 1, so the work that stop cut off is still open\\.$`).test(e.why ?? '')),
+            JSON.stringify({ resume: resume.state, notes: notes.map((e) => [e.state, e.why]) }));
+        check('then Autopilot gives up as the last try fails, and says why', giveup.why === 'It failed again after 2 tries, so Autopilot stops retrying and leaves it to you.', JSON.stringify(giveup));
+        const row = (await state()).sessions.find((x) => x.sessionId === ids.blip);
+        check('its row says gave up, which puts it in the Waiting card with Try again', row?.word === 'gave up' && Boolean(row.gaveUp) && row.next === undefined, JSON.stringify(row));
     });
     await step('after a quit: the notes for a tool that waited for approval and a question that waited say what did not happen', async () => {
         const approval = await entryReaches(ids.cutApproval, 'resume', 'delivered', 1, 40000);
@@ -621,16 +715,27 @@ try {
         await sleep((IDLE * 2 + 2) * 1000);
         const s = await state();
         const fresh = s.log.slice(0, s.log.length - before);
-        const repeats = fresh.filter((e) => ![ids.cut, ids.cutGoal, ids.cutApproval, ids.cutQuestion].includes(e.sessionId) && e.kind !== 'skip');
+        const repeats = fresh.filter((e) => ![ids.cut, ids.cutGoal, ids.cutApproval, ids.cutQuestion, ids.blip].includes(e.sessionId) && e.kind !== 'skip');
         check('nothing handled before the quit is done again', repeats.length === 0 && (await count(ids.report, 'nudge')) === reportNotes, JSON.stringify(repeats.map((e) => [e.kind, e.title, e.state])));
         check('the rules survive the quit', (await state()).sessions.find((x) => x.sessionId === ids.ask)?.rule === 'ask');
     });
 
     // ── A crash under a running turn ────────────────────────────────────
+    // Ask first, with its question open when DSH is killed: no stop handler runs, so the next start settles it.
+    ids.askCrash = await run.newSession(`E2E:todos ${todos(['Rename the tests', 'in_progress'])}`, 'Test rename');
+    await api('setRule', { sessionId: ids.askCrash, rule: 'ask' });
+    const crashAsk = await entryReaches(ids.askCrash, 'ask', 'asked you', 1, 40000);
+    const crashAskAt = (await state()).asks.find((a) => a.sessionId === ids.askCrash)?.at;
     ids.crash = await run.newSession('E2E:slow', 'Big refactor');
     await waitFor(async () => (await run.session(ids.crash)).status === 'running', 'the turn to run before the crash', 30000);
     await sleep(500);
     await run.crash();
+    // A goal start that DSH took but whose round had not begun when it was killed. In a running DSH the round follows
+    // within a millisecond, so the e2e writes the entry such a kill leaves in Autopilot's log (the goal of the summary
+    // session, whose next revision has no round in its log).
+    const summaryGoal = (await run.savedEvents(ids.cutGoal)).filter((e) => e.type === 'goal/change').at(-1)?.data?.goal;
+    const leftId = `e2e-kill-${Date.now().toString(36)}`;
+    appendFileSync(join(run.home, 'autopilot', 'events.jsonl'), `${JSON.stringify({ add: { kind: 'rearm', sessionId: ids.cutGoal, title: 'Summary goal', text: 'Started its goal again', why: 'Its goal is active but stopped.', state: 'waiting for a round', by: 'Autopilot', key: 'idle:99:1', goal: { id: summaryGoal?.id, rev: (summaryGoal?.revision ?? 0) + 1, round: 3, max: 6 }, id: leftId, at: Date.now() } })}\n`);
     await step('a crash: the record of running turns names the session, and it gets its note after the start', async () => {
         const runningFile = join(run.home, 'session-watch', 'running.json');
         const record = JSON.parse(readFileSync(runningFile, 'utf8'));
@@ -640,6 +745,22 @@ try {
         const note = await entryReaches(ids.crash, 'resume', 'delivered', 1, 40000);
         check('after a crash, the cut-off session gets its carry-on note, delivered', note.state === 'delivered', JSON.stringify(note));
         check('the session\'s own log shows it read into a turn', await readIntoTurn(ids.crash, '[Autopilot] DSH stopped while you were working'));
+    });
+    await step('a crash under an open question and a goal start waiting for its round: both are settled from the logs before the first look', async () => {
+        const rows = readFileSync(join(run.home, 'autopilot', 'events.jsonl'), 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+        const aside = rows.find((row) => row.set === crashAsk.id && row.patch?.stopped === true);
+        check('the question left open by the kill is marked withdrawn at the start, with a crash or a forced quit named',
+            aside?.patch.state === 'withdrawn' && aside.patch.reason === 'withdrawn: DSH stopped before it was answered (a crash or a forced quit); it asks again when it runs, if this still applies' && typeof aside.patch.settledAt === 'number', JSON.stringify(aside));
+        const back = await waitFor(async () => (await state()).asks.find((a) => a.sessionId === ids.askCrash) ?? null, 'the question to come back after the crash', 40000, 300);
+        const entriesNow = await entriesOf(ids.askCrash, 'ask');
+        check('then it is asked again under its one entry, open again, with the time it was first asked',
+            entriesNow.length === 1 && entriesNow[0].id === crashAsk.id && entriesNow[0].state === 'asked you' && back.at === crashAskAt, JSON.stringify({ entriesNow, back: back.at, crashAskAt }));
+        const left = (await state()).log.find((e) => e.id === leftId);
+        check('the goal start left waiting is checked against its session\'s log: no round of its revision, so not started, and why',
+            left?.state === 'not started' && left.reason === 'DSH stopped before a round began (a crash or a forced quit)' && typeof left.settledAt === 'number', JSON.stringify(left));
+        const row = (await state()).sessions.find((x) => x.sessionId === ids.cutGoal);
+        check('its row\'s last words follow it', row?.last?.text === 'its goal did not start', JSON.stringify(row?.last));
+        await api('answer', { id: back.id, answer: 'skip' });
     });
 
     // ── Files ──────────────────────────────────────────────────────────
@@ -663,6 +784,56 @@ try {
             s.watchProblem?.text === 'How long a message may wait to be read (deliveryTimeoutSeconds) must be a whole number of seconds from 10 to 86400 (it is "60")' && s.watchProblem?.live === true,
             JSON.stringify(s.watchProblem));
     });
+
+    if (pw) {
+        await step('a number in quotes, in the window: the form opens with it in quotes and flagged, and the number typed back saves and fixes it', async () => {
+            window = await openWindow(run, pw, { entry: 'Autopilot' });
+            const { page } = window;
+            await page.getByRole('button', { name: 'Autopilot', exact: true }).first().click();
+            await page.locator('[data-suite-trouble="setting"]').waitFor({ state: 'visible', timeout: 20000 });
+            await page.getByRole('button', { name: 'Open Autopilot\'s settings' }).click();
+            const form = page.locator('[data-suite-settings="dsh-plugin-autopilot"]');
+            await form.waitFor({ state: 'visible', timeout: 20000 });
+            const flagged = page.locator('[data-suite-setting="maxNudges"][data-suite-invalid]');
+            await flagged.waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+            const input = page.locator('[data-suite-setting="maxNudges"] input');
+            const shown = await input.inputValue();
+            const flaggedWords = (await flagged.count()) ? await flagged.innerText() : '';
+            check('the form shows the value with its quotes, flagged as it opens as text in quotes, with what to type', shown === '"2"' && /It is saved as text, in quotes\. Type a whole number from 1 to 10, without the quotes, then save\./.test(flaggedWords), `${shown} | ${flaggedWords}`);
+            await shot(page, shots, 'settings-quoted-light');
+            await setDark(page, true);
+            await shot(page, shots, 'settings-quoted-dark');
+            await setDark(page, false);
+            await input.fill('2');
+            const save = form.getByRole('button', { name: 'Save' });
+            await waitFor(async () => !(await save.isDisabled()), 'Save to come on', 5000, 100);
+            check('typing the number back counts as a change: Save comes on', !(await save.isDisabled()));
+            await save.click();
+            const fixed = await waitFor(async () => {
+                const r = await api('state');
+                return r.ok && !r.value.problem ? r.value : null;
+            }, 'the quoted setting to be fixed', 20000);
+            const entry = fixed.log.find((e) => e.kind === 'settings');
+            check('saved, it is fixed at once, and the log says the new value and the one before', entry?.text === 'Settings fixed: Autopilot is working again' && entry?.why === 'The change to “Notes in a row without progress” now 2 (was "2") fixed it.', JSON.stringify(entry));
+            // Saved at its default, the value is no change: no "Changed", nothing to reset. One that differs shows both, in one style.
+            const sameRow = page.locator('[data-suite-setting="maxNudges"]');
+            const changedRow = page.locator('[data-suite-setting="idleSeconds"]');
+            const noChip = await waitFor(async () => !/Changed|Use the default/.test(await sameRow.innerText()), 'the value saved at its default to show no Changed', 10000, 200).then(() => true, () => false);
+            const changedWords = await changedRow.innerText();
+            check('saved at its default (2), the value shows no "Changed" and no "Use the default"; one that differs (5 seconds) shows both',
+                noChip && /Changed/.test(changedWords) && /Use the default/.test(changedWords), `${(await sameRow.innerText()).replace(/\n+/g, ' | ')} || ${changedWords.replace(/\n+/g, ' | ')}`);
+            await shot(page, shots, 'settings-saved-light');
+            await setDark(page, true);
+            await shot(page, shots, 'settings-saved-dark');
+            await setDark(page, false);
+            const ours = window.errors.filter((text) => /autopilot|session-watch/i.test(text));
+            check('no errors from the suite in the window', ours.length === 0, ours.join('\n'));
+        }, async () => {
+            if (window?.page) await shot(window.page, shots, 'failed-quoted');
+        });
+        await window?.browser?.close().catch(() => {});
+        window = undefined;
+    }
 
     // ── A wrong setting, fixed in Plugins ──────────────────────────────
     await restartWith(rowsWith({ idle: 2 }), 'a wrong setting');
@@ -722,7 +893,7 @@ try {
                 return r.ok && !r.value.problem ? r.value : null;
             }, 'the setting to be fixed', 20000);
             const entry = fixed.log.find((e) => e.kind === 'settings');
-            check('saving a good value fixes it at once, and the log says which change did', fixed.settings.idleSeconds === IDLE && entry?.text === 'Settings fixed: Autopilot is working again' && entry?.why === 'The change to “Quiet time before a note” fixed it.', JSON.stringify(entry));
+            check('saving a good value fixes it at once, and the log says which change did', fixed.settings.idleSeconds === IDLE && entry?.text === 'Settings fixed: Autopilot is working again' && entry?.why === `The change to “Quiet time before a note” now ${IDLE} seconds (was 2 seconds) fixed it.`, JSON.stringify(entry));
             const note = await entryReaches(ids.waiting, 'nudge', 'delivered', 1, 30000);
             check('once fixed, the session that waited gets its note', note.state === 'delivered', JSON.stringify(note));
             // Session Watch's own setting, on its page in Plugins: back to the plugin list, then its card.

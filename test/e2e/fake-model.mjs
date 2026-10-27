@@ -1,5 +1,5 @@
 /**
- * A scripted OpenAI-compatible chat-completions server for the suite's
+ * A scripted /v1/chat/completions server for the suite's
  * real-DSH tests. It answers from markers in the conversation, so a test
  * says in its prompt what the "agent" does:
  *
@@ -21,6 +21,8 @@
  *                                    (default), one more todo done, a held
  *                                    reply, or a refused request
  *   #final=ask                       after a tool result, reply with a question
+ *   #delay=<ms>                      in the newest messages: answer that request after <ms>
+ *                                    (at most 20 s), so a test can see a step come later
  *
  * A goal round (DSH's <goal_round> message) does what its objective's
  * [rN=...] says for round N (slow, fail, reply), else completes the goal:
@@ -167,6 +169,8 @@ export async function startFakeModel({ models = ['fake-model'] } = {}) {
         const action = decide(body);
         const record = { n: requests.length + 1, at: Date.now(), tools: (body.tools ?? []).map((t) => t.function?.name), fresh: freshText(body.messages ?? []), action };
         requests.push(record);
+        const delay = Math.min(20000, Number(/#delay=(\d+)/.exec(record.fresh)?.[1] ?? 0));
+        if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
         const id = `c${requests.length}`;
         const model = body.model ?? models[0];
         if (action.fail) {

@@ -50,7 +50,8 @@ const KEEP = 400;
 const MAX_STARTS = 200;
 const HOUR = 3600_000;
 
-const STATES = new Set(['queued', 'running', 'verified', 'not-verified', 'unclear', 'failed']);
+// `cancelled`: the person switched the independent check off before it started (not an error).
+const STATES = new Set(['queued', 'running', 'verified', 'not-verified', 'unclear', 'failed', 'cancelled']);
 const ACTIVE = new Set(['queued', 'running']);
 
 /** Where a command starts in a command line: its start, after ; & | ( or a backquote, past sudo, env and the like and any NAME=value. */
@@ -421,7 +422,10 @@ export class Verifier {
         const waiting = all.filter((c) => c.state === 'queued').sort((a, b) => a.queuedAt - b.queuedAt);
         if (waiting.length === 0) return;
         if (this.mode === 'off' || !this.working()) {
-            for (const check of waiting) this.finish(check, 'failed', this.mode === 'off' ? 'The independent check was switched off before it started.' : 'Proof stopped working before it started (see the top of its page).');
+            for (const check of waiting) {
+                if (this.mode === 'off') this.finish(check, 'cancelled', 'The independent check was switched off before it started.');
+                else this.finish(check, 'failed', 'Proof stopped working before it started (see the top of its page).');
+            }
             return;
         }
         if (all.filter((c) => c.state === 'running').length >= AT_ONCE) return;
@@ -560,7 +564,7 @@ export class Verifier {
         check.endedAt = this.now();
         if (typeof reply === 'string' && reply.trim()) check.reply = reply.trim().slice(-600);
         this.store.change();
-        const words = { verified: 'Verified', 'not-verified': 'Not verified', unclear: 'Check unclear', failed: 'Could not check' }[state] ?? state;
+        const words = { verified: 'Verified', 'not-verified': 'Not verified', unclear: 'Check unclear', failed: 'Could not check', cancelled: 'Not checked' }[state] ?? state;
         this.journal.add({
             kind: 'check',
             sessionId: check.sessionId,
@@ -568,7 +572,7 @@ export class Verifier {
             ...(check.checkSessionId ? { checkSessionId: check.checkSessionId } : {}),
             text: `${words}: “${clip(check.claim, 120)}”`,
             why: check.reason,
-            state: state === 'verified' ? 'done' : state === 'not-verified' ? 'not proven' : state === 'failed' ? 'failed' : 'not confirmed',
+            state: state === 'verified' ? 'done' : state === 'not-verified' ? 'not proven' : state === 'failed' ? 'failed' : state === 'cancelled' ? 'stopped' : 'not confirmed',
         });
         this.changed();
         queueMicrotask(() => this.pump());

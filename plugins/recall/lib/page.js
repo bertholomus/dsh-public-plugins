@@ -71,7 +71,7 @@ export function refusalOf({ config, check, thread }) {
  * @param {import('./shared/journal.js').Journal} parts.journal
  * @param {string} [parts.home] - the home folder, which the page writes as ~.
  */
-export async function pageState({ config, check, thread, status, lastStatus, sources, journal, home = homedir() }) {
+export async function pageState({ config, check, thread, status, lastStatus, sources, journal, home = homedir(), watch = false }) {
     const problem = check?.problem;
     const on = working({ config, check });
     let index = lastStatus;
@@ -93,6 +93,8 @@ export async function pageState({ config, check, thread, status, lastStatus, sou
         left: on ? sources.left : [],
         history: journal.list({ limit: HISTORY }),
         home,
+        // Whether Session Watch's change numbers reach this DSH: without them the page reads this again on a timer.
+        watch: watch === true,
     };
 }
 
@@ -180,9 +182,11 @@ export class NoteLog {
                 const rows = note.rows ?? 0;
                 const sections = Math.min(rows, note.sections ?? 0);
                 const what = [rows > sections ? plural(rows - sections, 'turn') : '', sections > 0 ? plural(sections, 'note section') : ''].filter(Boolean).join(' and ');
-                const read = rows > 0
-                    ? `Read ${plural(note.read ?? 0, 'file')} in ${took}: ${what} indexed.`
-                    : `Read ${plural(note.read ?? 0, 'file')} in ${took}; nothing in ${note.read === 1 ? 'it' : 'them'} was new.`;
+                const read = (note.read ?? 0) === 0
+                    ? 'Nothing was new or changed, so there was no file to read.'
+                    : rows > 0
+                        ? `Read ${plural(note.read, 'file')} in ${took}: ${what} indexed.`
+                        : `Read ${plural(note.read, 'file')} in ${took}; nothing in ${note.read === 1 ? 'it' : 'them'} was new.`;
                 const text = why === 'rebuild' ? 'Rebuilt the index' : why === 'folder' ? 'Read the new folders' : why === 'start' ? 'Caught up with what changed' : 'Read new and changed files';
                 this.journal.add({ kind: 'caught-up', text, why: read, state: 'done' });
                 return;

@@ -25,19 +25,33 @@ function presetsWith(name, { throws = false } = {}) {
     };
 }
 
-/** What describeChange reads from the manager: an event by id, the user's zone and the calendars. */
+const HOUR = 3_600_000;
+/** An event's view as manager.event gives it: its start and end instants, and its own zone. */
+const timed = (title, local, offset, minutes, timeZone, more = {}) => {
+    const start = Date.parse(`${local}:00${offset}`);
+    return { title, allDay: false, start, end: start + minutes * 60000, startLocal: local, timeZone, ...more };
+};
+
+/**
+ * What describeChange reads from a manager that can't plan the change (no
+ * planChange): an event by id, the user's zone, the clock and the
+ * calendars. The prompt then goes by the event as it is and the call's own
+ * words for what changes; the manager tests check the words a real plan
+ * gives (the new time, the new title).
+ */
 const manager = {
     event(id) {
         const events = {
-            haircut: { title: 'Haircut', allDay: false, startLocal: '2026-10-16T17:00', timeZone: null, calendar: 'Personal' },
-            standup: { title: 'Standup', allDay: false, startLocal: '2026-10-19T09:30', timeZone: 'America/New_York', calendar: 'Work' },
-            trip: { title: 'Trip', allDay: true, startDay: '2026-10-20', calendar: 'Personal' },
-            long: { title: `A very long title ${'x'.repeat(200)}`, allDay: false, startLocal: '2026-10-16T08:00', timeZone: 'Europe/Berlin', calendar: 'Personal' },
+            haircut: timed('Haircut', '2026-10-16T17:00', '+02:00', 60, 'Europe/Berlin', { calendar: 'Personal' }),
+            standup: timed('Standup', '2026-10-19T09:30', '-04:00', 30, 'America/New_York', { calendar: 'Work', recurring: true }),
+            trip: { title: 'Trip', allDay: true, startDay: '2026-10-20', lastDay: '2026-10-20', calendar: 'Personal' },
+            long: timed(`A very long title ${'x'.repeat(200)}`, '2026-10-16T08:00', '+02:00', 60, 'Europe/Berlin', { calendar: 'Personal' }),
         };
         if (!(id in events)) throw new Error('no such event');
         return events[id];
     },
     zone: () => 'Europe/Berlin',
+    now: () => Date.parse('2026-10-11T10:00:00Z'),
     defaultCalendarId: () => 'personal',
     calendar(id) {
         if (id !== 'personal' && id !== 'work') throw new Error('no such calendar');
@@ -89,44 +103,57 @@ test('policy: the decision for each setting and access', () => {
     assert.match(decide('off', 'danger-full-access').deny, /switched off/);
 });
 
-test('policy: the approval prompt says what would change', () => {
+test('policy: the approval prompt says what would change, from the call when the change can\'t be worked out', () => {
     assert.equal(describeChange(manager, 'calendar_create_event', { title: 'Dentist', start: '2026-10-14 09:00', end: '2026-10-14 10:00' }),
         'Add “Dentist” (2026-10-14 09:00 to 2026-10-14 10:00) to Personal?');
     // A manager that can't say who'd be emailed: the call's own guests.
     assert.equal(describeChange(manager, 'calendar_create_event', { title: 'Review', start: 'tomorrow 15:00', repeat: 'FREQ=WEEKLY', calendar_id: 'work', guests: ['a@example.com', 'b@example.com'], notify_guests: true }),
         'Add “Review” (tomorrow 15:00, repeating) to Work, and email invitations to a@example.com and b@example.com?');
     // Guests without notify_guests: nobody is emailed, so the prompt doesn't say so.
-    assert.equal(describeChange(manager, 'calendar_create_event', { title: 'Lunch', start: '2026-10-14 12:00', guests: ['a@example.com'] }),
+    assert.equal(describeChange(manager, 'calendar_create_event', { title: 'Lunch', start: '2026-10-14T12:00', guests: ['a@example.com'] }),
         'Add “Lunch” (2026-10-14 12:00) to Personal?');
     assert.equal(describeChange(manager, 'calendar_create_event', { title: 'Lunch', start: '2026-10-14 12:00', guests: ['a@example.com'], notify_guests: true }),
         'Add “Lunch” (2026-10-14 12:00) to Personal, and email invitations to a@example.com?');
     assert.equal(describeChange(manager, 'calendar_create_event', { title: 'X', start: '2026-10-14', calendar_id: 'gone' }),
         'Add “X” (2026-10-14) to a calendar?');
 
+    // The event as it is, in words on the user's clock (and on its own, kept in another zone); the new time as the call gives it.
     assert.equal(describeChange(manager, 'calendar_update_event', { id: 'haircut', start: '2026-10-16 18:00', end: '2026-10-16 19:00' }),
-        'Change “Haircut” (2026-10-16 17:00, Personal): start, end?');
+        'Change “Haircut” (Fri, Oct 16, 5:00 – 6:00 PM, Personal): a new time (start 2026-10-16 18:00, end 2026-10-16 19:00)?');
     assert.equal(describeChange(manager, 'calendar_update_event', { id: 'standup', scope: 'one', title: 'Standup (moved)', time_zone: 'Europe/Berlin' }),
-        'Change only this occurrence of “Standup” (2026-10-19 09:30 America/New_York, Work): title, time zone?');
+        'Change only this occurrence of “Standup” (Mon, Oct 19, 9:30 – 10:00 AM New York time, 3:30 – 4:00 PM your time, Work): a new time (in Europe/Berlin time); rename it “Standup (moved)”?');
     assert.equal(describeChange(manager, 'calendar_update_event', { id: 'standup', scope: 'following', clear: ['repeat'] }),
-        'Change this and the following occurrences of “Standup” (2026-10-19 09:30 America/New_York, Work): stop repeating?');
+        'Change this and the following occurrences of “Standup” (Mon, Oct 19, 9:30 – 10:00 AM New York time, 3:30 – 4:00 PM your time, Work): stop repeating?');
     // Empty strings change nothing (some models send every field); `clear` empties one.
     assert.equal(describeChange(manager, 'calendar_update_event', { id: 'haircut', title: '', location: '', repeat: '', end: '2026-10-16 18:30', clear: ['location', 'url', 'location', 'toString'] }),
-        'Change “Haircut” (2026-10-16 17:00, Personal): end, no place, no link?');
+        'Change “Haircut” (Fri, Oct 16, 5:00 – 6:00 PM, Personal): a new time (end 2026-10-16 18:30); no place; no link?');
+    assert.equal(describeChange(manager, 'calendar_update_event', { id: 'haircut', title: 'Haircut at 5' }),
+        'Rename “Haircut” (Fri, Oct 16, 5:00 – 6:00 PM, Personal) to “Haircut at 5”?');
     assert.equal(describeChange(manager, 'calendar_update_event', { id: 'trip', calendar_id: 'work', location: '' }),
-        'Change “Trip” (2026-10-20 all day, Personal) and move it to Work?');
+        'Move “Trip” (Tue, Oct 20, all day) from Personal to Work?');
     const long = describeChange(manager, 'calendar_update_event', { id: 'long', description: 'more' });
-    assert.ok(long.length < 140, 'a long title is cut short');
-    assert.match(long, /^Change “A very long title x+…” \(2026-10-16 08:00, Personal\): description\?$/);
+    assert.ok(long.length < 160, 'a long title is cut short');
+    assert.match(long, /^Change “A very long title x+…” \(Fri, Oct 16, 8:00 – 9:00 AM, Personal\): new notes\?$/);
+    // Every other field says what it will be, and past three the rest go by name.
+    assert.equal(describeChange(manager, 'calendar_update_event', { id: 'haircut', location: 'Main St 1', reminders: [60, 10, 10], busy: false }),
+        'Change “Haircut” (Fri, Oct 16, 5:00 – 6:00 PM, Personal): set the place to “Main St 1”; reminders 10 minutes and 1 hour before; show as free?');
+    assert.equal(describeChange(manager, 'calendar_update_event', { id: 'haircut', title: 'Cut', location: 'Main St 1', description: 'bring the voucher', reminders: [0], private: true }),
+        'Change “Haircut” (Fri, Oct 16, 5:00 – 6:00 PM, Personal): rename it “Cut”; set the place to “Main St 1”; new notes; and also its reminders and its privacy?');
 
-    assert.equal(describeChange(manager, 'calendar_delete_event', { id: 'haircut' }), 'Delete “Haircut” (2026-10-16 17:00, Personal)?');
+    assert.equal(describeChange(manager, 'calendar_delete_event', { id: 'haircut' }), 'Delete “Haircut” (Fri, Oct 16, 5:00 – 6:00 PM, Personal)?');
     assert.equal(describeChange(manager, 'calendar_delete_event', { id: 'standup', scope: 'all', notify_guests: true }),
-        'Delete “Standup” (2026-10-19 09:30 America/New_York, Work), and tell its guests?');
+        'Delete every occurrence of “Standup” (Mon, Oct 19, 9:30 – 10:00 AM New York time, 3:30 – 4:00 PM your time, Work), and tell its guests?');
     assert.equal(describeChange(manager, 'calendar_delete_event', { id: 'nope' }), 'Delete an event?');
-    assert.equal(describeChange(manager, 'calendar_respond', { id: 'standup', answer: 'declined' }),
-        'Answer “Standup” (2026-10-19 09:30 America/New_York, Work): declined?');
+    assert.equal(describeChange(manager, 'calendar_respond', { id: 'standup', answer: 'declined', scope: 'one' }),
+        'Answer only this occurrence of “Standup” (Mon, Oct 19, 9:30 – 10:00 AM New York time, 3:30 – 4:00 PM your time, Work): declined?');
     // Arguments that aren't an object never break the prompt.
     assert.equal(describeChange(manager, 'calendar_delete_event', null), 'Delete an event?');
     assert.equal(describeChange(manager, 'calendar_something', {}), 'Change the calendar (calendar_something)?');
+    // No machine times where people read: no "T" between a day and its time, no seconds.
+    for (const text of [describeChange(manager, 'calendar_create_event', { title: 'A', start: '2026-10-14T09:00', end: '2026-10-14T09:30' }),
+        describeChange(manager, 'calendar_update_event', { id: 'haircut', start: '2026-10-16T18:00' })]) {
+        assert.doesNotMatch(text, /\d{4}-\d{2}-\d{2}T\d/, text);
+    }
 });
 
 test('policy: the gate before each tool runs', async () => {
@@ -164,8 +191,8 @@ test('policy: the gate before each tool runs', async () => {
     const question = await gate('workspace-write')(call('calendar_delete_event', { id: 'haircut' }), allow);
     assert.deepEqual(question, {
         kind: 'ask',
-        reason: 'Calendar: Delete “Haircut” (2026-10-16 17:00, Personal)?',
-        displayReason: { en: 'Delete “Haircut” (2026-10-16 17:00, Personal)?' },
+        reason: 'Calendar: Delete “Haircut” (Fri, Oct 16, 5:00 – 6:00 PM, Personal)?',
+        displayReason: { en: 'Delete “Haircut” (Fri, Oct 16, 5:00 – 6:00 PM, Personal)?' },
     });
 
     const off = await gate('danger-full-access', 'off')(call('calendar_respond', { id: 'standup', answer: 'accepted' }), allow);
@@ -197,12 +224,12 @@ test('policy: the gate before each tool runs', async () => {
  */
 function mailingManager() {
     const events = {
-        sync: { title: 'Team sync', allDay: false, startLocal: '2026-10-16T10:00', timeZone: 'Europe/Berlin', calendar: 'Work',
-            attendees: [{ email: 'me@example.com', self: true }, { email: 'ann@example.com' }, { email: 'bob@example.com' }, { email: 'cy@example.com' }] },
-        board: { title: 'Board review', allDay: false, startLocal: '2026-10-16T09:00', timeZone: 'Europe/Berlin', calendar: 'Work', invitation: true,
-            organizer: { email: 'boss@example.com' }, attendees: [{ email: 'me@example.com', self: true }] },
-        weekly: { title: 'Weekly', allDay: false, startLocal: '2026-10-19T09:00', timeZone: 'Europe/Berlin', calendar: 'Work', recurring: true,
-            organizer: { email: 'boss@example.com' } },
+        sync: timed('Team sync', '2026-10-16T10:00', '+02:00', 30, 'Europe/Berlin', { calendar: 'Work',
+            attendees: [{ email: 'me@example.com', self: true }, { email: 'ann@example.com' }, { email: 'bob@example.com' }, { email: 'cy@example.com' }] }),
+        board: timed('Board review', '2026-10-16T09:00', '+02:00', 60, 'Europe/Berlin', { calendar: 'Work', invitation: true,
+            organizer: { email: 'boss@example.com' }, attendees: [{ email: 'me@example.com', self: true }] }),
+        weekly: timed('Weekly', '2026-10-19T09:00', '+02:00', 30, 'Europe/Berlin', { calendar: 'Work', recurring: true,
+            organizer: { email: 'boss@example.com' } }),
     };
     const people = ['ann@example.com', 'bob@example.com', 'cy@example.com'];
     const asked = [];
@@ -233,6 +260,7 @@ function mailingManager() {
             return { series: repeating, instance: false, recurrenceId: repeating && String(id).includes('.') ? { local: '2026-10-19T09:00:00', tz: 'Europe/Berlin' } : undefined };
         },
         zone: () => 'Europe/Berlin',
+        now: () => Date.parse('2026-10-11T10:00:00Z'),
         defaultCalendarId: () => 'work',
         calendar: (id) => ({ id, name: 'Work' }),
         calendarName: (calendar) => calendar.name,
@@ -250,23 +278,23 @@ function mailingManager() {
 test('policy: the approval prompt names who a change emails', () => {
     const m = mailingManager();
     assert.equal(describeChange(m, 'calendar_update_event', { id: 'sync', start: '2026-10-16 11:00', notify_guests: true }),
-        'Change “Team sync” (2026-10-16 10:00, Work): start, and email an update to ann@example.com, bob@example.com and cy@example.com?');
+        'Change “Team sync” (Fri, Oct 16, 10:00 – 10:30 AM, Work): a new time (start 2026-10-16 11:00), and email an update to ann@example.com, bob@example.com and cy@example.com?');
     assert.equal(describeChange(m, 'calendar_update_event', { id: 'sync', guests: ['ann@example.com', 'dee@example.com'], notify_guests: true }),
-        'Change “Team sync” (2026-10-16 10:00, Work): guests (adding dee@example.com; removing bob@example.com and cy@example.com), and email an update to ann@example.com, bob@example.com, cy@example.com and dee@example.com?');
+        'Change “Team sync” (Fri, Oct 16, 10:00 – 10:30 AM, Work): guests (adding dee@example.com; removing bob@example.com and cy@example.com), and email an update to ann@example.com, bob@example.com, cy@example.com and dee@example.com?');
     assert.equal(describeChange(m, 'calendar_delete_event', { id: 'sync', notify_guests: true }),
-        'Delete “Team sync” (2026-10-16 10:00, Work), and email a cancellation to ann@example.com, bob@example.com and cy@example.com?');
+        'Delete “Team sync” (Fri, Oct 16, 10:00 – 10:30 AM, Work), and email a cancellation to ann@example.com, bob@example.com and cy@example.com?');
     const crowd = Array.from({ length: 8 }, (_, i) => `p${i + 1}@example.com`);
     assert.equal(describeChange(m, 'calendar_create_event', { title: 'All hands', start: '2026-10-20 15:00', guests: crowd, notify_guests: true }),
         'Add “All hands” (2026-10-20 15:00) to Work, and email invitations to p1@example.com, p2@example.com, p3@example.com, p4@example.com, p5@example.com and 3 more?');
     // Answers: which occurrences, and whether the organizer hears it.
     assert.equal(describeChange(m, 'calendar_respond', { id: 'board', answer: 'accepted' }),
-        'Answer “Board review” (2026-10-16 09:00, Work): accepted? The answer is sent to the organizer, boss@example.com.');
+        'Answer “Board review” (Fri, Oct 16, 9:00 – 10:00 AM, Work): accepted? The answer is sent to the organizer, boss@example.com.');
     assert.equal(describeChange(m, 'calendar_respond', { id: 'weekly.20261019T090000', answer: 'declined', scope: 'one' }),
-        'Answer only this occurrence of “Weekly” (2026-10-19 09:00, Work): declined? The answer is sent to the organizer, boss@example.com.');
+        'Answer only this occurrence of “Weekly” (Mon, Oct 19, 9:00 – 9:30 AM, Work): declined? The answer is sent to the organizer, boss@example.com.');
     assert.equal(describeChange(m, 'calendar_respond', { id: 'weekly.20261019T090000', answer: 'declined', scope: 'all' }),
-        'Answer every occurrence of “Weekly” (2026-10-19 09:00, Work): declined? The answer is sent to the organizer, boss@example.com.');
+        'Answer every occurrence of “Weekly” (Mon, Oct 19, 9:00 – 9:30 AM, Work): declined? The answer is sent to the organizer, boss@example.com.');
     assert.equal(describeChange(m, 'calendar_respond', { id: 'sync', answer: 'accepted' }),
-        'Answer “Team sync” (2026-10-16 10:00, Work): accepted? This calendar doesn\'t send it to the organizer.');
+        'Answer “Team sync” (Fri, Oct 16, 10:00 – 10:30 AM, Work): accepted? This calendar doesn\'t send it to the organizer.');
 });
 
 test('policy: what the gate refuses before anyone is asked', () => {
@@ -313,8 +341,8 @@ test('policy: a change that emails someone asks first, and a chat that can\'t as
     const auto = await gate('auto', { approval: asks })(call('calendar_update_event', tell), allow);
     assert.deepEqual(auto, {
         kind: 'ask',
-        reason: 'Calendar: Change “Team sync” (2026-10-16 10:00, Work): start, and email an update to ann@example.com, bob@example.com and cy@example.com?',
-        displayReason: { en: 'Change “Team sync” (2026-10-16 10:00, Work): start, and email an update to ann@example.com, bob@example.com and cy@example.com?' },
+        reason: 'Calendar: Change “Team sync” (Fri, Oct 16, 10:00 – 10:30 AM, Work): a new time (start 2026-10-16 11:00), and email an update to ann@example.com, bob@example.com and cy@example.com?',
+        displayReason: { en: 'Change “Team sync” (Fri, Oct 16, 10:00 – 10:30 AM, Work): a new time (start 2026-10-16 11:00), and email an update to ann@example.com, bob@example.com and cy@example.com?' },
     });
     assert.equal((await gate('workspace-write', { approval: asks })(call('calendar_delete_event', { id: 'sync', notify_guests: true }), allow)).kind, 'ask');
     // An answer emails the organizer: asked too.

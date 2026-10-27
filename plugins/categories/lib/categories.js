@@ -12,7 +12,8 @@
  * @module dsh-plugin-categories/categories
  */
 import { appendFileSync, chmodSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
+import { basename, dirname, join } from 'node:path';
 import { CategoryStore, dataPath, dshHome, ensurePrivateDir } from './store.js';
 import { planFleetShellImport, planFromProjects } from './plan.js';
 
@@ -21,6 +22,44 @@ const NAME_BYTES = 80;
 
 /** A refusal the user can act on: the window shows its message. */
 export class CategoryError extends Error {}
+
+/** A path for people to read: the home folder as ~. */
+export function shownPath(path) {
+    const home = homedir();
+    return typeof path === 'string' && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : String(path);
+}
+
+/** Why a file can't be written, in words (store.js keeps the code: EACCES, ENOSPC, …). */
+export function saveReason(code) {
+    const words = {
+        EACCES: 'no permission to write it', EPERM: 'no permission to write it', ENOSPC: 'the disk is full', EDQUOT: 'the disk quota is used up',
+        EROFS: 'the disk is read-only', EISDIR: 'a folder is in the way', ENOTDIR: 'a file is in the way of its folder', EBUSY: 'it is busy',
+    };
+    return words[code] ?? String(code ?? 'unknown').slice(0, 120);
+}
+
+/** A name compared as people read it: one line, any case. */
+const nameKey = (name) => String(name ?? '').normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
+
+/**
+ * One line in the plugin's log file: its time, then the line. The folder is
+ * made 700 and the file 600; a log that cannot be written never fails the
+ * plugin. It is the plugin's own because DSH 0.2 writes no plugin's log
+ * lines out (they stay in its logger's memory).
+ * @param {string} file - the log's path ('' for no log).
+ * @param {string} line - one line (line breaks become spaces).
+ * @returns whether the line reached the file.
+ */
+export function appendLog(file, line) {
+    if (!file) return false;
+    try {
+        ensurePrivateDir(dirname(file));
+        appendFileSync(file, `${new Date().toISOString()} ${String(line).replace(/[\r\n]+/g, ' ')}\n`, { mode: 0o600 });
+        return true;
+    } catch {
+        return false;
+    }
+}
 
 /** A name as the user typed it: one line, cut after the last whole word within 80 bytes, with "…". */
 export function clipName(value) {
@@ -104,22 +143,20 @@ export class CategoryManager {
      * @param {object} options.ctx - the plugin's context: workspaceRegistry, logger.
      * @param {object} options.config - the plugin's config (index.js).
      */
-    constructor({ ctx, config }) {
+    constructor({ ctx, config, warn }) {
         this.ctx = ctx;
         this.config = config;
-        /** Read from the file now: a switch-off or config reload left nothing in memory. */
-        this.store = new CategoryStore(config.storeFile);
-        this.disposed = false;
         this.logFile = config.logFile ? dataPath(config.logFile) : '';
-        if (this.logFile) {
-            try { ensurePrivateDir(dirname(this.logFile)); } catch {}
-        }
+        /** A warning in words: DSH's logger and the plugin's own log (index.js), else its log alone. */
+        this.warn = typeof warn === 'function' ? warn : (text) => this.log(`warn ${text}`);
+        /** Read from the file now: a switch-off or config reload left nothing in memory. */
+        this.store = new CategoryStore(config.storeFile, { warn: (text) => this.warn(text) });
+        this.disposed = false;
     }
 
-    /** One line in the action log (mode 600), never more than ids and counts. */
+    /** One line in the action log (mode 600): ids and counts, and what went wrong, in words. */
     log(line) {
-        if (!this.logFile) return;
-        try { appendFileSync(this.logFile, `${new Date().toISOString()} ${line}\n`, { mode: 0o600 }); } catch {}
+        appendLog(this.logFile, line);
     }
 
     /** The one-time moves, then DSH's workspace order in step with the categories. */
@@ -228,7 +265,7 @@ export class CategoryManager {
      * the old file is not read at all.
      */
     importFleetShell() {
-        if (this.disposed || this.store.imports.fleetShell || this.store.imports.projects?.from === 'categories') return;
+        if (this.disposed || this.store.imports.fleetShell || this.store.imports.projects?.from === 'categories' || this.store.imports.unusable) return;
         const file = join(dshHome(), 'fleet-shell', 'state.json');
         let state;
         try {
@@ -244,10 +281,13 @@ export class CategoryManager {
         });
         let made = 0;
         let placed = 0;
+        const ids = [];
         for (const group of plan.groups) {
             let id = group.join;
             if (!id) {
                 id = this.makeCategory(group.name, 'import', { importedFrom: group.from });
+                this.log(`category-new ${id} import`);
+                ids.push(id);
                 made += 1;
             }
             for (const workspaceId of group.workspaces) {
@@ -257,7 +297,9 @@ export class CategoryManager {
         }
         const joined = plan.groups.length - made;
         const skipped = plan.skipped.length;
-        this.store.putImport('fleetShell', { at: new Date().toISOString(), file, categories: made, joined, workspaces: placed, skipped });
+        // `made`: the categories this import made, which the Categories page names in its note (a record the projects
+        // plugin kept of its own import has none, so categories it imported weeks ago aren't named as new here).
+        this.store.putImport('fleetShell', { at: new Date().toISOString(), file, categories: made, joined, workspaces: placed, skipped, made: ids });
         this.log(`import fleet-shell categories=${made} joined=${joined} workspaces=${placed} skipped=${skipped}`);
     }
 
@@ -284,33 +326,75 @@ export class CategoryManager {
     /**
      * Every category in its order, with the workspaces it holds in DSH's
      * order (only ones DSH has), for the session list and the Categories page.
+     * `imported` marks the ones this plugin's own import of the old sidebar
+     * made, which the page names in a note.
      */
     listCategories() {
         const order = this.workspaceList();
+        const made = this.store.imports.fleetShell?.made;
+        const mine = new Set(Array.isArray(made) ? made.filter((id) => typeof id === 'string') : []);
         return this.categoryEntries().map(([id, c]) => ({
             id,
             name: c.name,
             source: typeof c.source === 'string' ? c.source : 'page',
             ...(typeof c.importedFrom === 'string' ? { importedFrom: c.importedFrom } : {}),
+            ...(mine.has(id) ? { imported: true } : {}),
             workspaces: order.filter((ws) => this.store.categoryOf[ws.id] === id).map((ws) => ({ id: ws.id, path: ws.path, title: ws.title })),
         }));
     }
 
-    /** A new category, last in the list. @returns its id. */
+    /**
+     * What the Categories page says about the store, or null while all is
+     * well: a save that failed (each change is undone until one can be
+     * written), a file that couldn't be used at the start, and where the
+     * first change after that kept it.
+     * @returns {{problem: 'unsaved' | 'unusable' | 'kept', text: string} | null}
+     */
+    storeNote() {
+        const { unsaved, unusable, kept } = this.store;
+        const file = shownPath(this.store.file);
+        if (unsaved) return { problem: 'unsaved', text: `The categories can't be saved in ${file} (${saveReason(unsaved.reason)}), so a change made now is undone. Each change tries again.` };
+        if (unusable) return { problem: 'unusable', text: `${file} ${unusable.what}, so the categories started empty. The file is left as it is: the first change keeps it beside the new store, to put back by hand.` };
+        if (kept) return { problem: 'kept', text: `${file} ${kept.what} at the start, so the categories started empty. It is kept as ${basename(kept.file)} in the same folder: put it back by hand, with DSH stopped, to bring them back.` };
+        return null;
+    }
+
+    /**
+     * One change to the categories, written to the store at once. When the
+     * store can't be written, the change is undone and refused in words, so
+     * neither the window nor the log claims what the next start would lose.
+     * @param change - makes the change in memory (the store's methods); its result is returned.
+     */
+    commit(change) {
+        const before = this.store.snapshot();
+        const result = change();
+        if (!this.store.save('the change is undone, and the next change tries again')) {
+            this.store.restore(before);
+            throw new CategoryError(`not saved: ${shownPath(this.store.file)} can't be written (${saveReason(this.store.unsaved?.reason)}), so nothing changed. Try again once it can be`);
+        }
+        return result;
+    }
+
+    /** A new category, last in the list (in memory: the caller saves it). @returns its id. */
     makeCategory(name, source, extra = {}) {
         const base = slugify(name);
         let id = base;
         for (let n = 2; this.store.categories[id] !== undefined; n += 1) id = `${base}-${n}`;
         const orders = Object.values(this.store.categories).map((c) => (Number.isFinite(c?.order) ? c.order : -1));
         this.store.putCategory(id, { name, order: Math.max(-1, ...orders) + 1, createdAt: new Date().toISOString(), source, ...extra });
-        this.log(`category-new ${id} ${source}`);
         return id;
     }
 
-    /** A category name as the user typed it: one line, at most 80 bytes. */
-    categoryName(value) {
+    /**
+     * A category name as the user typed it: one line, at most 80 bytes, and
+     * no other category's name (in any case).
+     * @param self - the category being renamed, which may keep its own name in another case.
+     */
+    categoryName(value, self = null) {
         const name = clipName(typeof value === 'string' ? value : '');
         if (name === '') throw new CategoryError('a category needs a name');
+        const twin = this.categoryEntries().find(([id, c]) => id !== self && nameKey(c.name) === nameKey(name));
+        if (twin) throw new CategoryError(`there is a category named ${twin[1].name} already`);
         return name;
     }
 
@@ -322,17 +406,25 @@ export class CategoryManager {
         this.requireLive();
         const clean = this.categoryName(name);
         if (workspaceId !== undefined && !this.workspace(workspaceId)) throw new CategoryError('DSH has no such workspace');
-        const id = this.makeCategory(clean, 'page');
-        if (workspaceId !== undefined) await this.fileWorkspace(workspaceId, id);
+        const id = this.commit(() => {
+            const made = this.makeCategory(clean, 'page');
+            if (workspaceId !== undefined) this.store.fileWorkspace(workspaceId, made);
+            return made;
+        });
+        this.log(`category-new ${id} page`);
+        if (workspaceId !== undefined) {
+            this.log(`workspace ${workspaceId} category=${id}`);
+            await this.syncWorkspaceOrder({ move: workspaceId });
+        }
         return id;
     }
 
     renameCategory(categoryId, name) {
         this.requireLive();
         const category = this.requireCategory(categoryId);
-        const clean = this.categoryName(name);
+        const clean = this.categoryName(name, categoryId);
         if (clean === category.name) return;
-        this.store.putCategory(categoryId, { name: clean });
+        this.commit(() => this.store.putCategory(categoryId, { name: clean }));
         this.log(`category-rename ${categoryId}`);
     }
 
@@ -340,7 +432,7 @@ export class CategoryManager {
     async removeCategory(categoryId) {
         this.requireLive();
         this.requireCategory(categoryId);
-        this.store.removeCategory(categoryId);
+        this.commit(() => this.store.removeCategory(categoryId));
         this.log(`category-delete ${categoryId}`);
         await this.syncWorkspaceOrder();
     }
@@ -354,8 +446,7 @@ export class CategoryManager {
         if (before === categoryId) return;
         const ids = this.categoryEntries().map(([id]) => id).filter((id) => id !== categoryId);
         ids.splice(before === null ? ids.length : ids.indexOf(before), 0, categoryId);
-        ids.forEach((id, i) => { this.store.categories[id].order = i; });
-        this.store.save();
+        this.commit(() => ids.forEach((id, i) => { this.store.categories[id].order = i; }));
         this.log(`category-move ${categoryId} before=${before ?? 'end'}`);
         await this.syncWorkspaceOrder();
     }
@@ -376,7 +467,7 @@ export class CategoryManager {
             if ((this.store.categoryOf[before] ?? null) !== categoryId) throw new CategoryError('that workspace is in another category');
         }
         if ((this.store.categoryOf[workspaceId] ?? null) !== categoryId) {
-            this.store.fileWorkspace(workspaceId, categoryId);
+            this.commit(() => this.store.fileWorkspace(workspaceId, categoryId));
             this.log(`workspace ${workspaceId} category=${categoryId ?? 'none'}`);
         }
         await this.syncWorkspaceOrder({ move: workspaceId, before: before ?? undefined });

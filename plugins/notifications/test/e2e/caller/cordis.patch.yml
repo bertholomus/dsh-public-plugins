@@ -1,0 +1,4 @@
+# The stand-in caller's bundle row (plugins/notifications/test/e2e/caller: tests only).
+- insert:
+    - id: notifications-e2e-caller
+      name: dsh-plugin-notifications-e2e-caller

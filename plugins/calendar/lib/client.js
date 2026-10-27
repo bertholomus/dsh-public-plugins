@@ -59,6 +59,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
         const IDS = {
             page: `${BUNDLE}:page`,
             agenda: `${BUNDLE}:agenda`,
+            reminders: `${BUNDLE}:reminders`,
         };
         /** The Agenda pane's tab kind in DSH's right sidebar. */
         const AGENDA_KIND = 'calendar-agenda';
@@ -87,29 +88,48 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
         const ROOTS = '.dshcal-root,.dshcal-pane,.dshcal-chat,.dshcal-pop,.dshcal-dlg,.dshcal-menu,.dshcal-toast';
         /** Out of sight, still read by screen readers. */
         const HIDDEN = 'position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0';
+        /** DSH's focus ring colour (DSH hides it after a pointer press, as on its own controls). */
+        const RING = 'var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))';
+        /** One of DSH's colours deepened toward its label colour (DESIGN.md sections 3 and 4). */
+        const DEEP = (token, share) => `color-mix(in srgb,var(${token}) ${share}%,var(--dsw-alias-label-primary))`;
+        /**
+         * Secondary text deepened by the tint: at the default tint (.55) and above its share is as given; below, it falls
+         * with the tint (at .3 about half of it), so small secondary text keeps 4.5:1 on thinner glass (DESIGN.md section 3).
+         */
+        const DEEP_BY_TINT = (token, share) => `color-mix(in srgb,var(${token}) min(${share}%,calc(var(--wp-tint,.55) * ${Math.round((share / 0.55) * 10) / 10}%)),var(--dsw-alias-label-primary))`;
         const GLASS = 'background:var(--cal-glass);-webkit-backdrop-filter:blur(var(--wp-blur,22px)) saturate(140%);backdrop-filter:blur(var(--wp-blur,22px)) saturate(140%)';
         const CSS = [
-            // Tokens: dark by default (the wallpaper plugin's own values), light where DSH is light.
-            `:is(${ROOTS}){--cal-text:#ECEAE4;--cal-strong:#DADDD7;--cal-soft:#C9CDC7;--cal-meta:#A9AEA8;--cal-faint:#8E948E;--cal-accent:#7FA7F5;--cal-on-accent:#0B1220;`
-                + '--cal-glass:rgba(14,18,17,var(--wp-tint,.55));--cal-conv:rgba(10,13,12,calc(var(--wp-tint,.55) + .2));--cal-pop:rgba(20,24,23,.95);--cal-modal:rgba(16,20,19,.82);--cal-shadow:rgba(0,0,0,.45);'
-                + '--cal-line:rgba(255,255,255,.09);--cal-line2:rgba(255,255,255,.16);--cal-fill:rgba(255,255,255,.04);--cal-hover:rgba(255,255,255,.07);--cal-press:rgba(255,255,255,.11);'
-                + '--cal-accent-soft:rgba(127,167,245,.16);--cal-danger:#F2ABA2;--cal-warn:#E8C48C;--cal-ok:#93D2A8;--cal-now:#FF7A6E;--cal-chip-ground:#141817;color-scheme:dark}',
-            `body:not([data-ds-dark-theme]) :is(${ROOTS}){--cal-text:#191E1B;--cal-strong:#232926;--cal-soft:#38403B;--cal-meta:#55605A;--cal-faint:#68716B;--cal-accent:#3F6FD8;--cal-on-accent:#FFFFFF;`
-                + '--cal-glass:rgba(250,250,246,var(--wp-tint,.55));--cal-conv:rgba(250,250,246,calc(var(--wp-tint,.55) + .2));--cal-pop:rgba(252,252,249,.96);--cal-modal:rgba(250,250,246,.9);--cal-shadow:rgba(20,26,22,.18);'
-                + '--cal-line:rgba(0,0,0,.1);--cal-line2:rgba(0,0,0,.17);--cal-fill:rgba(20,26,22,.035);--cal-hover:rgba(20,26,22,.07);--cal-press:rgba(20,26,22,.11);'
-                + '--cal-accent-soft:rgba(63,111,216,.12);--cal-danger:#B3261E;--cal-warn:#8A5A00;--cal-ok:#1E7B45;--cal-now:#D93025;--cal-chip-ground:#FAFAF7;color-scheme:light}',
+            // Tokens: DSH's own (DESIGN.md section 4), so light and dark follow DSH. Secondary text, the accent and the state
+            // colours are deepened toward DSH's label colour, so small text holds 4.5:1 on glass (section 3); the glass
+            // grounds are the wallpaper plugin's recipe, dark by default and light where DSH is light.
+            `:is(${ROOTS}){--cal-text:var(--dsw-alias-label-primary);--cal-strong:var(--dsw-alias-label-primary);`
+                + `--cal-soft:${DEEP_BY_TINT('--dsw-alias-label-secondary', 45)};--cal-meta:${DEEP_BY_TINT('--dsw-alias-label-secondary', 55)};--cal-faint:${DEEP_BY_TINT('--dsw-alias-label-secondary', 65)};`
+                + `--cal-accent:${DEEP('--dsw-alias-state-business-primary', 85)};--cal-link:${DEEP('--dsw-alias-link', 50)};--cal-on-accent:var(--dsw-alias-label-primary-inverted);`
+                + '--cal-accent-soft:var(--dsw-alias-state-business-tertiary);'
+                + `--cal-danger:${DEEP('--dsw-alias-state-error-primary', 75)};--cal-warn:${DEEP('--dsw-alias-state-warn-label', 50)};--cal-ok:${DEEP('--dsw-alias-state-success-primary', 50)};`
+                + '--cal-now:var(--dsw-alias-state-error-primary);--cal-line:var(--dsw-alias-border-l2);--cal-line2:var(--dsw-alias-border-l4);'
+                + '--cal-hover:var(--dsw-alias-interactive-bg-hover);--cal-press:var(--dsw-alias-interactive-bg-active);--cal-chip-ground:var(--dsw-alias-bg-base);--cal-chip-ring:var(--dsw-alias-border-l2);'
+                + '--cal-glass:rgba(14,18,17,var(--wp-tint,.55));--cal-conv:rgba(10,13,12,calc(var(--wp-tint,.55) + .2));--cal-fill:rgba(255,255,255,.04);--cal-shadow:rgba(0,0,0,.45);color-scheme:dark}',
+            `body:not([data-ds-dark-theme]) :is(${ROOTS}){--cal-glass:rgba(250,250,246,var(--wp-tint,.55));--cal-conv:rgba(250,250,246,calc(var(--wp-tint,.55) + .2));`
+                + '--cal-fill:rgba(20,26,22,.035);--cal-shadow:rgba(20,26,22,.18);color-scheme:light}',
+            // Where the system asks for less transparency, the glass goes near-opaque, as DSH's own sidebar does.
+            `@media (prefers-reduced-transparency:reduce){:is(${ROOTS}){--cal-glass:rgba(14,18,17,.9);--cal-conv:rgba(10,13,12,.95)}`
+                + `body:not([data-ds-dark-theme]) :is(${ROOTS}){--cal-glass:rgba(250,250,246,.9);--cal-conv:rgba(250,250,246,.95)}}`,
             // Keyboard focus on the plugin's own controls (DSH's controls inside keep theirs).
-            ':is(button,a,input,select,textarea,[tabindex])[class*="dshcal-"]:focus-visible{outline:2px solid var(--cal-accent);outline-offset:2px}',
+            `:is(button,a,input,select,textarea,[tabindex])[class*="dshcal-"]:focus-visible{outline:2px solid ${RING};outline-offset:2px}`,
             `.dshcal-sr{${HIDDEN}}`,
-            '.dshcal-glass{' + GLASS + ';border:1px solid var(--cal-line);border-radius:16px;box-sizing:border-box}',
+            '.dshcal-glass{' + GLASS + ';border:1px solid var(--cal-line);border-radius:var(--dsw-radius-lg);box-sizing:border-box}',
 
             // ── The page: no background of its own, its parts on glass cards.
-            '.dshcal-root{position:relative;display:flex;gap:12px;box-sizing:border-box;width:100%;height:100%;min-width:0;min-height:0;padding:12px;overflow:hidden;color:var(--cal-text);font-size:13px;line-height:1.45;container:dshcal/inline-size}',
+            '.dshcal-root{position:relative;display:flex;gap:12px;box-sizing:border-box;width:100%;height:100%;min-width:0;min-height:0;padding:12px;overflow:hidden;color:var(--cal-text);font-size:var(--dsw-font-xs-13-font-size,13px);line-height:1.45;container:dshcal/inline-size}',
             '[data-platform=darwin] .dshcal-root{padding-top:calc(12px + var(--dsh-frame-top-clearance,0px))}',
             '.dshcal-side{flex:none;display:flex;flex-direction:column;gap:14px;width:244px;min-height:0;padding:12px 10px 10px;overflow:auto;scrollbar-width:thin}',
             '.dshcal-main{position:relative;flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;overflow:hidden}',
             // The view itself: the wallpaper's tint + .2, as the open conversation has, so its small text stays readable.
             '.dshcal-main.dshcal-glass{background:var(--cal-conv)}',
+            // The side column is all small text (the small month, the calendars, Accounts): it sits at tint + .2 too, never
+            // on the plain tint, where small text falls under 4.5:1 at a low tint (DESIGN.md section 3).
+            '.dshcal-side.dshcal-glass{background:var(--cal-conv)}',
             // The page takes the focus of a click on its empty parts (its keys work from there); it shows no ring for it.
             '.dshcal-root:focus,.dshcal-root[tabindex]:focus-visible{outline:none}',
             '.dshcal-root[data-calendar-dragging],.dshcal-root[data-calendar-dragging] *{cursor:grabbing!important;user-select:none;-webkit-user-select:none}',
@@ -117,7 +137,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             '.dshcal-head{display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:10px 12px;border-bottom:1px solid var(--cal-line)}',
             '.dshcal-head-nav{display:flex;align-items:center;gap:4px;min-width:0;flex:1 1 280px}',
             '.dshcal-head-tools{display:flex;align-items:center;flex-wrap:wrap;justify-content:flex-end;gap:8px;min-width:0;margin-left:auto}',
-            '.dshcal-title{margin:0 0 0 6px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:18px;font-weight:600;line-height:26px;color:var(--cal-strong)}',
+            '.dshcal-title{margin:0 0 0 6px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--dsw-font-l-20-font-size,20px);font-weight:600;line-height:26px;color:var(--cal-strong)}',
             '.dshcal-title-ruler{position:absolute;visibility:hidden;pointer-events:none}',
             // The week's number by the title (under it on a narrow page).
             '.dshcal-titles{display:flex;align-items:center;gap:6px;min-width:0}',
@@ -127,10 +147,10 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             '.dshcal-search>svg{position:absolute;left:9px;color:var(--cal-meta);pointer-events:none}',
             '.dshcal-search>.dshcal-input{height:30px;padding-left:30px;padding-right:28px}',
             '.dshcal-search>.dshcal-input::-webkit-search-cancel-button{display:none}',
-            '.dshcal-search-clear{position:absolute;right:3px;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:0;border-radius:7px;background:none;color:var(--cal-meta);cursor:pointer}',
+            '.dshcal-search-clear{position:absolute;right:3px;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:0;border-radius:var(--dsw-radius-sm);background:none;color:var(--cal-meta);cursor:pointer}',
             '.dshcal-search-clear:hover{background:var(--cal-hover);color:var(--cal-text)}',
             // A read again that failed, over the events read before.
-            '.dshcal-stale{display:flex;align-items:center;gap:8px;min-width:0;padding:5px 12px;border-bottom:1px solid var(--cal-line);background:color-mix(in srgb,var(--cal-warn) 10%,transparent);font-size:12px;line-height:1.4;color:var(--cal-text)}',
+            '.dshcal-stale{display:flex;align-items:center;gap:8px;min-width:0;padding:5px 12px;border-bottom:1px solid var(--cal-line);background:color-mix(in srgb,var(--cal-warn) 10%,transparent);font-size:var(--dsw-font-xxs-12-font-size,12px);line-height:1.4;color:var(--cal-text)}',
             '.dshcal-stale>svg{flex:none;color:var(--cal-warn)}',
             '.dshcal-stale>span{flex:1;min-width:0;overflow-wrap:anywhere}',
             '.dshcal-stale>button{flex:none}',
@@ -145,7 +165,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             '.dshcal-spin{display:inline-flex;animation:dshcal-spin 1s linear infinite}',
 
             // Buttons, fields and small parts, shared by every surface.
-            '.dshcal-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;height:30px;padding:0 12px;border:1px solid var(--cal-line2);border-radius:9px;background:var(--cal-fill);color:var(--cal-text);font:inherit;font-size:13px;font-weight:500;line-height:1;white-space:nowrap;cursor:pointer;text-decoration:none}',
+            '.dshcal-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;box-sizing:border-box;height:30px;padding:0 12px;border:1px solid var(--cal-line2);border-radius:var(--dsw-radius-sm);background:var(--cal-fill);color:var(--cal-text);font:inherit;font-size:var(--dsw-font-xs-13-font-size,13px);font-weight:500;line-height:1;white-space:nowrap;cursor:pointer;text-decoration:none}',
             '.dshcal-btn:hover{background:var(--cal-hover)}',
             '.dshcal-btn:active{background:var(--cal-press)}',
             '.dshcal-btn:disabled{opacity:.5;cursor:default}',
@@ -153,67 +173,67 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             '.dshcal-btn-primary{border-color:transparent;background:var(--cal-accent);color:var(--cal-on-accent)}',
             '.dshcal-btn-primary:hover{background:color-mix(in srgb,var(--cal-accent) 86%,var(--cal-text))}',
             '.dshcal-btn-ghost{border-color:transparent;background:none}',
-            '.dshcal-btn-sm{height:26px;padding:0 9px;font-size:12px;border-radius:8px}',
+            '.dshcal-btn-sm{height:26px;padding:0 9px;font-size:var(--dsw-font-xxs-12-font-size,12px);border-radius:var(--dsw-radius-sm)}',
             '.dshcal-btn-icon{width:30px;padding:0}',
             '.dshcal-btn-sm.dshcal-btn-icon{width:26px}',
             '.dshcal-btn-danger{color:var(--cal-danger)}',
             '.dshcal-btn[aria-pressed=true]{background:var(--cal-accent-soft);border-color:color-mix(in srgb,var(--cal-accent) 55%,transparent);color:var(--cal-text)}',
-            '.dshcal-link{border:0;padding:0;background:none;color:var(--cal-accent);font:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer;overflow-wrap:anywhere}',
-            '.dshcal-seg{display:inline-flex;padding:2px;gap:2px;border:1px solid var(--cal-line2);border-radius:10px;background:var(--cal-fill)}',
-            '.dshcal-seg>button{height:24px;padding:0 10px;border:0;border-radius:7px;background:none;color:var(--cal-meta);font:inherit;font-size:12px;font-weight:500;cursor:pointer}',
+            '.dshcal-link{border:0;padding:0;background:none;color:var(--cal-link);font:inherit;text-decoration:underline;text-underline-offset:2px;cursor:pointer;overflow-wrap:anywhere}',
+            '.dshcal-seg{display:inline-flex;padding:2px;gap:2px;border:1px solid var(--cal-line2);border-radius:var(--dsw-radius-md);background:var(--cal-fill)}',
+            '.dshcal-seg>button{height:24px;padding:0 10px;border:0;border-radius:var(--dsw-radius-sm);background:none;color:var(--cal-meta);font:inherit;font-size:var(--dsw-font-xxs-12-font-size,12px);font-weight:500;cursor:pointer}',
             '.dshcal-seg>button:hover{color:var(--cal-text)}',
             '.dshcal-seg>button[aria-checked=true]{background:var(--cal-press);color:var(--cal-text)}',
             '.dshcal-dot{display:inline-block;flex:none;width:9px;height:9px;border-radius:50%;background:var(--dot,var(--cal-accent))}',
             '.dshcal-dot[data-none]{background:none;box-shadow:inset 0 0 0 1.5px var(--cal-meta)}',
-            '.dshcal-tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:9px;background:var(--cal-hover);font-size:11px;font-weight:500;color:var(--cal-meta);white-space:nowrap}',
+            '.dshcal-tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:var(--dsw-radius-sm);background:var(--cal-hover);font-size:var(--dsw-font-xxxs-11-font-size,11px);font-weight:500;color:var(--cal-meta);white-space:nowrap}',
             '.dshcal-warn{color:var(--cal-warn)}',
             '.dshcal-meta{color:var(--cal-meta)}',
             '.dshcal-faint{color:var(--cal-faint)}',
-            '.dshcal-input,.dshcal-select,.dshcal-textarea{box-sizing:border-box;width:100%;min-width:0;height:34px;padding:0 10px;border:1px solid var(--cal-line2);border-radius:9px;background:var(--cal-fill);color:var(--cal-text);font:inherit;font-size:13px}',
+            '.dshcal-input,.dshcal-select,.dshcal-textarea{box-sizing:border-box;width:100%;min-width:0;height:34px;padding:0 10px;border:1px solid var(--cal-line2);border-radius:var(--dsw-radius-sm);background:var(--cal-fill);color:var(--cal-text);font:inherit;font-size:var(--dsw-font-xs-13-font-size,13px)}',
             '.dshcal-textarea{height:auto;min-height:72px;padding:8px 10px;line-height:1.45;resize:vertical}',
             '.dshcal-select{padding-right:6px}',
             '.dshcal-input::placeholder,.dshcal-textarea::placeholder{color:var(--cal-faint)}',
-            '.dshcal-input:focus,.dshcal-select:focus,.dshcal-textarea:focus{outline:2px solid var(--cal-accent);outline-offset:-1px;border-color:transparent}',
+            `.dshcal-input:focus,.dshcal-select:focus,.dshcal-textarea:focus{outline:2px solid ${RING};outline-offset:-1px;border-color:transparent}`,
             '.dshcal-input[aria-invalid=true],.dshcal-select[aria-invalid=true]{border-color:var(--cal-danger)}',
             '.dshcal-select option,.dshcal-select optgroup{background:var(--cal-chip-ground);color:var(--cal-text)}',
-            '.dshcal-check{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:13px}',
+            '.dshcal-check{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:var(--dsw-font-xs-13-font-size,13px)}',
             '.dshcal-check>input{width:15px;height:15px;margin:0;accent-color:var(--cal-accent)}',
             '.dshcal-field{display:flex;flex-direction:column;gap:5px;min-width:0}',
-            '.dshcal-field>label,.dshcal-label{font-size:12px;font-weight:500;color:var(--cal-meta)}',
-            '.dshcal-hint{font-size:12px;line-height:1.45;color:var(--cal-meta)}',
+            '.dshcal-field>label,.dshcal-label{font-size:var(--dsw-font-xxs-12-font-size,12px);font-weight:500;color:var(--cal-meta)}',
+            '.dshcal-hint{font-size:var(--dsw-font-xxs-12-font-size,12px);line-height:1.45;color:var(--cal-meta)}',
             '.dshcal-tell{display:flex;flex-direction:column;gap:3px;margin-top:4px}',
             '.dshcal-tell>.dshcal-hint{padding-left:23px}',
-            '.dshcal-field-error{font-size:12px;line-height:1.4;color:var(--cal-danger)}',
-            '.dshcal-alert{display:flex;gap:8px;align-items:flex-start;padding:9px 11px;border-radius:10px;background:color-mix(in srgb,var(--cal-danger) 14%,transparent);color:var(--cal-text);font-size:13px;line-height:1.45}',
+            '.dshcal-field-error{font-size:var(--dsw-font-xxs-12-font-size,12px);line-height:1.4;color:var(--cal-danger)}',
+            '.dshcal-alert{display:flex;gap:8px;align-items:flex-start;padding:9px 11px;border-radius:var(--dsw-radius-md);background:color-mix(in srgb,var(--cal-danger) 14%,transparent);color:var(--cal-text);font-size:var(--dsw-font-xs-13-font-size,13px);line-height:1.45}',
             '.dshcal-alert>svg{flex:none;margin-top:2px;color:var(--cal-danger)}',
-            '.dshcal-note{display:flex;gap:8px;align-items:flex-start;padding:9px 11px;border-radius:10px;background:var(--cal-fill);border:1px solid var(--cal-line);font-size:12px;line-height:1.5;color:var(--cal-soft)}',
+            '.dshcal-note{display:flex;gap:8px;align-items:flex-start;padding:9px 11px;border-radius:var(--dsw-radius-md);background:var(--cal-fill);border:1px solid var(--cal-line);font-size:var(--dsw-font-xxs-12-font-size,12px);line-height:1.5;color:var(--cal-soft)}',
             '.dshcal-note>svg{flex:none;margin-top:2px}',
             '.dshcal-note>span{flex:1;min-width:0;overflow-wrap:anywhere}',
 
             // The side column: the small month, the calendars by account.
             '.dshcal-mini{display:flex;flex-direction:column;gap:4px}',
             '.dshcal-mini-head{display:flex;align-items:center;gap:2px;padding:0 2px 2px}',
-            '.dshcal-mini-title{flex:1;font-size:13px;font-weight:600;color:var(--cal-strong);padding-left:4px}',
+            '.dshcal-mini-title{flex:1;font-size:var(--dsw-font-xs-13-font-size,13px);font-weight:600;color:var(--cal-strong);padding-left:4px}',
             '.dshcal-mini-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px}',
             '.dshcal-mini-grid[data-week-numbers]{grid-template-columns:20px repeat(7,1fr)}',
-            '.dshcal-mini-wk{height:28px;display:flex;align-items:center;justify-content:center;font-size:10.5px;color:var(--cal-meta);font-variant-numeric:tabular-nums}',
-            '.dshcal-mini-wd{height:20px;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:600;color:var(--cal-faint);text-transform:uppercase}',
-            '.dshcal-mini-day{height:28px;display:flex;align-items:center;justify-content:center;border:0;border-radius:8px;background:none;color:var(--cal-text);font:inherit;font-size:12px;font-variant-numeric:tabular-nums;cursor:pointer}',
+            '.dshcal-mini-wk{height:28px;display:flex;align-items:center;justify-content:center;font-size:var(--dsw-font-xxxs-11-font-size,11px);color:var(--cal-meta);font-variant-numeric:tabular-nums}',
+            '.dshcal-mini-wd{height:20px;display:flex;align-items:center;justify-content:center;font-size:var(--dsw-font-xxxs-11-font-size,11px);font-weight:600;color:var(--cal-meta);text-transform:uppercase}',
+            '.dshcal-mini-day{height:28px;display:flex;align-items:center;justify-content:center;border:0;border-radius:var(--dsw-radius-sm);background:none;color:var(--cal-text);font:inherit;font-size:var(--dsw-font-xxs-12-font-size,12px);font-variant-numeric:tabular-nums;cursor:pointer}',
             '.dshcal-mini-day:hover{background:var(--cal-hover)}',
-            '.dshcal-mini-day[data-out]{color:var(--cal-faint)}',
+            '.dshcal-mini-day[data-out]{color:var(--cal-meta)}',
             '.dshcal-mini-day[data-in-range]{background:var(--cal-accent-soft)}',
             '.dshcal-mini-day[data-today]{color:var(--cal-on-accent);background:var(--cal-accent);font-weight:600}',
             '.dshcal-cals{display:flex;flex-direction:column;gap:12px;min-height:0}',
-            '.dshcal-acct-head{display:flex;align-items:center;gap:6px;padding:0 4px 2px;font-size:11.5px;font-weight:600;letter-spacing:.02em;color:var(--cal-meta);text-transform:uppercase}',
+            '.dshcal-acct-head{display:flex;align-items:center;gap:6px;padding:0 4px 2px;font-size:var(--dsw-font-xxs-12-font-size,12px);font-weight:600;letter-spacing:.02em;color:var(--cal-meta);text-transform:uppercase}',
             '.dshcal-acct-head>span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-            '.dshcal-cal{display:flex;align-items:center;gap:8px;min-height:30px;padding:0 2px 0 6px;border-radius:8px}',
+            '.dshcal-cal{display:flex;align-items:center;gap:8px;min-height:30px;padding:0 2px 0 6px;border-radius:var(--dsw-radius-sm)}',
             '.dshcal-cal:hover{background:var(--cal-hover)}',
-            '.dshcal-cal-toggle{display:flex;align-items:center;gap:9px;flex:1;min-width:0;height:30px;padding:0;border:0;background:none;color:var(--cal-text);font:inherit;font-size:13px;text-align:left;cursor:pointer}',
-            '.dshcal-cal-box{flex:none;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:15px;height:15px;border-radius:4px;border:2px solid var(--cal-color);background:var(--cal-color);color:var(--cal-color-text)}',
+            '.dshcal-cal-toggle{display:flex;align-items:center;gap:9px;flex:1;min-width:0;height:30px;padding:0;border:0;background:none;color:var(--cal-text);font:inherit;font-size:var(--dsw-font-xs-13-font-size,13px);text-align:left;cursor:pointer}',
+            '.dshcal-cal-box{flex:none;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;width:15px;height:15px;border-radius:var(--dsw-radius-xs);border:2px solid var(--cal-color);background:var(--cal-color);color:var(--cal-color-text)}',
             '.dshcal-cal-toggle[aria-checked=false] .dshcal-cal-box{background:none}',
             '.dshcal-cal-toggle[aria-checked=false] .dshcal-cal-name{color:var(--cal-meta)}',
             '.dshcal-cal-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-            '.dshcal-cal-more{flex:none;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:0;border-radius:7px;background:none;color:var(--cal-meta);cursor:pointer;opacity:0}',
+            '.dshcal-cal-more{flex:none;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:0;border-radius:var(--dsw-radius-sm);background:none;color:var(--cal-meta);cursor:pointer;opacity:0}',
             '.dshcal-cal:hover .dshcal-cal-more,.dshcal-cal-more:focus-visible,.dshcal-cal-more[aria-expanded=true]{opacity:1}',
             '.dshcal-cal-more:hover{background:var(--cal-press);color:var(--cal-text)}',
             '@media (hover:none){.dshcal-cal-more{opacity:1}}',
@@ -226,34 +246,34 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             '.dshcal-wk-head{border-bottom:1px solid var(--cal-line)}',
             '.dshcal-wk-dayhead{display:flex;align-items:center;justify-content:center;gap:6px;min-width:0;height:44px;padding:0 4px;border:0;border-left:1px solid var(--cal-line);background:none;color:var(--cal-meta);font:inherit;cursor:pointer}',
             '.dshcal-wk-dayhead:hover{background:var(--cal-hover)}',
-            '.dshcal-wk-dayhead span:first-child{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}',
-            '.dshcal-wk-dayhead span:last-child{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;padding:0 4px;box-sizing:border-box;border-radius:14px;font-size:17px;font-weight:500;color:var(--cal-strong);font-variant-numeric:tabular-nums}',
-            '.dshcal-wk-dayhead[data-today] span:first-child{color:var(--cal-accent)}',
+            '.dshcal-wk-dayhead span:first-child{font-size:var(--dsw-font-xxs-12-font-size,12px);font-weight:600;text-transform:uppercase;letter-spacing:.03em}',
+            '.dshcal-wk-dayhead span:last-child{display:inline-flex;align-items:center;justify-content:center;min-width:28px;height:28px;padding:0 4px;box-sizing:border-box;border-radius:var(--dsw-radius-lg);font-size:var(--dsw-font-base-16-font-size,16px);font-weight:500;color:var(--cal-strong);font-variant-numeric:tabular-nums}',
+            '.dshcal-wk-dayhead[data-today] span:first-child{color:var(--cal-link)}',
             '.dshcal-wk-dayhead[data-today] span:last-child{background:var(--cal-accent);color:var(--cal-on-accent)}',
             '.dshcal-wk-allday{border-bottom:1px solid var(--cal-line);max-height:30%;overflow-y:auto}',
-            '.dshcal-wk-gutterlabel{display:flex;flex-direction:column;align-items:flex-end;justify-content:flex-start;gap:2px;padding:5px 8px 4px 0;font-size:11px;color:var(--cal-faint);white-space:nowrap}',
+            '.dshcal-wk-gutterlabel{display:flex;flex-direction:column;align-items:flex-end;justify-content:flex-start;gap:2px;padding:5px 8px 4px 0;font-size:var(--dsw-font-xxxs-11-font-size,11px);color:var(--cal-faint);white-space:nowrap}',
             '.dshcal-wk-lanes{grid-column:2 / -1;display:grid;grid-template-columns:repeat(var(--days),minmax(0,1fr));grid-template-rows:repeat(var(--lanes),22px);row-gap:2px;padding:3px 0;min-height:22px}',
             '.dshcal-wk-lanecell{grid-row:1 / -1;border:0;border-left:1px solid var(--cal-line);background:none;padding:0;cursor:pointer;min-height:22px}',
             '.dshcal-wk-lanecell:hover{background:var(--cal-fill)}',
-            '.dshcal-wk-more{z-index:1;align-self:center;justify-self:start;margin-left:4px;height:20px;padding:0 6px;border:0;border-radius:6px;background:none;color:var(--cal-meta);font:inherit;font-size:11.5px;font-weight:600;cursor:pointer}',
+            '.dshcal-wk-more{z-index:1;align-self:center;justify-self:start;margin-left:4px;height:20px;padding:0 6px;border:0;border-radius:var(--dsw-radius-sm);background:none;color:var(--cal-meta);font:inherit;font-size:var(--dsw-font-xxs-12-font-size,12px);font-weight:600;cursor:pointer}',
             '.dshcal-wk-more:hover{background:var(--cal-hover);color:var(--cal-text)}',
             '.dshcal-wk-scroll{position:relative;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable;scrollbar-width:thin;touch-action:pan-y}',
             '.dshcal-wk-canvas{position:relative;display:grid;grid-template-columns:var(--gutter) repeat(var(--days),minmax(0,1fr));height:calc(24 * var(--hour))}',
             '.dshcal-wk-hours{position:relative}',
-            '.dshcal-wk-hour{position:absolute;right:8px;transform:translateY(-50%);font-size:11px;color:var(--cal-faint);font-variant-numeric:tabular-nums;white-space:nowrap}',
+            '.dshcal-wk-hour{position:absolute;right:8px;transform:translateY(-50%);font-size:var(--dsw-font-xxxs-11-font-size,11px);color:var(--cal-faint);font-variant-numeric:tabular-nums;white-space:nowrap}',
             '.dshcal-wk-col{position:relative;border-left:1px solid var(--cal-line);background-image:linear-gradient(to bottom,var(--cal-line) 1px,transparent 1px);background-size:100% var(--hour);cursor:cell;user-select:none;-webkit-user-select:none}',
             '.dshcal-wk-col[data-today]{background-color:color-mix(in srgb,var(--cal-accent) 5%,transparent)}',
-            '.dshcal-wk-ghost{position:absolute;left:2px;right:4px;z-index:19;border-radius:8px;background:color-mix(in srgb,var(--cal-accent) 30%,transparent);border:1px solid var(--cal-accent);pointer-events:none;font-size:11.5px;font-weight:600;padding:3px 6px;box-sizing:border-box;color:var(--cal-text)}',
+            '.dshcal-wk-ghost{position:absolute;left:2px;right:4px;z-index:19;border-radius:var(--dsw-radius-sm);background:color-mix(in srgb,var(--cal-accent) 30%,transparent);border:1px solid var(--cal-accent);pointer-events:none;font-size:var(--dsw-font-xxs-12-font-size,12px);font-weight:600;padding:3px 6px;box-sizing:border-box;color:var(--cal-text)}',
             '.dshcal-now{position:absolute;left:0;right:0;z-index:20;height:2px;margin-top:-1px;background:var(--cal-now);pointer-events:none}',
             '.dshcal-now::before{content:"";position:absolute;left:-5px;top:-4px;width:10px;height:10px;border-radius:50%;background:var(--cal-now)}',
 
             // An event in the time grid, a bar in the all-day row and the month.
-            '.dshcal-ev{position:absolute;z-index:2;display:flex;flex-direction:column;gap:1px;box-sizing:border-box;min-width:0;padding:3px 6px;overflow:hidden;border:0;border-radius:7px;background:var(--ev);color:var(--ev-text);box-shadow:0 0 0 1px var(--cal-chip-ring,rgba(0,0,0,.08));font:inherit;font-size:12px;line-height:1.3;text-align:left;cursor:pointer}',
+            '.dshcal-ev{position:absolute;z-index:2;display:flex;flex-direction:column;gap:1px;box-sizing:border-box;min-width:0;padding:3px 6px;overflow:hidden;border:0;border-radius:var(--dsw-radius-sm);background:var(--ev);color:var(--ev-text);box-shadow:0 0 0 1px var(--cal-chip-ring);font:inherit;font-size:var(--dsw-font-xxs-12-font-size,12px);line-height:1.3;text-align:left;cursor:pointer}',
             '.dshcal-ev:hover,.dshcal-ev:focus-visible{z-index:5;filter:brightness(1.06)}',
-            '.dshcal-ev-more{position:absolute;display:flex;align-items:flex-start;justify-content:center;box-sizing:border-box;min-width:0;padding:3px 2px;border:0;border-radius:7px;background:color-mix(in srgb,var(--cal-text) 9%,var(--cal-chip-ground));color:var(--cal-text);box-shadow:0 0 0 1px var(--cal-line);font:inherit;font-size:11.5px;font-weight:700;cursor:pointer;overflow:hidden}',
+            '.dshcal-ev-more{position:absolute;display:flex;align-items:flex-start;justify-content:center;box-sizing:border-box;min-width:0;padding:3px 2px;border:0;border-radius:var(--dsw-radius-sm);background:color-mix(in srgb,var(--cal-text) 9%,var(--cal-chip-ground));color:var(--cal-text);box-shadow:0 0 0 1px var(--cal-line);font:inherit;font-size:var(--dsw-font-xxs-12-font-size,12px);font-weight:700;cursor:pointer;overflow:hidden}',
             '.dshcal-ev-more:hover,.dshcal-ev-more:focus-visible{z-index:5;background:color-mix(in srgb,var(--cal-text) 15%,var(--cal-chip-ground))}',
             '.dshcal-ev-title{font-weight:600;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:var(--lines,3);overflow-wrap:anywhere}',
-            '.dshcal-ev-sub{opacity:.88;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+            '.dshcal-ev-sub{font-size:var(--dsw-font-xxs-12-font-size,12px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
             '.dshcal-ev[data-nested]{box-shadow:0 0 0 1.5px var(--cal-chip-ground),0 2px 6px var(--cal-shadow)}',
             // A short event on one line: its time beside the title when both fit, else out of sight on the next line (the row gap is taller than the chip).
             '.dshcal-ev[data-short]{flex-flow:row wrap;align-content:flex-start;align-items:baseline;gap:40px 5px;padding-top:1px;padding-bottom:1px}',
@@ -264,18 +284,22 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             ':is(.dshcal-ev,.dshcal-bar)[data-look=outline]{background:var(--cal-chip-ground);color:var(--cal-text);box-shadow:inset 0 0 0 1.5px var(--ev)}',
             ':is(.dshcal-ev,.dshcal-bar)[data-look=struck]{background:color-mix(in srgb,var(--ev) 14%,var(--cal-chip-ground));color:var(--cal-meta);box-shadow:inset 3px 0 0 color-mix(in srgb,var(--ev) 50%,transparent)}',
             ':is(.dshcal-ev,.dshcal-bar)[data-look=struck] :is(.dshcal-ev-title,.dshcal-bar-title){text-decoration:line-through}',
-            ':is(.dshcal-ev,.dshcal-bar,.dshcal-line)[data-past]{opacity:.62}',
-            '.dshcal-bar{position:relative;z-index:1;display:flex;align-items:center;gap:5px;box-sizing:border-box;min-width:0;height:20px;margin:0 3px;padding:0 6px;overflow:hidden;border:0;border-radius:6px;background:var(--ev);color:var(--ev-text);font:inherit;font-size:12px;line-height:20px;text-align:left;cursor:pointer;white-space:nowrap}',
+            // An event that has ended fades and stays readable: a solid one takes its calendar's colour mixed into the
+            // ground, its words the soft text colour, and a line's dot pales (no opacity on the words).
+            ':is(.dshcal-ev,.dshcal-bar)[data-past][data-look=solid]{background:color-mix(in srgb,var(--ev) 36%,var(--cal-chip-ground))}',
+            ':is(.dshcal-ev,.dshcal-bar,.dshcal-line)[data-past]:not([data-look=struck]){color:var(--cal-soft)}',
+            '.dshcal-line[data-past]>.dshcal-dot{opacity:.5}',
+            '.dshcal-bar{position:relative;z-index:1;display:flex;align-items:center;gap:5px;box-sizing:border-box;min-width:0;height:20px;margin:0 3px;padding:0 6px;overflow:hidden;border:0;border-radius:var(--dsw-radius-sm);background:var(--ev);color:var(--ev-text);font:inherit;font-size:var(--dsw-font-xxs-12-font-size,12px);line-height:20px;text-align:left;cursor:pointer;white-space:nowrap}',
             '.dshcal-bar:hover,.dshcal-bar:focus-visible{filter:brightness(1.06)}',
             '.dshcal-bar[data-cont-start]{border-top-left-radius:0;border-bottom-left-radius:0;margin-left:0}',
             '.dshcal-bar[data-cont-end]{border-top-right-radius:0;border-bottom-right-radius:0;margin-right:0}',
             '.dshcal-bar-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-weight:600}',
-            '.dshcal-bar-time{flex:none;font-size:11.5px;opacity:.9;font-variant-numeric:tabular-nums}',
+            '.dshcal-bar-time{flex:none;font-size:var(--dsw-font-xxs-12-font-size,12px);opacity:.9;font-variant-numeric:tabular-nums}',
             // A timed event in the month: a dot, its time and title, no fill.
-            '.dshcal-line{position:relative;z-index:1;display:flex;align-items:center;gap:4px;box-sizing:border-box;min-width:0;height:20px;margin:0 3px;padding:0 5px;overflow:hidden;border:0;border-radius:6px;background:none;color:var(--cal-text);font:inherit;font-size:12px;text-align:left;cursor:pointer;white-space:nowrap}',
+            '.dshcal-line{position:relative;z-index:1;display:flex;align-items:center;gap:4px;box-sizing:border-box;min-width:0;height:20px;margin:0 3px;padding:0 5px;overflow:hidden;border:0;border-radius:var(--dsw-radius-sm);background:none;color:var(--cal-text);font:inherit;font-size:var(--dsw-font-xxs-12-font-size,12px);text-align:left;cursor:pointer;white-space:nowrap}',
             '.dshcal-line:hover,.dshcal-line:focus-visible{background:var(--cal-hover)}',
             '.dshcal-line>.dshcal-dot{background:var(--ev);width:8px;height:8px}',
-            '.dshcal-line-time{flex:none;color:var(--cal-meta);font-size:11px;font-variant-numeric:tabular-nums}',
+            '.dshcal-line-time{flex:none;color:var(--cal-meta);font-size:var(--dsw-font-xxxs-11-font-size,11px);font-variant-numeric:tabular-nums}',
             '.dshcal-line-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}',
             '.dshcal-line[data-look=struck] .dshcal-line-title{text-decoration:line-through;color:var(--cal-meta)}',
             '.dshcal-line[data-look=outline]>.dshcal-dot{background:none;box-shadow:inset 0 0 0 1.5px var(--ev)}',
@@ -295,8 +319,8 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             '@container dshcal-mo (max-width: 649px){.dshcal-mo .dshcal-line-time{display:none}}',
             '.dshcal-mo-head{display:grid;grid-template-columns:repeat(var(--cols,7),minmax(0,1fr));flex:none;border-bottom:1px solid var(--cal-line)}',
             '.dshcal-mo[data-week-numbers] :is(.dshcal-mo-head,.dshcal-mo-week){grid-template-columns:var(--wk) repeat(var(--cols,7),minmax(0,1fr))}',
-            '.dshcal-mo-wk{display:flex;justify-content:center;box-sizing:border-box;min-width:0;padding-top:6px;font-size:11px;font-weight:500;line-height:16px;color:var(--cal-meta);font-variant-numeric:tabular-nums;background:var(--cal-fill)}',
-            '.dshcal-mo-wd{padding:8px 8px 6px;font-size:11.5px;font-weight:600;letter-spacing:.03em;color:var(--cal-meta);text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+            '.dshcal-mo-wk{display:flex;justify-content:center;box-sizing:border-box;min-width:0;padding-top:6px;font-size:var(--dsw-font-xxxs-11-font-size,11px);font-weight:500;line-height:16px;color:var(--cal-meta);font-variant-numeric:tabular-nums;background:var(--cal-fill)}',
+            '.dshcal-mo-wd{padding:8px 8px 6px;font-size:var(--dsw-font-xxs-12-font-size,12px);font-weight:600;letter-spacing:.03em;color:var(--cal-meta);text-transform:uppercase;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
             '.dshcal-mo-weeks{flex:1;display:grid;grid-template-rows:repeat(var(--weeks),minmax(0,1fr));min-height:0}',
             '.dshcal-mo-week{position:relative;display:grid;grid-template-columns:repeat(var(--cols,7),minmax(0,1fr));grid-template-rows:28px repeat(var(--lanes),20px) minmax(0,1fr);row-gap:2px;min-height:0;overflow:hidden;border-bottom:1px solid var(--cal-line)}',
             '.dshcal-mo-week:last-child{border-bottom:0}',
@@ -305,72 +329,72 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             '.dshcal-mo-cell:hover{background:var(--cal-fill)}',
             '.dshcal-mo-cell[data-out]{background:color-mix(in srgb,var(--cal-text) 2.5%,transparent)}',
             '.dshcal-mo-cell:focus-visible{box-shadow:inset 0 0 0 2px var(--cal-accent)}',
-            '.dshcal-mo-num{grid-row:1;z-index:1;justify-self:start;align-self:center;display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;margin-left:5px;padding:0 5px;box-sizing:border-box;border:0;border-radius:12px;background:none;color:var(--cal-strong);font:inherit;font-size:12.5px;font-weight:500;font-variant-numeric:tabular-nums;cursor:pointer}',
+            '.dshcal-mo-num{grid-row:1;z-index:1;justify-self:start;align-self:center;display:inline-flex;align-items:center;justify-content:center;min-width:24px;height:24px;margin-left:5px;padding:0 5px;box-sizing:border-box;border:0;border-radius:var(--dsw-radius-md);background:none;color:var(--cal-strong);font:inherit;font-size:var(--dsw-font-xxs-12-font-size,12px);font-weight:500;font-variant-numeric:tabular-nums;cursor:pointer}',
             '.dshcal-mo-num:hover{background:var(--cal-hover)}',
             '.dshcal-mo-num[data-out]{color:var(--cal-faint)}',
             '.dshcal-mo-num[data-today]{background:var(--cal-accent);color:var(--cal-on-accent);font-weight:600}',
-            '.dshcal-mo-more{z-index:1;align-self:center;justify-self:start;height:20px;margin:0 3px;padding:0 6px;border:0;border-radius:6px;background:none;color:var(--cal-meta);font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;white-space:nowrap;overflow:hidden;max-width:calc(100% - 6px);text-overflow:ellipsis}',
+            '.dshcal-mo-more{z-index:1;align-self:center;justify-self:start;height:20px;margin:0 3px;padding:0 6px;border:0;border-radius:var(--dsw-radius-sm);background:none;color:var(--cal-meta);font:inherit;font-size:var(--dsw-font-xxs-12-font-size,12px);font-weight:600;cursor:pointer;white-space:nowrap;overflow:hidden;max-width:calc(100% - 6px);text-overflow:ellipsis}',
             '.dshcal-mo-more:hover{background:var(--cal-hover);color:var(--cal-text)}',
 
             // ── Agenda: the coming events by day.
             '.dshcal-ag{flex:1;min-height:0;overflow:auto;padding:6px 6px 16px;scrollbar-width:thin}',
             '.dshcal-ag-day{display:grid;grid-template-columns:96px minmax(0,1fr);gap:0 12px;padding:10px 8px;border-bottom:1px solid var(--cal-line)}',
             '.dshcal-ag-date{display:flex;align-items:baseline;gap:7px;padding-top:5px;color:var(--cal-meta)}',
-            '.dshcal-ag-date b{font-size:20px;font-weight:600;color:var(--cal-strong);font-variant-numeric:tabular-nums}',
-            '.dshcal-ag-date[data-today] b{color:var(--cal-accent)}',
-            '.dshcal-ag-date span{font-size:11.5px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}',
+            '.dshcal-ag-date b{font-size:var(--dsw-font-l-20-font-size,20px);font-weight:600;color:var(--cal-strong);font-variant-numeric:tabular-nums}',
+            '.dshcal-ag-date[data-today] b{color:var(--cal-link)}',
+            '.dshcal-ag-date span{font-size:var(--dsw-font-xxs-12-font-size,12px);font-weight:600;text-transform:uppercase;letter-spacing:.03em}',
             '.dshcal-ag-list{display:flex;flex-direction:column;gap:2px;min-width:0}',
-            '.dshcal-ag-row{display:grid;grid-template-columns:minmax(118px,auto) minmax(0,1fr);align-items:baseline;gap:12px;padding:6px 8px;border:0;border-radius:9px;background:none;color:var(--cal-text);font:inherit;text-align:left;cursor:pointer}',
+            '.dshcal-ag-row{display:grid;grid-template-columns:minmax(118px,auto) minmax(0,1fr);align-items:baseline;gap:12px;padding:6px 8px;border:0;border-radius:var(--dsw-radius-sm);background:none;color:var(--cal-text);font:inherit;text-align:left;cursor:pointer}',
             '.dshcal-ag-row:hover{background:var(--cal-hover)}',
-            '.dshcal-ag-time{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--cal-meta);font-variant-numeric:tabular-nums;white-space:nowrap}',
+            '.dshcal-ag-time{display:flex;align-items:center;gap:8px;font-size:var(--dsw-font-xs-13-font-size,13px);color:var(--cal-meta);font-variant-numeric:tabular-nums;white-space:nowrap}',
             '.dshcal-ag-time>.dshcal-dot{background:var(--ev)}',
             '.dshcal-ag-what{display:flex;flex-direction:column;min-width:0}',
             '.dshcal-ag-title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-            '.dshcal-ag-sub{font-size:12px;color:var(--cal-meta);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+            '.dshcal-ag-sub{font-size:var(--dsw-font-xxs-12-font-size,12px);color:var(--cal-meta);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
             '.dshcal-ag-row[data-look=struck] .dshcal-ag-title{text-decoration:line-through;color:var(--cal-meta)}',
             '.dshcal-ag-foot{display:flex;justify-content:center;padding:14px}',
             // Search results: how many, and where the earlier ones start.
-            '.dshcal-ag-part{padding:12px 8px 4px;font-size:11.5px;font-weight:600;letter-spacing:.03em;color:var(--cal-meta);text-transform:uppercase}',
+            '.dshcal-ag-part{padding:12px 8px 4px;font-size:var(--dsw-font-xxs-12-font-size,12px);font-weight:600;letter-spacing:.03em;color:var(--cal-meta);text-transform:uppercase}',
             '.dshcal-ag-part:first-child{padding-top:6px}',
 
-            // ── Popovers (an event's details, a day's events): fixed, portaled, glass.
-            '.dshcal-pop{position:fixed;z-index:990;box-sizing:border-box;width:min(360px,calc(100vw - 24px));max-height:min(620px,calc(100vh - 24px));overflow:auto;padding:14px 14px 12px;'
-                + 'background:var(--cal-pop);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);border:1px solid var(--cal-line2);border-radius:18px;box-shadow:0 18px 48px var(--cal-shadow);'
-                + 'color:var(--cal-text);font-size:13px;line-height:1.45;animation:dshcal-in .14s ease-out;scrollbar-width:thin}',
+            // ── Popovers (an event's details, a day's events): fixed, portaled, in DSH's menu material at its level for menus and hover cards.
+            '.dshcal-pop{position:fixed;z-index:100;box-sizing:border-box;width:min(360px,calc(100vw - 24px));max-height:min(620px,calc(100vh - 24px));overflow:auto;padding:14px 14px 12px;'
+                + 'background:var(--dsw-specific-menu);-webkit-backdrop-filter:var(--dsw-menu-backdrop-filter);backdrop-filter:var(--dsw-menu-backdrop-filter);border-radius:var(--dsw-radius-lg);box-shadow:var(--dsw-elevation-prominent);'
+                + 'color:var(--cal-text);font-size:var(--dsw-font-xs-13-font-size,13px);line-height:1.45;animation:dshcal-in var(--ds-transition-duration-fast,.1s) var(--ds-ease-in-out,cubic-bezier(.4,0,.2,1));scrollbar-width:thin}',
             '.dshcal-pop:focus{outline:none}',
             '.dshcal-pop[data-sheet]{left:12px!important;right:12px;bottom:12px;top:auto!important;width:auto;max-height:70vh}',
             '.dshcal-pop-top{display:flex;align-items:flex-start;gap:10px}',
-            '.dshcal-pop-swatch{flex:none;width:12px;height:12px;margin-top:6px;border-radius:4px;background:var(--ev)}',
-            '.dshcal-pop-title{flex:1;min-width:0;margin:0;font-size:16px;font-weight:600;line-height:1.4;color:var(--cal-strong);overflow-wrap:anywhere}',
+            '.dshcal-pop-swatch{flex:none;width:12px;height:12px;margin-top:6px;border-radius:var(--dsw-radius-xs);background:var(--ev)}',
+            '.dshcal-pop-title{flex:1;min-width:0;margin:0;font-size:var(--dsw-font-base-16-font-size,16px);font-weight:600;line-height:1.4;color:var(--cal-strong);overflow-wrap:anywhere}',
             '.dshcal-pop-actions{display:flex;gap:2px;margin:-4px -4px 0 0}',
             '.dshcal-pop-rows{display:flex;flex-direction:column;gap:9px;margin-top:10px}',
             '.dshcal-pop-row{display:grid;grid-template-columns:18px minmax(0,1fr);gap:10px;align-items:start}',
             '.dshcal-pop-row>svg,.dshcal-pop-row>.dshcal-pop-icon{margin-top:2px;color:var(--cal-meta)}',
             '.dshcal-pop-row>div{min-width:0;overflow-wrap:anywhere}',
-            '.dshcal-pop-sub{font-size:12px;color:var(--cal-meta)}',
-            '.dshcal-pop-notes{white-space:pre-wrap;max-height:180px;overflow:auto;font-size:12.5px;color:var(--cal-soft);scrollbar-width:thin}',
+            '.dshcal-pop-sub{font-size:var(--dsw-font-xxs-12-font-size,12px);color:var(--cal-meta)}',
+            '.dshcal-pop-notes{white-space:pre-wrap;max-height:180px;overflow:auto;font-size:var(--dsw-font-xs-13-font-size,13px);color:var(--cal-soft);scrollbar-width:thin}',
             '.dshcal-pop-guests{display:flex;flex-direction:column;gap:3px;margin-top:4px}',
-            '.dshcal-guest{display:flex;align-items:center;gap:7px;min-width:0;font-size:12.5px}',
+            '.dshcal-guest{display:flex;align-items:center;gap:7px;min-width:0;font-size:var(--dsw-font-xs-13-font-size,13px)}',
             '.dshcal-guest>span:nth-child(2){flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
             '.dshcal-fields{display:contents;margin:0;padding:0;border:0;min-width:0}',
-            '.dshcal-people{list-style:none;margin:0;padding:4px;display:flex;flex-direction:column;gap:1px;max-height:244px;overflow-y:auto;border:1px solid var(--cal-line);border-radius:10px;background:var(--cal-fill);scrollbar-width:thin}',
-            '.dshcal-people:focus-visible{outline:2px solid var(--cal-accent);outline-offset:2px}',
-            '.dshcal-people>li{display:flex;align-items:center;flex-wrap:wrap;gap:2px 8px;box-sizing:border-box;min-height:28px;padding:3px 6px;font-size:12.5px}',
+            '.dshcal-people{list-style:none;margin:0;padding:4px;display:flex;flex-direction:column;gap:1px;max-height:244px;overflow-y:auto;border:1px solid var(--cal-line);border-radius:var(--dsw-radius-md);background:var(--cal-fill);scrollbar-width:thin}',
+            `.dshcal-people:focus-visible{outline:2px solid ${RING};outline-offset:2px}`,
+            '.dshcal-people>li{display:flex;align-items:center;flex-wrap:wrap;gap:2px 8px;box-sizing:border-box;min-height:28px;padding:3px 6px;font-size:var(--dsw-font-xs-13-font-size,13px)}',
             '.dshcal-person{flex:1 1 160px;min-width:0;overflow-wrap:anywhere;color:var(--cal-text)}',
-            '.dshcal-gets{margin-left:auto;font-size:12px;color:var(--cal-meta);text-align:right}',
-            '.dshcal-ans{flex:none;display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;font-size:9px;font-weight:700;line-height:1}',
+            '.dshcal-gets{margin-left:auto;font-size:var(--dsw-font-xxs-12-font-size,12px);color:var(--cal-meta);text-align:right}',
+            '.dshcal-ans{flex:none;display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;font-size:var(--dsw-font-xxxs-11-font-size,11px);font-weight:700;line-height:1}',
             '.dshcal-ans[data-ans=accepted]{background:var(--cal-ok);color:var(--cal-chip-ground)}',
             '.dshcal-ans[data-ans=declined]{background:var(--cal-danger);color:var(--cal-chip-ground)}',
             '.dshcal-ans[data-ans=tentative]{background:var(--cal-warn);color:var(--cal-chip-ground)}',
             '.dshcal-ans[data-ans=needs-action]{box-shadow:inset 0 0 0 1.5px var(--cal-faint)}',
             '.dshcal-rsvp{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-top:12px;padding-top:11px;border-top:1px solid var(--cal-line)}',
-            '.dshcal-rsvp>span{flex:1 0 auto;font-size:12.5px;font-weight:500;color:var(--cal-meta)}',
+            '.dshcal-rsvp>span{flex:1 0 auto;font-size:var(--dsw-font-xs-13-font-size,13px);font-weight:500;color:var(--cal-meta)}',
             '.dshcal-pop-foot{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;padding-top:11px;border-top:1px solid var(--cal-line)}',
             '.dshcal-daypop-list{display:flex;flex-direction:column;gap:3px;margin:10px 0 2px}',
             '.dshcal-daypop-list .dshcal-bar,.dshcal-daypop-list .dshcal-line{margin:0}',
 
-            // ── Dialogs: DSH's Modal, on frosted glass, scrolling inside.
-            '.dshcal-dlg.dshcal-dlg{width:min(540px,100%);max-height:100%;' + 'background:var(--cal-modal);-webkit-backdrop-filter:blur(28px);backdrop-filter:blur(28px);border:1px solid var(--cal-line);border-radius:22px;color:var(--cal-text)}',
+            // ── Dialogs: DSH's Modal as DSH draws it, scrolling inside; only its width is the plugin's.
+            '.dshcal-dlg.dshcal-dlg{width:min(540px,100%);max-height:100%}',
             '.dshcal-dlg.dshcal-dlg-narrow{width:min(420px,100%)}',
             '.dshcal-dlg.dshcal-dlg-wide{width:min(600px,100%)}',
             // Starts and Ends share a row only where both show in full; a time goes under its date before either is cut.
@@ -378,10 +402,10 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             '.dshcal-inline.dshcal-dt>.dshcal-date{flex:1.25 1 0;width:auto;min-width:min-content}',
             '.dshcal-inline.dshcal-dt>.dshcal-time{flex:1 1 0;width:auto;min-width:min-content}',
             '.dshcal-inline>.dshcal-grow{flex:1 1 auto;width:auto;min-width:0}',
-            '.dshcal-switch-row{display:flex;align-items:center;gap:8px;font-size:13px}',
+            '.dshcal-switch-row{display:flex;align-items:center;gap:8px;font-size:var(--dsw-font-xs-13-font-size,13px)}',
             '.dshcal-switch-text{cursor:pointer;user-select:none}',
             '.dshcal-dlg-content{flex:1 1 auto;min-height:0;overflow:auto;scrollbar-width:thin}',
-            '.dshcal-form{display:flex;flex-direction:column;gap:14px;font-size:13px}',
+            '.dshcal-form{display:flex;flex-direction:column;gap:14px;font-size:var(--dsw-font-xs-13-font-size,13px)}',
             // A save that didn't go through, at the top of the event form with Look at it again: it takes the focus without a ring, as DSH's own automatic focus.
             '.dshcal-refusal{display:flex;flex-direction:column;align-items:flex-start;gap:8px;scroll-margin:12px}',
             '.dshcal-refusal>.dshcal-alert{align-self:stretch}',
@@ -390,156 +414,173 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             '.dshcal-row>.dshcal-field{flex:1 1 140px}',
             '.dshcal-when{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:8px 8px;align-items:end}',
             '.dshcal-when>.dshcal-label{grid-column:1 / -1;margin-bottom:-3px}',
-            '.dshcal-title-input{height:40px;font-size:16px;font-weight:600}',
+            '.dshcal-title-input{height:40px;font-size:var(--dsw-font-base-16-font-size,16px);font-weight:600}',
             '.dshcal-chips{display:flex;flex-wrap:wrap;gap:6px}',
-            '.dshcal-chip{display:inline-flex;align-items:center;gap:4px;max-width:100%;height:26px;padding:0 4px 0 10px;border-radius:13px;background:var(--cal-hover);font-size:12.5px;box-sizing:border-box}',
+            '.dshcal-chip{display:inline-flex;align-items:center;gap:4px;max-width:100%;height:26px;padding:0 4px 0 10px;border-radius:var(--dsw-radius-md);background:var(--cal-hover);font-size:var(--dsw-font-xs-13-font-size,13px);box-sizing:border-box}',
             '.dshcal-chip>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-            '.dshcal-chip>button{flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:10px;background:none;color:var(--cal-meta);cursor:pointer}',
+            '.dshcal-chip>button{flex:none;display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:0;border-radius:var(--dsw-radius-md);background:none;color:var(--cal-meta);cursor:pointer}',
             '.dshcal-chip>button:hover{background:var(--cal-press);color:var(--cal-text)}',
             '.dshcal-wdays{display:flex;flex-wrap:wrap;gap:4px}',
-            '.dshcal-wdays>button{width:32px;height:32px;padding:0;border:1px solid var(--cal-line2);border-radius:16px;background:none;color:var(--cal-text);font:inherit;font-size:12px;font-weight:600;cursor:pointer}',
+            '.dshcal-wdays>button{width:32px;height:32px;padding:0;border:1px solid var(--cal-line2);border-radius:var(--dsw-radius-lg);background:none;color:var(--cal-text);font:inherit;font-size:var(--dsw-font-xxs-12-font-size,12px);font-weight:600;cursor:pointer}',
             '.dshcal-wdays>button[aria-pressed=true]{background:var(--cal-accent);border-color:transparent;color:var(--cal-on-accent)}',
-            '.dshcal-custom{display:flex;flex-direction:column;gap:10px;padding:12px;border:1px solid var(--cal-line);border-radius:12px;background:var(--cal-fill)}',
+            '.dshcal-custom{display:flex;flex-direction:column;gap:10px;padding:12px;border:1px solid var(--cal-line);border-radius:var(--dsw-radius-md);background:var(--cal-fill)}',
             '.dshcal-inline{display:flex;align-items:center;gap:8px;flex-wrap:wrap}',
             '.dshcal-inline>.dshcal-input,.dshcal-inline>.dshcal-select{width:auto}',
             '.dshcal-num{width:72px!important}',
             '.dshcal-radio{display:flex;align-items:center;gap:8px;min-height:30px;cursor:pointer}',
             '.dshcal-radio>input{margin:0;accent-color:var(--cal-accent)}',
             '.dshcal-options{display:flex;flex-direction:column;gap:4px}',
-            '.dshcal-option{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--cal-line2);border-radius:12px;cursor:pointer}',
+            '.dshcal-option{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--cal-line2);border-radius:var(--dsw-radius-md);cursor:pointer}',
             '.dshcal-option:has(input:checked){border-color:var(--cal-accent);background:var(--cal-accent-soft)}',
             '.dshcal-option>input{margin:3px 0 0;accent-color:var(--cal-accent)}',
             '.dshcal-option b{display:block;font-weight:600}',
-            '.dshcal-option span{font-size:12px;color:var(--cal-meta)}',
+            '.dshcal-option span{font-size:var(--dsw-font-xxs-12-font-size,12px);color:var(--cal-meta)}',
             '.dshcal-swatches{display:flex;flex-wrap:wrap;gap:8px}',
             '.dshcal-swatch{width:26px;height:26px;padding:0;border:2px solid transparent;border-radius:50%;background:var(--sw);cursor:pointer;box-shadow:inset 0 0 0 1px rgba(0,0,0,.15)}',
             '.dshcal-swatch[aria-checked=true]{border-color:var(--cal-text)}',
-            '.dshcal-color-input{width:40px;height:30px;padding:0;border:1px solid var(--cal-line2);border-radius:8px;background:none;cursor:pointer}',
+            '.dshcal-color-input{width:40px;height:30px;padding:0;border:1px solid var(--cal-line2);border-radius:var(--dsw-radius-sm);background:none;cursor:pointer}',
 
             // The Accounts dialog.
             '.dshcal-accts{display:flex;flex-direction:column;gap:8px}',
-            '.dshcal-acct{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 10px 10px 12px;border:1px solid var(--cal-line);border-radius:14px;background:var(--cal-fill)}',
-            '.dshcal-acct-badge{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:var(--cal-hover);color:var(--cal-strong);font-size:13px;font-weight:700}',
+            '.dshcal-acct{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 10px 10px 12px;border:1px solid var(--cal-line);border-radius:var(--dsw-radius-lg);background:var(--cal-fill)}',
+            '.dshcal-acct-badge{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:var(--dsw-radius-md);background:var(--cal-hover);color:var(--cal-strong);font-size:var(--dsw-font-xs-13-font-size,13px);font-weight:700}',
             '.dshcal-acct-name{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-            '.dshcal-acct-sub{font-size:12px;color:var(--cal-meta);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-            '.dshcal-acct-status{display:flex;align-items:center;gap:6px;margin-top:3px;font-size:12px;color:var(--cal-meta);flex-wrap:wrap}',
+            '.dshcal-acct-sub{font-size:var(--dsw-font-xxs-12-font-size,12px);color:var(--cal-meta);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+            '.dshcal-acct-status{display:flex;align-items:center;gap:6px;margin-top:3px;font-size:var(--dsw-font-xxs-12-font-size,12px);color:var(--cal-meta);flex-wrap:wrap}',
             '.dshcal-acct-status[data-status=signin],.dshcal-acct-status[data-status=error]{color:var(--cal-warn)}',
             '.dshcal-acct-actions{display:flex;align-items:center;gap:4px}',
             '.dshcal-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}',
-            '.dshcal-tile{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:12px;border:1px solid var(--cal-line2);border-radius:14px;background:var(--cal-fill);color:var(--cal-text);font:inherit;text-align:left;cursor:pointer}',
+            '.dshcal-tile{display:flex;flex-direction:column;align-items:flex-start;gap:3px;padding:12px;border:1px solid var(--cal-line2);border-radius:var(--dsw-radius-lg);background:var(--cal-fill);color:var(--cal-text);font:inherit;text-align:left;cursor:pointer}',
             '.dshcal-tile:hover{background:var(--cal-hover)}',
-            '.dshcal-tile b{font-size:13.5px;font-weight:600}',
-            '.dshcal-tile span{font-size:12px;line-height:1.4;color:var(--cal-meta)}',
-            '.dshcal-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:12.5px;line-height:1.5;color:var(--cal-soft)}',
-            '.dshcal-steps code,.dshcal-code{font-family:var(--dsh-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:.95em;padding:1px 4px;border-radius:5px;background:var(--cal-hover)}',
-            '.dshcal-usercode{display:flex;align-items:center;justify-content:center;gap:12px;padding:16px;border-radius:14px;background:var(--cal-fill);border:1px solid var(--cal-line2)}',
-            '.dshcal-usercode b{font-family:var(--dsh-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:28px;font-weight:700;letter-spacing:.12em;color:var(--cal-strong);user-select:all}',
-            '.dshcal-wait{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--cal-meta)}',
+            '.dshcal-tile b{font-size:var(--dsw-font-s-14-font-size,14px);font-weight:600}',
+            '.dshcal-tile span{font-size:var(--dsw-font-xxs-12-font-size,12px);line-height:1.4;color:var(--cal-meta)}',
+            '.dshcal-steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:var(--dsw-font-xs-13-font-size,13px);line-height:1.5;color:var(--cal-soft)}',
+            '.dshcal-steps code,.dshcal-code{font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:.95em;padding:1px 4px;border-radius:var(--dsw-radius-xs);background:var(--cal-hover)}',
+            '.dshcal-usercode{display:flex;align-items:center;justify-content:center;gap:12px;padding:16px;border-radius:var(--dsw-radius-lg);background:var(--cal-fill);border:1px solid var(--cal-line2)}',
+            '.dshcal-usercode b{font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:var(--dsw-font-xl-24-font-size,24px);font-weight:700;letter-spacing:.12em;color:var(--cal-strong);user-select:all}',
+            '.dshcal-wait{display:flex;align-items:center;gap:8px;font-size:var(--dsw-font-xs-13-font-size,13px);color:var(--cal-meta)}',
             '.dshcal-back{align-self:flex-start;margin:-6px 0 -4px -8px}',
             // Where a dialog's page puts its own buttons, among the dialog's footer buttons.
             '.dshcal-slot{display:contents}',
 
-            // Menus (DSH's Menu, its card on glass).
-            '.dshcal-menu{background:var(--cal-pop)!important;-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px)}',
-            '.dshcal-menu-swatch{display:inline-block;width:12px;height:12px;border-radius:4px;background:var(--sw)}',
+            // Menus: DSH's Menu as DSH draws it, with the plugin's colour swatches.
+            '.dshcal-menu-swatch{display:inline-block;width:12px;height:12px;border-radius:var(--dsw-radius-xs);background:var(--sw)}',
 
-            // Toasts.
-            '.dshcal-toast{position:fixed;left:0;right:0;bottom:24px;z-index:1200;display:flex;align-items:center;gap:10px;box-sizing:border-box;width:fit-content;max-width:min(520px,calc(100vw - 32px));margin:0 auto;padding:10px 14px;border-radius:14px;'
-                + 'background:var(--cal-pop);-webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);border:1px solid var(--cal-line2);box-shadow:0 12px 32px var(--cal-shadow);color:var(--cal-text);font-size:13px;animation:dshcal-in .16s ease-out}',
-            // While one of the plugin's dialogs is open, toasts show at the top, off its buttons.
-            'body:has(.dshcal-dlg) .dshcal-toast{top:max(16px,var(--dsh-frame-overlay-top,16px));bottom:auto}',
-            '.dshcal-toast[data-tone=error]>svg{color:var(--cal-danger)}',
-            '.dshcal-toast[data-tone=ok]>svg{color:var(--cal-ok)}',
+            // Toasts are DSH's (its banner at the top of the window); this one shows only on a DSH without it.
+            '.dshcal-toast{position:fixed;top:max(40px,var(--dsh-frame-overlay-top,40px));left:0;right:0;z-index:1100;display:flex;align-items:center;gap:10px;box-sizing:border-box;width:max-content;max-width:min(640px,calc(100vw - 48px));margin:0 auto;padding:12px 16px;'
+                + 'border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-toast-bg);box-shadow:var(--dsw-shadow-lv3);color:var(--dsw-alias-toast-label);font-size:var(--dsw-font-s-14-font-size,14px);line-height:22px;pointer-events:none;animation:dshcal-in var(--ds-transition-duration,.2s) var(--ds-ease-in-out,cubic-bezier(.4,0,.2,1))}',
+            '.dshcal-toast[data-tone=error]>svg{color:var(--dsw-alias-state-warn-label)}',
+            '.dshcal-toast[data-tone=ok]>svg{color:var(--dsw-alias-state-success-primary)}',
+            '.dshcal-toast.dshcal-toast-acts{pointer-events:auto}',
+            '.dshcal-toast-acts .dshcal-link{color:inherit;font-weight:600}',
 
             // ── The Agenda pane beside chats: inside DSH's right dock (glass already), a faint fill, no second blur.
-            '.dshcal-pane{display:flex;flex-direction:column;box-sizing:border-box;height:100%;min-height:0;overflow:auto;padding:12px 10px 16px;color:var(--cal-text);font-size:13px;line-height:1.45;scrollbar-width:thin}',
+            '.dshcal-pane{display:flex;flex-direction:column;box-sizing:border-box;height:100%;min-height:0;overflow:auto;padding:12px 10px 16px;color:var(--cal-text);font-size:var(--dsw-font-xs-13-font-size,13px);line-height:1.45;scrollbar-width:thin}',
             '.dshcal-pane-head{display:flex;align-items:center;gap:6px;padding:0 4px 10px}',
-            '.dshcal-pane-head h2{flex:1;min-width:0;margin:0;font-size:14px;font-weight:600;color:var(--cal-strong);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+            '.dshcal-pane-head h2{flex:1;min-width:0;margin:0;font-size:var(--dsw-font-s-14-font-size,14px);font-weight:600;color:var(--cal-strong);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
             '.dshcal-pane-day{margin-top:12px}',
             '.dshcal-pane-day:first-of-type{margin-top:0}',
-            '.dshcal-pane-dayname{display:flex;align-items:baseline;gap:6px;padding:0 4px 5px;font-size:11.5px;font-weight:600;letter-spacing:.03em;color:var(--cal-meta);text-transform:uppercase}',
+            '.dshcal-pane-dayname{display:flex;align-items:baseline;gap:6px;padding:0 4px 5px;font-size:var(--dsw-font-xxs-12-font-size,12px);font-weight:600;letter-spacing:.03em;color:var(--cal-meta);text-transform:uppercase}',
             '.dshcal-pane-list{display:flex;flex-direction:column;gap:4px}',
-            '.dshcal-pane-ev{position:relative;display:grid;grid-template-columns:4px minmax(0,1fr) auto;gap:9px;align-items:center;padding:7px 8px 7px 7px;border:1px solid var(--cal-line);border-radius:11px;background:var(--cal-fill);color:var(--cal-text);min-width:0}',
+            '.dshcal-pane-ev{position:relative;display:grid;grid-template-columns:4px minmax(0,1fr) auto;gap:9px;align-items:center;padding:7px 8px 7px 7px;border:1px solid var(--cal-line);border-radius:var(--dsw-radius-md);background:var(--cal-fill);color:var(--cal-text);min-width:0}',
             '.dshcal-pane-ev:hover{background:var(--cal-hover)}',
             '.dshcal-pane-ev[data-now]{border-color:color-mix(in srgb,var(--cal-accent) 60%,transparent);background:var(--cal-accent-soft)}',
-            '.dshcal-pane-ev[data-past]{opacity:.6}',
-            '.dshcal-pane-bar{align-self:stretch;border-radius:2px;background:var(--ev)}',
+            '.dshcal-pane-ev[data-past]{color:var(--cal-soft)}',
+            '.dshcal-pane-ev[data-past]>.dshcal-pane-bar{opacity:.45}',
+            '.dshcal-pane-bar{align-self:stretch;border-radius:var(--dsw-radius-xs);background:var(--ev)}',
             // The whole card opens the event; Join stays its own link above it.
             '.dshcal-pane-what{display:flex;flex-direction:column;align-items:stretch;min-width:0;margin:0;padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}',
-            '.dshcal-pane-what::after{content:"";position:absolute;inset:0;border-radius:11px}',
+            '.dshcal-pane-what::after{content:"";position:absolute;inset:0;border-radius:var(--dsw-radius-md)}',
             '.dshcal-pane-title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
             '.dshcal-pane-ev[data-look=struck] .dshcal-pane-title{text-decoration:line-through;color:var(--cal-meta)}',
-            '.dshcal-pane-sub{font-size:12px;color:var(--cal-meta);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}',
-            '.dshcal-pane-badge{display:inline-flex;align-items:center;height:17px;padding:0 6px;margin-right:5px;border-radius:9px;background:var(--cal-accent);color:var(--cal-on-accent);font-size:10.5px;font-weight:700;vertical-align:1px}',
-            '.dshcal-pane-join{position:relative;z-index:1;height:26px;padding:0 9px;border:0;border-radius:8px;background:var(--cal-accent);color:var(--cal-on-accent);font:inherit;font-size:12px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}',
-            '.dshcal-pane-empty{padding:6px 4px;font-size:12.5px;color:var(--cal-faint)}',
+            '.dshcal-pane-sub{font-size:var(--dsw-font-xxs-12-font-size,12px);color:var(--cal-meta);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}',
+            '.dshcal-pane-badge{display:inline-flex;align-items:center;height:17px;padding:0 6px;margin-right:5px;border-radius:var(--dsw-radius-sm);background:var(--cal-accent);color:var(--cal-on-accent);font-size:var(--dsw-font-xxxs-11-font-size,11px);font-weight:700;vertical-align:1px}',
+            '.dshcal-pane-join{position:relative;z-index:1;height:26px;padding:0 9px;border:0;border-radius:var(--dsw-radius-sm);background:var(--cal-accent);color:var(--cal-on-accent);font:inherit;font-size:var(--dsw-font-xxs-12-font-size,12px);font-weight:600;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center}',
+            '.dshcal-pane-empty{padding:6px 4px;font-size:var(--dsw-font-xs-13-font-size,13px);color:var(--cal-faint)}',
             '.dshcal-notes{display:flex;flex-direction:column;gap:6px;padding:8px 12px 0}',
-            '.dshcal-notice{display:flex;align-items:flex-start;gap:8px;padding:7px 6px 7px 10px;border-radius:10px;background:color-mix(in srgb,var(--cal-accent) 10%,transparent);font-size:12px;line-height:1.45;color:var(--cal-text)}',
+            '.dshcal-notice{display:flex;align-items:flex-start;gap:8px;padding:7px 6px 7px 10px;border-radius:var(--dsw-radius-md);background:color-mix(in srgb,var(--cal-accent) 10%,transparent);font-size:var(--dsw-font-xxs-12-font-size,12px);line-height:1.45;color:var(--cal-text)}',
             '.dshcal-notice>svg{flex:none;margin-top:2px;color:var(--cal-meta)}',
-            '.dshcal-notice>span{flex:1;min-width:0;overflow-wrap:anywhere}',
+            '.dshcal-notice>span,.dshcal-notice-body{flex:1;min-width:0;overflow-wrap:anywhere}',
+            '.dshcal-notice-list{margin:3px 0 0;padding:0 0 0 16px}',
+            '.dshcal-notice-list>li+li{margin-top:2px}',
+            // Switched off, by the owner's choice: secondary text, no alarm.
+            '.dshcal-off{color:var(--cal-soft)}',
+            '.dshcal-off>svg{flex:none;color:var(--cal-meta)}',
             '.dshcal-notice[data-tone=warn]{background:color-mix(in srgb,var(--cal-warn) 14%,transparent)}',
             '.dshcal-notice[data-tone=warn]>svg{color:var(--cal-warn)}',
-            '.dshcal-pane-note{display:flex;align-items:center;gap:6px;margin:0 0 10px;padding:7px 9px;border-radius:10px;background:color-mix(in srgb,var(--cal-warn) 14%,transparent);font-size:12px}',
+            '.dshcal-pane-note{display:flex;align-items:center;gap:6px;margin:0 0 10px;padding:7px 9px;border-radius:var(--dsw-radius-md);background:color-mix(in srgb,var(--cal-warn) 14%,transparent);font-size:var(--dsw-font-xxs-12-font-size,12px)}',
             '.dshcal-pane-note>span{flex:1;min-width:0}',
-            '.dshcal-pane .dshcal-stale{margin:0 0 10px;padding:6px 9px;border:0;border-radius:10px}',
+            // What's next, at the top of the pane: on the event cards' faint fill, so its small text has a ground.
+            '.dshcal-pane-next{display:flex;align-items:baseline;gap:6px;min-width:0;margin:0 0 10px;padding:7px 9px;border:1px solid var(--cal-line);border-radius:var(--dsw-radius-md);background:var(--cal-fill);font-size:var(--dsw-font-xs-13-font-size,13px)}',
+            '.dshcal-pane-next-label{flex:none;font-weight:600;color:var(--cal-meta)}',
+            '.dshcal-pane-next-what{flex:0 1 auto;min-width:0;margin:0;padding:0;border:0;background:none;color:var(--cal-strong);font:inherit;font-weight:600;text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+            '.dshcal-pane-next-what:hover{text-decoration:underline}',
+            '.dshcal-pane-next-when{flex:none;margin-left:auto;color:var(--cal-meta);font-variant-numeric:tabular-nums;white-space:nowrap}',
+            '.dshcal-pane .dshcal-stale{margin:0 0 10px;padding:6px 9px;border:0;border-radius:var(--dsw-radius-md)}',
             '.dshcal-pane-foot{display:flex;justify-content:center;margin-top:16px}',
 
-            // ── Chat cards for the calendar tools: a faint fill, no blur.
-            '.dshcal-chat{display:flex;flex-direction:column;gap:6px;min-width:0;max-width:640px;margin:2px 0 6px;color:var(--cal-text);font-size:13px;line-height:1.45}',
-            '.dshcal-chat-card{display:flex;flex-direction:column;gap:2px;min-width:0;padding:8px;border:1px solid var(--cal-line);border-radius:14px;background:var(--cal-fill)}',
-            '.dshcal-chat-day{padding:6px 6px 2px;font-size:11.5px;font-weight:600;letter-spacing:.03em;color:var(--cal-meta);text-transform:uppercase}',
+            // ── Chat cards for the calendar tools: drawn as DSH's own cards in a chat, opaque, with no blur.
+            '.dshcal-chat{display:flex;flex-direction:column;gap:6px;min-width:0;max-width:640px;margin:2px 0 6px;color:var(--cal-text);font-size:var(--dsw-font-xs-13-font-size,13px);line-height:1.45}',
+            '.dshcal-chat-card{display:flex;flex-direction:column;gap:2px;min-width:0;padding:8px;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-layer-1)}',
+            '.dshcal-chat-day{padding:6px 6px 2px;font-size:var(--dsw-font-xxs-12-font-size,12px);font-weight:600;letter-spacing:.03em;color:var(--cal-meta);text-transform:uppercase}',
             '.dshcal-chat-day:first-child{padding-top:0}',
-            '.dshcal-chat-ev{display:grid;grid-template-columns:4px minmax(96px,auto) minmax(0,1fr);gap:10px;align-items:center;padding:5px 6px;border:0;border-radius:9px;background:none;color:var(--cal-text);font:inherit;text-align:left;cursor:pointer;min-width:0}',
+            '.dshcal-chat-ev{display:grid;grid-template-columns:4px minmax(96px,auto) minmax(0,1fr);gap:10px;align-items:center;padding:5px 6px;border:0;border-radius:var(--dsw-radius-sm);background:none;color:var(--cal-text);font:inherit;text-align:left;cursor:pointer;min-width:0}',
             '.dshcal-chat-ev:hover{background:var(--cal-hover)}',
             '.dshcal-chat-ev:disabled{cursor:default;background:none}',
-            '.dshcal-chat-bar{align-self:stretch;min-height:18px;border-radius:2px;background:var(--ev)}',
-            '.dshcal-chat-time{font-size:12px;color:var(--cal-meta);font-variant-numeric:tabular-nums;white-space:nowrap}',
+            '.dshcal-chat-bar{align-self:stretch;min-height:18px;border-radius:var(--dsw-radius-xs);background:var(--ev)}',
+            '.dshcal-chat-time{font-size:var(--dsw-font-xxs-12-font-size,12px);color:var(--cal-meta);font-variant-numeric:tabular-nums;white-space:nowrap}',
             '.dshcal-chat-what{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
             '.dshcal-chat-what b{font-weight:600}',
             '.dshcal-chat-what span{color:var(--cal-meta)}',
             '.dshcal-chat-ev[data-look=struck] b{text-decoration:line-through;color:var(--cal-meta)}',
-            '.dshcal-chat-foot{padding:4px 6px 0;font-size:12px;color:var(--cal-meta)}',
-            '.dshcal-chat-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;padding:8px 10px;border:1px solid var(--cal-line);border-radius:12px;background:var(--cal-fill)}',
+            '.dshcal-chat-foot{padding:4px 6px 0;font-size:var(--dsw-font-xxs-12-font-size,12px);color:var(--cal-meta)}',
+            '.dshcal-chat-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;padding:8px 10px;border:.5px solid var(--dsw-alias-border-l4);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-bg-layer-1)}',
             '.dshcal-chat-line>svg{flex:none;color:var(--cal-ok)}',
             '.dshcal-chat-line[data-kind=deleted]>svg{color:var(--cal-meta)}',
-            '.dshcal-chat-line[data-kind=failed]{align-items:flex-start;border-color:color-mix(in srgb,var(--cal-warn) 45%,var(--cal-line))}',
+            '.dshcal-chat-line[data-kind=failed]{align-items:flex-start;border-color:color-mix(in srgb,var(--cal-warn) 45%,var(--dsw-alias-border-l4))}',
             '.dshcal-chat-line[data-kind=failed]>svg{margin-top:2px;color:var(--cal-warn)}',
             '.dshcal-chat-line[data-kind=failed] .dshcal-chat-text{color:var(--cal-text);overflow-wrap:anywhere}',
-            '.dshcal-chat-cal>.dshcal-warn{flex:1 1 100%;padding-left:16px;font-size:12px}',
+            '.dshcal-chat-cal>.dshcal-warn{flex:1 1 100%;padding-left:16px;font-size:var(--dsw-font-xxs-12-font-size,12px)}',
             '.dshcal-chat-line>.dshcal-chat-text{flex:1 1 220px;min-width:0}',
             '.dshcal-chat-text b{font-weight:600}',
             '.dshcal-chat-text span{color:var(--cal-meta)}',
-            '.dshcal-chat-told{flex:1 1 100%;min-width:0;padding-left:22px;font-size:12px;line-height:1.45;color:var(--cal-meta);overflow-wrap:anywhere}',
+            '.dshcal-chat-told{flex:1 1 100%;min-width:0;padding-left:22px;font-size:var(--dsw-font-xxs-12-font-size,12px);line-height:1.45;color:var(--cal-meta);overflow-wrap:anywhere}',
             '.dshcal-chat-slots{display:flex;flex-direction:column;gap:4px;padding:2px 4px}',
-            '.dshcal-chat-slot{display:grid;grid-template-columns:minmax(110px,auto) minmax(0,1fr);gap:10px;font-size:12.5px}',
+            '.dshcal-chat-slot{display:grid;grid-template-columns:minmax(110px,auto) minmax(0,1fr);gap:10px;font-size:var(--dsw-font-xs-13-font-size,13px)}',
             '.dshcal-chat-slot>span:first-child{font-weight:600}',
             '.dshcal-chat-slot>span:last-child{color:var(--cal-soft);font-variant-numeric:tabular-nums}',
-            '.dshcal-chat-cal{display:flex;align-items:center;flex-wrap:wrap;gap:0 8px;padding:3px 6px;font-size:12.5px;min-width:0}',
+            '.dshcal-chat-cal{display:flex;align-items:center;flex-wrap:wrap;gap:0 8px;padding:3px 6px;font-size:var(--dsw-font-xs-13-font-size,13px);min-width:0}',
             '.dshcal-chat-cal>span:nth-child(2){min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-            '.dshcal-chat-row{display:flex;align-items:center;gap:6px;min-width:0;height:24px;color:var(--cal-meta);font-size:13px}',
+            '.dshcal-chat-row{display:flex;align-items:center;gap:6px;min-width:0;height:24px;color:var(--cal-meta);font-size:var(--dsw-font-xs-13-font-size,13px)}',
             '.dshcal-chat-row>span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-            '.dshcal-chat-out{margin:2px 0 0 22px;max-height:240px;overflow:auto;padding:8px 10px;border-radius:10px;background:var(--cal-fill);white-space:pre-wrap;font-family:var(--dsh-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:11.5px;color:var(--cal-soft);scrollbar-width:thin}',
+            '.dshcal-chat-out{margin:2px 0 0 22px;max-height:240px;overflow:auto;padding:8px 10px;border-radius:var(--dsw-radius-md);background:var(--cal-fill);white-space:pre-wrap;font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:var(--dsw-font-xxs-12-font-size,12px);color:var(--cal-soft);scrollbar-width:thin}',
 
             // The side column: beside the view on a roomy page, folded behind its button on a narrower one (the page says
             // which: data-side-folded), and over the page while open on a narrow one (data-side-open). Then the header wraps.
             '.dshcal-head .dshcal-head-new{display:none}',
             '.dshcal-root[data-side-folded] .dshcal-side{display:none}',
             '.dshcal-root[data-side-folded] .dshcal-head .dshcal-head-new{display:inline-flex}',
-            '.dshcal-scrim{display:none;position:absolute;inset:0;z-index:19;border:0;padding:0;background:rgba(0,0,0,.2);cursor:default}',
+            '.dshcal-scrim{display:none;position:absolute;inset:0;z-index:19;border:0;padding:0;background:var(--dsw-alias-bg-mask-2);cursor:default}',
             '.dshcal-root[data-side-open] .dshcal-scrim{display:block}',
-            '.dshcal-root[data-side-folded][data-side-open] .dshcal-side{display:flex;position:absolute;z-index:20;top:12px;bottom:12px;left:12px;width:min(280px,calc(100% - 24px));background:var(--cal-pop);box-shadow:0 18px 48px var(--cal-shadow)}',
+            '.dshcal-root[data-side-folded][data-side-open] .dshcal-side{display:flex;position:absolute;z-index:20;top:12px;bottom:12px;left:12px;width:min(280px,calc(100% - 24px));background:var(--dsw-specific-menu);-webkit-backdrop-filter:var(--dsw-menu-backdrop-filter);backdrop-filter:var(--dsw-menu-backdrop-filter);box-shadow:var(--dsw-elevation-prominent)}',
             '@container dshcal (max-width: 799px){.dshcal-head .dshcal-head-new{display:inline-flex}}',
+            // Below 1100px the header's New event is its + alone (its name in its tooltip and for screen readers), so the
+            // search, the views and it stay on one row instead of wrapping it onto a row of its own.
+            '@container dshcal (max-width: 1099px){.dshcal-head-new>.dshcal-hide-narrow{display:none}.dshcal-head-new{width:30px;padding:0}}',
+            // Above 560px the tools keep to one row (the search gives way first): beside the title when they fit, else
+            // on the row under it, never a row of their own each.
+            '@container dshcal (min-width: 561px){.dshcal-head-tools{flex-wrap:nowrap}}',
             '@container dshcal (max-width: 560px){'
                 + '.dshcal-root{padding:8px;gap:8px}'
                 + '.dshcal-head{padding:8px}'
-                + '.dshcal-title{font-size:16px;margin-left:2px}'
+                + '.dshcal-title{font-size:var(--dsw-font-base-16-font-size,16px);margin-left:2px}'
                 + '.dshcal-head-tools{width:100%;justify-content:space-between}'
                 + '.dshcal-hide-narrow{display:none!important}'
                 + '.dshcal-wk{--gutter:42px}'
                 + '.dshcal-wk-dayhead{flex-direction:column;gap:0;height:46px}'
-                + '.dshcal-wk-dayhead span:first-child{font-size:10.5px}'
-                + '.dshcal-wk-dayhead span:last-child{font-size:15px;min-width:24px;height:24px}'
-                + '.dshcal-ev{padding:2px 4px;font-size:11px}'
+                + '.dshcal-wk-dayhead span:first-child{font-size:var(--dsw-font-xxxs-11-font-size,11px)}'
+                + '.dshcal-wk-dayhead span:last-child{font-size:var(--dsw-font-s-14-font-size,14px);min-width:24px;height:24px}'
+                + '.dshcal-ev{padding:2px 4px;font-size:var(--dsw-font-xxxs-11-font-size,11px)}'
                 + '.dshcal-ag-day{grid-template-columns:1fr;gap:4px}'
                 + '.dshcal-ag-row{grid-template-columns:1fr;gap:2px}'
                 + '.dshcal-mo-wd{padding:6px 4px;text-align:center}'
@@ -576,6 +617,10 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
         const isObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
         const pad = (n, width = 2) => String(n).padStart(width, '0');
         const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+        /** Names in a sentence: "A", "A and B", "A, B and C". */
+        const andList = (names) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`);
+        /** A message as a sentence: its stop added when it has none. */
+        const stopped = (text) => (/[.!?…]$/.test(text) ? text : `${text}.`);
         const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
         /** A DSH icon by name, or nothing where this DSH has none. */
         const icon = (name, props = {}) => (ui && ui[name] ? h(ui[name], { size: 14, 'aria-hidden': true, ...props }) : null);
@@ -628,7 +673,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
         }
 
         /** The refusals whose message is the plugin's own words to the user, shown as they are. */
-        const OWN_WORDS = new Set(['calendar/refused', 'calendar/needs-notify', 'calendar/needs-approval', 'calendar/changed', 'calendar/drops-changes', 'calendar/choose-calendar', 'calendar/half-moved']);
+        const OWN_WORDS = new Set(['calendar/off', 'calendar/refused', 'calendar/needs-notify', 'calendar/needs-approval', 'calendar/changed', 'calendar/drops-changes', 'calendar/choose-calendar', 'calendar/half-moved']);
 
         /** A failed call as one sentence: the plugin's own refusal as it is, or that it failed or can't be reached. */
         function errorText(error) {
@@ -1311,6 +1356,8 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             let state;
             let stateJson = '';
             let stateError = '';
+            /** The code of the last failed state() ('calendar/off' while the plugin is switched off). */
+            let stateCode = '';
             let loading;
             /** When state() was last read, for the read every minute whatever version() says. */
             let stateAt = 0;
@@ -1333,6 +1380,8 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             /** Notices that stay until the user closes them (a move that stopped halfway): [{id, text}], the newest last. */
             let notices = [];
             let noticeSeq = 0;
+            /** The default calendar the user chose here last, so its move isn't announced as one they didn't make. */
+            let chosenDefault;
             const emit = () => {
                 version++;
                 for (const listener of [...listeners]) {
@@ -1375,14 +1424,32 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                         const json = JSON.stringify(result.value);
                         const moved = state !== undefined && state.version !== result.value.version;
                         if (json === stateJson && stateError === '') return;
+                        // New events now go elsewhere, and not by the user's choice here (an account added): said once.
+                        const was = state?.defaultCalendar;
+                        const now = result.value.defaultCalendar;
+                        if (was && now && was !== now && chosenDefault !== now) {
+                            const named = (id) => (Array.isArray(result.value.calendars) ? result.value.calendars : []).find((c) => c?.id === id)?.name;
+                            const [to, from] = [named(now), named(was)];
+                            if (to) setTimeout(() => store.toast(`New events now go to “${to}”.${from ? ` To keep them in “${from}”, choose Use for new events in its menu.` : ''}`), 0);
+                        }
                         state = result.value;
                         stateJson = json;
                         stateError = '';
+                        stateCode = '';
                         if (moved) for (const entry of spans.values()) entry.stale = true;
                     } else {
                         const text = errorText(result.error);
-                        if (text === stateError) return;
+                        const code = String(result.error?.code ?? '');
+                        // Switched off: what was shown goes, and the page says it's off; it comes back on its own.
+                        const off = code === 'calendar/off' && state !== undefined;
+                        if (off) {
+                            state = undefined;
+                            stateJson = '';
+                            spans.clear();
+                        }
+                        if (text === stateError && code === stateCode && !off) return;
                         stateError = text;
+                        stateCode = code;
                     }
                     emit();
                 })();
@@ -1421,6 +1488,8 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                 /** state() as last read, or undefined before the first answer. */
                 state: () => state,
                 stateError: () => stateError,
+                /** Whether the plugin is switched off (enabled: false in its entry): the owner's choice, not a failure. */
+                stateOff: () => stateCode === 'calendar/off',
                 /** The user's zone: the plugin's (its setting, else the computer's), else this browser's. */
                 zone: () => (state && isZone(state.zone) ? state.zone : browserZone()),
                 calendar: (id) => (state?.calendars ?? EMPTY).find((c) => c.id === id),
@@ -1503,26 +1572,51 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                     }
                     return result;
                 },
+                /**
+                 * The user's own choices (setPrefs: weekends, week numbers, the week's first day): shown at once, then
+                 * saved, and state read again either way, so a refusal puts back what the host has.
+                 */
+                async choose(patch) {
+                    if (isObject(state) && isObject(state.prefs)) {
+                        state = { ...state, prefs: { ...state.prefs, ...patch } };
+                        stateJson = '';
+                        emit();
+                    }
+                    const result = await link.call('setPrefs', { patch });
+                    await freshState();
+                    emit();
+                    return result;
+                },
                 /** Ask the page to show an event: its day, then its details. */
                 openAt(occurrence) {
                     if (!isObject(occurrence) || typeof occurrence.id !== 'string') return;
                     target = { ...occurrence, seq: ++targetSeq };
                     emit();
                 },
+                /** The user chose this calendar for new events here: its move is theirs, not news. */
+                choseDefault(id) {
+                    chosenDefault = id;
+                },
                 target: () => target,
                 clearTarget(seq) {
                     if (target?.seq === seq) target = null;
                 },
                 toast(text, tone = 'ok') {
-                    toast = { text, tone, id: ++toastSeq };
+                    const id = ++toastSeq;
+                    toast = { text, tone, id };
                     clearTimeout(toastTimer);
-                    toastTimer = setTimeout(() => {
-                        toast = null;
-                        emit();
-                    }, tone === 'error' ? 7000 : 4000);
+                    // DSH's Toast says when it has faded (clearToast); this is only a backstop.
+                    toastTimer = setTimeout(() => store.clearToast(id), toastHold(tone) + 1500);
                     emit();
                 },
                 currentToast: () => toast,
+                /** The toast has gone (DSH's Toast faded out); a newer one stays. */
+                clearToast(id) {
+                    if (toast?.id !== id) return;
+                    toast = null;
+                    clearTimeout(toastTimer);
+                    emit();
+                },
                 /** A notice that stays on the page until the user closes it: what a change did in part, and what is left to do. */
                 keepNotice(text) {
                     notices = [...notices, { id: ++noticeSeq, text: String(text) }].slice(-5);
@@ -1543,9 +1637,26 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                     };
                 },
                 toastHost: () => (toastHosts.size ? Math.min(...toastHosts) : 0),
+                /**
+                 * The reminders due now that no window has shown, claimed for this one (remote.reminders), and the
+                 * user's zone: {list, zone}; none when the host can't say (switched off, an older host).
+                 */
+                async reminders() {
+                    const result = await link.call('reminders', {});
+                    const list = result.ok && Array.isArray(result.value?.reminders) ? result.value.reminders.filter((r) => isObject(r) && isObject(r.reminder) && Number.isFinite(r.start)) : [];
+                    return { list, zone: isZone(result.value?.zone) ? result.value.zone : store.zone() };
+                },
             };
             return store;
         }
+
+        /** How long a toast holds before it fades (DSH's Toast fades over a second after it): a failure holds longer. */
+        const toastHold = (tone) => (tone === 'error' ? 6000 : 3000);
+        /** DSH's Toast for one of the store's toasts: a done one with DSH's green check, a failure with its warning glyph. */
+        const toastProps = (toast, onDone) => ({
+            text: toast.text, holdMs: toastHold(toast.tone), onDone,
+            ...(toast.tone === 'error' ? { icon: icon('IconWarningOutlineRegular') } : { tone: 'success' }),
+        });
 
         /** Re-render with the store. */
         const useStore = (store) => React.useSyncExternalStore(store.subscribe, store.snapshot, store.snapshot);
@@ -1624,16 +1735,136 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
         }
 
         let toastHostSeq = 0;
-        /** The store's toast, at the bottom of the window (at the top while a dialog is open): one at a time, shown by one view. */
+        /**
+         * The store's toast as DSH's own Toast: its banner at the top of the window, clear of a dialog's buttons and
+         * click-through, one at a time, shown by one view. A failure holds longer and keeps DSH's warning glyph. On a
+         * DSH without the Toast part, the plugin draws the same banner itself.
+         */
         function ToastHost({ store }) {
             useStore(store);
             const [id] = React.useState(() => ++toastHostSeq);
             React.useEffect(() => store.hostToasts(id), [store, id]);
             const toast = store.currentToast();
             if (!toast || store.toastHost() !== id) return null;
-            return ReactDOM.createPortal(h('div', { className: 'dshcal-toast', role: toast.tone === 'error' ? 'alert' : 'status', 'data-tone': toast.tone, key: toast.id },
-                toast.tone === 'error' ? icon('IconWarningOutlineRegular') : icon('IconCheckCircleOutlineRegular'),
+            const failed = toast.tone === 'error';
+            if (ui.Toast) return h(ui.Toast, { key: toast.id, ...toastProps(toast, () => store.clearToast(toast.id)) });
+            return ReactDOM.createPortal(h('div', { className: 'dshcal-toast', role: 'alert', 'data-tone': toast.tone, key: toast.id },
+                failed ? icon('IconWarningOutlineRegular') : icon('IconCheckCircleOutlineRegular'),
                 h('span', null, toast.text)), document.body);
+        }
+
+        /** How often a window in front asks for the reminders due, and how long a reminder's banner holds. */
+        const REMINDER_STEP = 30_000;
+        const REMINDER_HOLD = 30_000;
+
+        /**
+         * A reminder in words for DSH's banner: 'Team sync in 10 min · 10:00 – 10:30 AM, Work', 'Team sync starts
+         * now · …', 'Team sync started 3 minutes ago · …', 'Dentist tomorrow · 3:00 – 3:45 PM, Personal';
+         * all day: 'Holiday tomorrow · All day, Personal'.
+         */
+        function reminderText(o, now, zone) {
+            const title = o.title || '(No title)';
+            const today = dayIn(now, zone);
+            const dayWord = (day) => (day === today ? 'today' : day === addDays(today, 1) ? 'tomorrow' : `on ${dayText(day)}`);
+            const where = o.calendar ? `, ${o.calendar}` : '';
+            if (o.allDay) return `${title} ${dayWord(o.startDay)} · ${TEXT.allDay}${where}`;
+            const m = Math.round((o.start - now) / MINUTE);
+            const day = dayIn(o.start, zone);
+            const lead = m < 0 ? `started ${plural(-m, 'minute')} ago` : m === 0 ? 'starts now' : day !== today || m >= 12 * 60 ? dayWord(day) : untilWords(o.start, now);
+            return `${title} ${lead} · ${shortWhen(o, zone)}${where}`;
+        }
+
+        /**
+         * The line under the page's header for accounts that couldn't sync: {id (the account's, '' for several), text,
+         * fix: 'retry' | 'accounts'}; null when every account is fine. One account: its name, why, and when it last
+         * synced; several: how many and which. One that needs signing in again is fixed in Accounts, the rest by Retry.
+         */
+        function troubleWords(attention) {
+            const list = (Array.isArray(attention) ? attention : []).filter((a) => isObject(a) && typeof a.name === 'string');
+            if (list.length === 0) return null;
+            const fix = list.some((a) => a.status === 'signin') ? 'accounts' : 'retry';
+            if (list.length > 1) return { id: '', text: `${plural(list.length, 'account')} couldn't sync: ${andList(list.map((a) => a.name))}.`, fix };
+            const [a] = list;
+            const why = stopped(a.error || (a.status === 'signin' ? 'it needs signing in again' : 'the last sync failed'));
+            return { id: String(a.id ?? ''), text: `${a.name}: ${why}${Number.isFinite(a.syncedAt) ? ` Last synced ${relativeText(a.syncedAt)}.` : ''}`, fix };
+        }
+
+        /** The wrong settings in one box: {head, lines: [{key, text}]}, or null when none is wrong. */
+        function settingsWords(problems) {
+            const lines = (Array.isArray(problems) ? problems : []).filter((p) => isObject(p) && typeof p.key === 'string' && typeof p.text === 'string')
+                .map((p) => ({ key: p.key, text: p.text }));
+            if (lines.length === 0) return null;
+            const one = lines.length === 1;
+            return {
+                head: `${one ? 'A setting of the calendar plugin is wrong' : `${lines.length} settings of the calendar plugin are wrong`}; change ${one ? 'it' : 'them'} in its entry (id: calendar) in this profile's cordis.patch.yml:`,
+                lines,
+            };
+        }
+
+        /** A web address opened outside DSH's window, as the Agenda pane's Join link opens it. */
+        function openLink(url) {
+            try {
+                window.open(url, '_blank', 'noopener,noreferrer');
+            } catch (error) {
+                warn('could not open the link', error);
+            }
+        }
+
+        /**
+         * The calendars' reminders, in every DSH window while it is in front: every half minute it asks the host
+         * for the reminders due (remote.reminders, which hands each to one window, once), and shows each as DSH's
+         * banner at the top of the window, one after another, with Open (the event on the Calendar page) and Join
+         * for a call. Nothing while the window is hidden: a reminder still due waits for it, one long over is
+         * never shown. Mounted in DSH's shell overlay, so it needs no page or pane open.
+         */
+        function ReminderHost({ cal }) {
+            const [queue, setQueue] = React.useState([]);
+            const shown = React.useRef(new Set());
+            React.useEffect(() => {
+                if (typeof window === 'undefined' || typeof document === 'undefined') return undefined;
+                let stopped = false;
+                let timer;
+                const front = () => document.visibilityState !== 'hidden';
+                const ask = async () => {
+                    clearTimeout(timer);
+                    if (stopped) return;
+                    if (front()) {
+                        let due = { list: [], zone: cal.store.zone() };
+                        try {
+                            due = await cal.store.reminders();
+                        } catch (error) {
+                            warn('could not ask for reminders', error);
+                        }
+                        const fresh = due.list.filter((r) => !shown.current.has(r.reminder.key));
+                        for (const r of fresh) shown.current.add(r.reminder.key);
+                        if (!stopped && fresh.length > 0) setQueue((q) => [...q, ...fresh.map((r) => ({ ...r, zone: due.zone }))]);
+                    }
+                    if (!stopped) timer = setTimeout(() => void ask(), REMINDER_STEP);
+                };
+                const onVisible = () => { if (front()) void ask(); };
+                timer = setTimeout(() => void ask(), 2000);
+                document.addEventListener('visibilitychange', onVisible);
+                return () => {
+                    stopped = true;
+                    clearTimeout(timer);
+                    document.removeEventListener('visibilitychange', onVisible);
+                };
+            }, [cal]);
+            const first = queue[0];
+            if (!first) return null;
+            const done = () => setQueue((q) => q.filter((r) => r.reminder.key !== first.reminder.key));
+            const actions = [
+                { label: 'Open', onClick: () => { done(); cal.openAt(first); } },
+                ...(isUrl(first.conference) ? [{ label: 'Join', onClick: () => { done(); openLink(first.conference); } }] : []),
+            ];
+            const text = reminderText(first, Date.now(), first.zone);
+            if (ui.Toast) {
+                return h(ui.Toast, { key: first.reminder.key, text, holdMs: REMINDER_HOLD, actions, onDone: done, icon: icon('IconClockOutlineRegular') ?? h(BellGlyph) });
+            }
+            return ReactDOM.createPortal(h('div', { className: 'dshcal-toast dshcal-toast-acts', role: 'status', 'data-calendar-reminder': first.reminder.key, key: first.reminder.key },
+                h(BellGlyph), h('span', null, text),
+                actions.map((a) => h('button', { key: a.label, type: 'button', className: 'dshcal-link', onClick: a.onClick }, a.label)),
+                h('button', { type: 'button', className: 'dshcal-link', onClick: done }, TEXT.close)), document.body);
         }
 
         /** A dialog: DSH's Modal on the plugin's glass, its content scrolling inside. */
@@ -4122,6 +4353,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                 else if (id.startsWith('color:')) {
                     void store.act('updateCalendar', { id: c.id, patch: { color: id.slice(6) } }).then((r) => { if (!r.ok) store.toast(errorText(r.error), 'error'); });
                 } else if (id === 'default') {
+                    store.choseDefault(c.id);
                     void store.act('setDefaultCalendar', { id: c.id }).then((r) => store.toast(r.ok ? `New events go to “${c.name}”.` : errorText(r.error), r.ok ? 'ok' : 'error'));
                 } else if (id === 'export') void exportIcs(c);
                 else if (id === 'import') {
@@ -4746,7 +4978,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             const back = h(Btn, { kind: 'ghost', size: 'sm', className: 'dshcal-back', onClick: () => go({ page: toList ? 'list' : 'add' }) },
                 icon('IconChevronLeftOutlineRegular', { size: 12 }), toList ? 'Accounts' : 'Add account');
             if (!state) {
-                body = h('div', { className: 'dshcal-state' }, store.stateError() ? h('span', { className: 'dshcal-error' }, store.stateError()) : h(Spinner));
+                body = h('div', { className: 'dshcal-state' }, store.stateError() ? h('span', { className: store.stateOff() ? 'dshcal-off' : 'dshcal-error' }, store.stateError()) : h(Spinner));
             } else if (page.page === 'list') {
                 body = h('div', { className: 'dshcal-form' },
                     removed ? h('div', { key: removed.key, className: 'dshcal-notice', role: 'status', 'data-calendar-removed': '' },
@@ -4769,7 +5001,12 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                             statusLine = h(React.Fragment, null, icon('IconWarningOutlineRegular', { size: 12 }), h('span', null, a.error || 'Needs signing in again.'),
                                 a.kind === 'caldav' ? h(Btn, { size: 'sm', onClick: () => go({ page: 'password', account: a }) }, 'New password')
                                     : h(Btn, { size: 'sm', kind: 'primary', onClick: () => signInPage(a), 'data-calendar-resign': a.id }, 'Sign in again'));
-                        } else if (status === 'error') statusLine = h(React.Fragment, null, icon('IconWarningOutlineRegular', { size: 12 }), h('span', null, a.error || 'The last sync failed.'));
+                        } else if (status === 'error') {
+                            // Why, from the account or the calendar of it that failed, and how old what's shown is.
+                            const why = a.error || 'The last sync failed.';
+                            statusLine = h(React.Fragment, null, icon('IconWarningOutlineRegular', { size: 12 }),
+                                h('span', null, /[.!?…]$/.test(why) ? why : `${why}.`, a.syncedAt ? ` Last synced ${relativeText(a.syncedAt)}.` : ''));
+                        }
                         else statusLine = a.kind === 'local' ? null : a.syncedAt ? `Synced ${relativeText(a.syncedAt)}` : 'Not synced yet';
                         const kindName = a.kind === 'caldav' && a.preset ? (PROVIDERS.find((p) => p.id === a.preset)?.name ?? a.kindName) : a.kindName;
                         return h('div', { key: a.id, className: 'dshcal-acct', 'data-calendar-account': a.id, 'data-status': status },
@@ -5171,7 +5408,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             const occurrences = React.useMemo(() => (pending ? read.map((o) => (o.id === pending.id ? placedAt(o, pending.t) : o)) : read), [read, pending]);
             const loading = state !== undefined && entry !== null && (entry.loading || !entry.data);
             // A read again that failed, over what was read before: the events', or state's.
-            const stale = state ? (entry?.data && entry.error ? entry.error : store.stateError()) : '';
+            const stale = state ? (entry?.data && entry.error ? entry.error : store.stateOff() ? '' : store.stateError()) : '';
             const dataNow = entry?.data;
             const dataRef = React.useRef(dataNow);
             dataRef.current = dataNow;
@@ -5219,9 +5456,13 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             const remote = accounts.some((a) => a.kind !== 'local');
             const [, setClosed] = React.useState(0);
             const issues = storeIssues(state).filter((i) => !closedIssues.has(i.key));
+            const wrongSettings = (Array.isArray(state?.settingsProblems) ? state.settingsProblems : EMPTY).filter((p) => isObject(p) && typeof p.text === 'string' && typeof p.key === 'string');
+            const wrongBox = settingsWords(wrongSettings);
+            const trouble = troubleWords(attention);
             // What a change did in part, and what is left to do (a move that stopped halfway): until the user closes it.
             const kept = store.notices();
-            const shownDays = React.useMemo(() => new Set(range.days), [range.first, range.last, range.days.length]);
+            // The small month marks the days Week, Day and Agenda show; Month shows the small month's own month, so it marks none.
+            const shownDays = React.useMemo(() => new Set(view === 'month' ? [] : range.days), [view, range.first, range.last, range.days.length]);
 
             const closePop = (reason) => {
                 // A press outside that closed details doesn't also make an event where it landed.
@@ -5287,9 +5528,9 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                     : 'Saved.'}${told ? ` ${told}` : ''}`);
                 if (isDay(day) && !inView(day)) go(day);
             };
-            const syncNow = async () => {
+            const syncNow = async (accountId = '') => {
                 setSyncBusy(true);
-                const result = await store.act('syncNow', { accountId: '' });
+                const result = await store.act('syncNow', { accountId });
                 if (!alive.current) return;
                 setSyncBusy(false);
                 if (!result.ok) store.toast(errorText(result.error), 'error');
@@ -5419,7 +5660,10 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             const labels = { ...TEXT.views, week: compact ? '3 days' : TEXT.views.week };
             const drags = { movable, onDrop: dropTo, onDragging: setDragging };
             let body;
-            if (!state) {
+            if (!state && store.stateOff()) {
+                // Switched off is the owner's choice: a calm note saying where, no error and no Retry (it comes back on its own).
+                body = h('div', { className: 'dshcal-state dshcal-off', 'data-calendar-state': 'off', role: 'status' }, icon('IconInfoOutlineRegular'), h('span', null, store.stateError()));
+            } else if (!state) {
                 body = h('div', { className: 'dshcal-state', 'data-calendar-state': store.stateError() ? 'error' : 'loading' },
                     store.stateError()
                         ? h(React.Fragment, null, h('span', { className: 'dshcal-error' }, store.stateError()), h(Btn, { onClick: () => void store.refresh() }, TEXT.retry))
@@ -5489,7 +5733,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                                     : id === 'show:week-numbers' ? { weekNumbers: !weekNumbers }
                                         : id === weekChoice ? null : { weekStart: id === 'ws:auto' ? null : Number(id.slice(3)) };
                                 if (!patch) return;
-                                void store.act('setPrefs', { patch }).then((r) => { if (!r.ok) store.toast(errorText(r.error), 'error'); });
+                                void store.choose(patch).then((r) => { if (!r.ok) store.toast(errorText(r.error), 'error'); });
                             },
                             onClose: () => setSettings(false),
                             anchor: h(Btn, { kind: 'ghost', iconOnly: true, 'aria-label': 'Calendar settings', 'aria-haspopup': 'menu', 'aria-expanded': settings, 'data-calendar-settings': '', onClick: () => setSettings(!settings) }, icon('IconSettingsOutlineRegular')),
@@ -5568,7 +5812,22 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                     icon('IconWarningOutlineRegular'),
                     h('span', null, `Couldn't refresh: ${stale}`),
                     h(Btn, { size: 'sm', kind: 'ghost', onClick: () => void store.refresh() }, TEXT.retry)) : null,
-                issues.length || kept.length ? h('div', { className: 'dshcal-notes' },
+                // An account that couldn't sync: which, why and how old what's shown is, under the header, with Retry
+                // (Accounts, for one that needs signing in again).
+                trouble && !stale ? h('div', { className: 'dshcal-stale', role: 'status', 'data-calendar-trouble': trouble.id },
+                    icon('IconWarningOutlineRegular'),
+                    h('span', null, trouble.text),
+                    trouble.fix === 'accounts'
+                        ? h(Btn, { size: 'sm', kind: 'ghost', onClick: () => setDialog({ kind: 'accounts' }), 'data-calendar-trouble-accounts': '' }, 'Accounts')
+                        : h(Btn, { size: 'sm', kind: 'ghost', disabled: syncBusy, onClick: () => void syncNow(trouble.id), 'data-calendar-trouble-retry': '' }, TEXT.retry)) : null,
+                issues.length || kept.length || wrongSettings.length ? h('div', { className: 'dshcal-notes' },
+                    // Settings in the profile that are wrong, in one box: where to change them, then each one, what it must be
+                    // and what the plugin does meanwhile.
+                    wrongBox ? h('div', { key: 'settings', className: 'dshcal-notice', role: 'status', 'data-tone': 'warn', 'data-calendar-settings-problem': String(wrongBox.lines.length) },
+                        icon('IconWarningOutlineRegular'),
+                        h('div', { className: 'dshcal-notice-body' },
+                            h('span', null, wrongBox.head),
+                            h('ul', { className: 'dshcal-notice-list' }, wrongBox.lines.map((l) => h('li', { key: l.key, 'data-calendar-setting-problem': l.key }, l.text))))) : null,
                     kept.map((n) => h('div', { key: `kept:${n.id}`, className: 'dshcal-notice', role: 'alert', 'data-tone': 'warn', 'data-calendar-kept-notice': '' },
                         icon('IconWarningOutlineRegular'),
                         h('span', null, n.text),
@@ -5665,7 +5924,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             const last = addDays(today, PANE_DAYS - 1);
             const entry = state && visible ? store.events(startOfDay(today, zone), startOfDay(addDays(last, 1), zone)) : null;
             const occurrences = entry?.data?.occurrences ?? EMPTY;
-            const stale = state ? (entry?.data && entry.error ? entry.error : store.stateError()) : '';
+            const stale = state ? (entry?.data && entry.error ? entry.error : store.stateOff() ? '' : store.stateError()) : '';
             const saved = (o, words) => {
                 const told = isObject(o) ? contactText(o) : '';
                 if (!placed(o)) {
@@ -5682,6 +5941,17 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             const current = new Set(timed.filter((o) => o.start <= now && o.end > now).map((o) => o.id));
             const next = timed.filter((o) => o.start > now).sort((a, b) => a.start - b.start)[0];
             const attention = (state?.accounts ?? EMPTY).filter((a) => a.status === 'signin' || a.status === 'error');
+            // At the top, what's next ('Next: Team sync in 10 min'), or what's on now when nothing follows within 12 hours.
+            const onNow = timed.filter((o) => current.has(o.id)).sort((a, b) => a.end - b.end)[0];
+            const upNext = next && next.start - now <= 12 * HOUR ? next : undefined;
+            const headline = upNext ?? onNow;
+            const nextLine = headline ? h('div', { className: 'dshcal-pane-next', 'data-calendar-pane-next': headline.id },
+                h('span', { className: 'dshcal-pane-next-label' }, upNext ? 'Next:' : 'Now:'),
+                h('button', {
+                    type: 'button', className: 'dshcal-pane-next-what', 'aria-haspopup': 'dialog',
+                    onClick: (event) => setPop({ occurrence: headline, anchor: rectOf(event.currentTarget) }),
+                }, headline.title),
+                h('span', { className: 'dshcal-pane-next-when' }, upNext ? untilWords(upNext.start, now) : `until ${timeText(headline.end, zone)}`)) : null;
             const groups = agendaDays(occurrences, today, last, zone);
             if (!groups.some((g) => g.day === today)) groups.unshift({ day: today, list: [] });
 
@@ -5715,7 +5985,9 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             };
 
             let body;
-            if (!state) {
+            if (!state && store.stateOff()) {
+                body = h('div', { className: 'dshcal-pane-empty dshcal-off', 'data-calendar-state': 'off', role: 'status' }, store.stateError());
+            } else if (!state) {
                 body = store.stateError()
                     ? h('div', { className: 'dshcal-pane-empty' }, h('div', { className: 'dshcal-error' }, store.stateError()), h(Btn, { size: 'sm', style: { marginTop: 8 }, onClick: () => void store.refresh() }, TEXT.retry))
                     : h('div', { className: 'dshcal-pane-empty', role: 'status' }, h(Spinner), ' Loading…');
@@ -5734,6 +6006,7 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                     h('h2', null, TEXT.agendaTab),
                     h(IconBtn, { label: 'New event', glyph: icon('IconPlusOutlineRegular'), size: 'sm', side: 'bottom', onClick: () => setDialog({ kind: 'event' }), 'data-calendar-pane-new': '' }),
                     h(IconBtn, { label: 'Open the calendar', glyph: h(CalendarIcon, { size: 14 }), size: 'sm', side: 'bottom', onClick: () => cal.openPage(), 'data-calendar-pane-open': '' })),
+                state ? nextLine : null,
                 attention.length ? h('div', { className: 'dshcal-pane-note' },
                     icon('IconWarningOutlineRegular', { size: 12 }),
                     h('span', null, attention.length === 1 ? `${attention[0].name}: ${attention[0].problem || (attention[0].status === 'signin' ? 'sign-in needed' : 'the last sync failed')}.` : `${plural(attention.length, 'account')} need attention.`),
@@ -5940,6 +6213,13 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
         /** How many of a list's events a card shows before "Show all". */
         const CARD_EVENTS = 8;
 
+        /** The calendars hidden on the page that a chat's list or search left out, in a line under its card ('' for none). */
+        function leftOutWords(view) {
+            const names = (Array.isArray(view?.hidden) ? view.hidden : EMPTY).filter((n) => typeof n === 'string' && n !== '');
+            if (names.length === 0) return '';
+            return `Not ${typeof view.query === 'string' ? 'searched' : 'listed'}: ${andList(names.map((n) => `“${n}”`))}, hidden on the Calendar page.`;
+        }
+
         /** The card under a settled call: its events, an event, free time, the calendars, or what a change did. */
         function ToolCard({ view, zone, cal }) {
             const [all, setAll] = React.useState(false);
@@ -5962,7 +6242,8 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
                     rows,
                     list.length > CARD_EVENTS || view.more ? h('div', { className: 'dshcal-chat-foot dshcal-inline' },
                         list.length > CARD_EVENTS ? h('button', { type: 'button', className: 'dshcal-link', onClick: () => setAll(!all) }, all ? 'Show fewer' : `Show all ${list.length}`) : null,
-                        view.more ? h('span', null, 'The calendar has more than the agent read.') : null) : null);
+                        view.more ? h('span', null, 'The calendar has more than the agent read.') : null) : null,
+                    leftOutWords(view) ? h('div', { className: 'dshcal-chat-foot', 'data-calendar-chat-hidden': '' }, leftOutWords(view)) : null);
             }
             if (view.kind === 'free') {
                 const byDay = new Map();
@@ -6130,6 +6411,10 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
                 name: 'sidebar.panellist', id: IDS.page, order: 7, label: TEXT.entry,
             }, CalendarIcon));
+            // Reminders as DSH's banner, in every window, with no page or pane open.
+            ctx.slots.inject('shell.overlay', () => ctx.slots.register({
+                name: 'shell.overlay', id: IDS.reminders, inject: withApi,
+            }, ReminderHost));
             // Cards in chats for the calendar tools' calls.
             ctx.slots.inject('tool.call.toolview', function* () {
                 for (const key of TOOL_NAMES) {
@@ -6167,7 +6452,8 @@ if (typeof window !== 'undefined' && window.__ModuleLoader__) window.__ModuleLoa
             draftFrom, draftProblems, createInput, changePatch, draftChanged, writableCalendars,
             roleOf, othersOf, mailMode, peopleText, sameOccurrence, placed, emailedText, contactText, CHOOSE_CALENDAR, withConsent, consentQuestion, consentWords, asked, removalNotice, returnAddress,
             callArgs, argWhen, runningTitle, doneTitle, resultText, failureText, refusedEmailText, saysNotDone, saysPartly, NOT_DONE,
-            CalendarPage, AgendaPane, ToolView, EventDialog, EventPopover, AccountsDialog,
+            CalendarPage, AgendaPane, ToolView, ToolCard, EventDialog, EventPopover, AccountsDialog, ToastHost, toastProps, toastHold, troubleWords, settingsWords, leftOutWords,
+            ReminderHost, reminderText, REMINDER_STEP, REMINDER_HOLD,
         };
         return module.exports;
     },

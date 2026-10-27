@@ -25,11 +25,13 @@
  *   accounts: { [id]: { id, kind, name, url? (CalDAV; a subscription's address is in its credential
  *     record), host? (a subscription's site), username?, email?, addresses? (the user's own, where the
  *     server names them), preset?, allowHttp?, createdAt, calendars?: [{remoteId, name, color}] (local
- *     accounts: their calendars), error?, syncedAt?, calendarsAt? } },
+ *     accounts: their calendars), error?, syncedAt? (every calendar of it synced), triedAt? (its last
+ *     try), calendarsAt? } },
  *   calendars: { [id]: { id, accountId, remoteId, name, color?, readOnly?, timeZone?, description?, mode?,
  *     scheduling? (CalDAV: whether its server emails a meeting's guests itself),
  *     own?: {name?, color?} (the user's choices, over the server's), hidden?, error? } },
- *   prefs: { defaultCalendar?, weekStart?, ... } }
+ *   prefs: { defaultCalendar?, weekStart?, ... },
+ *   reminded?: { [key]: when it was shown } (reminders a window has shown, kept two days: manager.dueReminders) }
  *
  * events/<calendar>.json:
  * { version: 1, sync?: the source's opaque state, syncedAt?, items: { [remoteId]: item } }
@@ -37,25 +39,10 @@
  * @module dsh-plugin-calendar/store
  */
 import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join } from 'node:path';
+import { dataPath } from './config.js';
 
-/** Resolve a '~'-prefixed path. */
-export function expand(p) {
-    return p.startsWith('~/') || p === '~' ? `${homedir()}${p.slice(1)}` : p;
-}
-
-/** DSH's own data folder: `$DSH_HOME`, else ~/.dsh, as DSH resolves it. */
-export function dshHome() {
-    const env = typeof process.env.DSH_HOME === 'string' ? process.env.DSH_HOME.trim() : '';
-    return env === '' ? join(homedir(), '.dsh') : resolve(expand(env));
-}
-
-/** A data path: one under ~/.dsh follows DSH_HOME, so a test copy of DSH keeps its own calendars. */
-export function dataPath(p) {
-    if (p === '~/.dsh' || p.startsWith('~/.dsh/')) return `${dshHome()}${p.slice('~/.dsh'.length)}`;
-    return expand(p);
-}
+export { dataPath };
 
 /** A folder (and missing parents) as mode 700, whatever the umask. */
 export function ensurePrivateDir(dir) {
@@ -140,6 +127,8 @@ export class CalendarStore {
         this.accounts = {};
         this.calendars = {};
         this.prefs = {};
+        /** Reminders a window has shown: key (a hash of the occurrence and its minutes) → when. */
+        this.reminded = {};
         /** @type {Map<string, Record<string, object>>} calendar id → its items by remote id */
         this.items = new Map();
         /** @type {Map<string, {state: any, at?: number}>} calendar id → how far its items are up to date */
@@ -159,6 +148,7 @@ export class CalendarStore {
         this.accounts = {};
         this.calendars = {};
         this.prefs = {};
+        this.reminded = {};
         this.items.clear();
         this.syncs.clear();
         this.issue = undefined;
@@ -184,6 +174,7 @@ export class CalendarStore {
                 this.calendars[id] = { ...calendar, id };
             }
             this.prefs = plain(parsed.prefs);
+            for (const [key, at] of Object.entries(plain(parsed.reminded))) if (/^[0-9a-f]{20}$/.test(key) && Number.isFinite(at)) this.reminded[key] = at;
         }
         for (const id of Object.keys(this.calendars)) this.open(id);
     }
@@ -239,7 +230,7 @@ export class CalendarStore {
     /** Write calendar.json now. */
     save() {
         if (this.held.has(this.file)) throw new Error(`${basename(this.file)} can't be read and couldn't be moved aside, so it isn't written over`);
-        writePrivate(this.file, `${JSON.stringify({ version: 1, accounts: this.accounts, calendars: this.calendars, prefs: this.prefs }, null, 1)}\n`);
+        writePrivate(this.file, `${JSON.stringify({ version: 1, accounts: this.accounts, calendars: this.calendars, prefs: this.prefs, reminded: this.reminded }, null, 1)}\n`);
     }
 
     /**
@@ -343,5 +334,5 @@ export class CalendarStore {
 
 /** Whether a parsed calendar.json is one this store reads: version 1, with objects where it keeps them. */
 function storeShaped(parsed) {
-    return isPlain(parsed) && parsed.version === 1 && ['accounts', 'calendars', 'prefs'].every((key) => parsed[key] === undefined || isPlain(parsed[key]));
+    return isPlain(parsed) && parsed.version === 1 && ['accounts', 'calendars', 'prefs', 'reminded'].every((key) => parsed[key] === undefined || isPlain(parsed[key]));
 }

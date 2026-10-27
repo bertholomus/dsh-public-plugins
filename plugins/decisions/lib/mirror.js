@@ -199,7 +199,7 @@ export class Mirror {
         if (mode === 'command') {
             try {
                 const command = checkCommand(this.config.mirrorCommand);
-                if (!this.exists(command[0])) return { problem: `The command's program ${clip(command[0], 120)} does not exist` };
+                if (!this.exists(command[0])) return { problem: `The command's program ${clip(command[0], 120)} does not exist: ${WHERE_COMMAND}` };
                 return { kind: 'command', command, place: programName(command) };
             } catch (error) {
                 return { problem: errorText(error, 200) };

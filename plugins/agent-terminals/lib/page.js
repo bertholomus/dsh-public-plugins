@@ -19,13 +19,13 @@ export const STYLE_CHOICES = Object.freeze(STYLE_IDS.map((id) => ({ id, label: S
 export async function pageState({ agents, journal, config, check, watch, terminals, detected, workspaces }) {
     const problem = check?.problem;
     const watchProblem = watch?.settings?.problem;
-    const on = working({ config, check });
     return {
         ...(problem ? { problem } : {}),
         ...(watchProblem ? { watchProblem } : {}),
         enabled: config.enabled !== false,
         terminals: Boolean(terminals?.()),
-        agents: on || config.enabled !== false ? agents.list() : [],
+        // Its agents, switched off or not: one that still runs in its terminal says so (not followed), and why.
+        agents: agents.list(),
         recent: agents.recent,
         detected: await detected(),
         workspaces: workspaces(),

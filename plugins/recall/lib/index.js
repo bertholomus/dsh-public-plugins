@@ -79,6 +79,8 @@ export function apply(ctx, config) {
     ctx.inject(['sessionWatch'], (scope) => {
         const mine = scope.sessionWatch?.hub;
         hub = mine;
+        // DSH starts Recall again when its profile entry changes (enabled switched, say): a page open meanwhile reads again.
+        try { mine?.bump?.('recall'); } catch { /* the page reads again later */ }
         return () => { if (hub === mine) hub = undefined; };
     });
     const bump = () => { try { hub?.bump?.('recall'); } catch { /* the page reads again later */ } };
@@ -107,7 +109,7 @@ export function apply(ctx, config) {
             journal.add({ kind: 'settings', text: 'Started with a wrong setting; Recall waits until it is fixed', why, state: 'waiting on a setting' });
         }
     } else if (lastSettings?.state === 'waiting on a setting') {
-        journal.add({ kind: 'settings', text: 'Settings fixed: Recall is working again', why: 'Its settings were right when DSH started it again.', state: 'done' });
+        journal.add({ kind: 'settings', text: indexing(settings) ? 'Settings fixed: Recall is working again' : 'Settings fixed', why: 'Its settings were right when DSH started it again.', state: 'done' });
     }
 
     let lastStatus;
@@ -185,6 +187,13 @@ export function apply(ctx, config) {
 
     // Only `enabled: true` keeps an index: false keeps Recall idle, and so does a wrong value until it is fixed.
     const started = indexing(settings);
+    // Switched off, and on again, in DSH's profile: said once each in What happened (DSH starts Recall again on the change).
+    const lastSwitch = journal.list({ limit: 400 }).find((entry) => entry.kind === 'switch');
+    if (settings.enabled === false && lastSwitch?.state !== 'off') {
+        journal.add({ kind: 'switch', text: 'Switched off in DSH\'s profile', why: 'enabled is false in Recall\'s entry in cordis.patch.yml: Recall keeps no index, refuses searches and offers agents no tool. Set it to true there to switch it on again.', state: 'off' });
+    } else if (started && lastSwitch?.state === 'off') {
+        journal.add({ kind: 'switch', text: 'Switched on again in DSH\'s profile', why: 'enabled is true again: Recall reads what changed while it was off.', state: 'done' });
+    }
     if (started) {
         try {
             ensurePrivateDir(dir);
@@ -272,6 +281,7 @@ export function apply(ctx, config) {
             config: settings, check, thread, journal, actions,
             sources: () => sources,
             lastStatus: () => lastStatus,
+            watch: () => Boolean(hub),
         }));
     });
 }

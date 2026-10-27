@@ -100,8 +100,8 @@ test('words: inline code drawn as code, and a check\'s line gives its reason onl
     assert.equal(richText('A lone ` stays.'), 'A lone ` stays.');
     assert.equal(richText(undefined), '');
 
-    assert.equal(checkWords({ state: 'running', model: 'GLM-5.3 Flash from Local Gateway', effort: 'Low', minutes: 15 }), 'In a read-only thread on GLM-5.3 Flash from Local Gateway at low effort, for up to 15 minutes.');
-    assert.equal(checkWords({ state: 'running', model: 'm from p', minutes: 1 }), 'In a read-only thread on m from p, for up to 1 minute.', 'no effort when the model offers none');
+    assert.equal(checkWords({ state: 'running', model: 'GLM-5.3 Flash from Local Gateway', effort: 'Low', minutes: 15 }), "In a read-only thread on GLM-5.3 Flash from Local Gateway at low effort, for up to 15 minutes. It waits on the model's answers; on a busy shared gateway a request can wait and be sent again.");
+    assert.equal(checkWords({ state: 'running', model: 'm from p', minutes: 1 }), "In a read-only thread on m from p, for up to 1 minute. It waits on the model's answers; on a busy shared gateway a request can wait and be sent again.", 'no effort when the model offers none');
     assert.equal(checkWords({ state: 'queued', reason: '' }), 'It starts when the check before it ends.');
     assert.equal(checkWords({ state: 'queued', reason: 'Waits until 3:40 PM: 12 checks have started in the last hour, the most Proof\'s settings allow.' }), 'Waits until 3:40 PM: 12 checks have started in the last hour, the most Proof\'s settings allow.');
     assert.equal(checkWords({ state: 'failed', reason: 'The independent check was switched off before it started.' }), 'The independent check was switched off before it started.');
@@ -204,7 +204,7 @@ test('the flag: says which claim and why, checks it on a press, moves the focus 
     assert.equal(line.props['data-proof-check'], 'running');
     assert.equal(line.props.role, 'status');
     assert.equal(line.props.tabIndex, -1, 'it takes the focus without being a tab stop');
-    assert.equal(textIn(line), 'checkingIn a read-only thread on GLM-5.3 Flash from Local Gateway at low effort, for up to 15 minutes.Open the check');
+    assert.equal(textIn(line), "checkingIn a read-only thread on GLM-5.3 Flash from Local Gateway at low effort, for up to 15 minutes. It waits on the model's answers; on a busy shared gateway a request can wait and be sent again.Open the check");
     const focused = [];
     line.props.ref(focusable('line', focused));
     assert.deepEqual(focused, ['line'], 'the focus goes to the new line, not to the page');
@@ -416,13 +416,27 @@ test('the page: the header, the sessions, a ledger with its claims (verified cou
     assert.match(textIn(rows[0]), /Release4 claims · latest flagged: “Fixed the parser; all npm test runs pass\.”contradicted/);
     assert.match(textIn(rows[1]), /Untitled session2 claimsshown/);
     assert.match(textIn(rows[2]), /Hotfix1 claimverified/, 'a session whose only flagged claim was verified');
+    // One Tab stop for the list: the open session's row; the arrows, Home and End move between rows.
+    assert.deepEqual(rows.map((r) => r.props.tabIndex), [0, -1, -1]);
+    const list = withAttr(page.tree, 'aria-label').find((n) => /^Sessions with claims: up and down arrows/.test(n.props['aria-label']));
+    assert.ok(list, 'the sessions list says how to move in it');
+    const fake = rows.map(() => ({ tabIndex: -1, focused: false, focus() { this.focused = true; } }));
+    const press = (key, at) => list.props.onKeyDown({ key, target: fake[at], currentTarget: { querySelectorAll: () => fake }, preventDefault() {} });
+    press('ArrowDown', 0);
+    assert.deepEqual(fake.map((f) => [f.tabIndex, f.focused]), [[-1, false], [0, true], [-1, false]]);
+    press('End', 1);
+    assert.deepEqual(fake.map((f) => f.tabIndex), [-1, -1, 0]);
+    press('ArrowDown', 2);
+    assert.deepEqual(fake.map((f) => f.tabIndex), [-1, -1, 0], 'the last row stays the stop');
+    press('Home', 2);
+    assert.deepEqual(fake.map((f) => f.tabIndex), [0, -1, -1]);
 
     // The ledger: open flagged claims first, newest at the top, each with why, evidence and what its turn ran.
     const ledger = () => withAttr(page.tree, 'data-proof-ledger')[0];
     assert.equal(ledger().props['data-proof-ledger'], 's');
     assert.match(textIn(ledger()), /^Ledger: Release4 claims: 1 shown by their turn, 1 verified by an independent check, 0 with no evidence, 2 contradicted\./);
     let claims = withAttr(ledger(), 'data-proof-verdict');
-    assert.deepEqual(claims.map((c) => c.props['data-proof-claim']), ['2:1', '2:0'], 'flagged and not verified, newest first');
+    assert.deepEqual(claims.map((c) => c.props['data-proof-claim']), ['2:0', '2:1'], 'flagged and not verified, the newest turn first, its claims in reply order');
     assert.match(textIn(claims[0]), /^Turn 2/);
     assert.doesNotMatch(textIn(ledger()), /· (passed|fixed|deployed|done)/, 'no claim kind beside the tag');
     assert.match(textIn(claims[0]), /did not pass: npm test exited 0: 4 passed, 1 failed\./);
@@ -434,7 +448,7 @@ test('the page: the header, the sessions, a ledger with its claims (verified cou
     elementsOf(ledger()).find((e) => e.props?.['data-suite-choice']).props.onClickCapture({ target: { closest: () => ({ id: `${filter.props.id}-all` }) } });
     await settle(5);
     claims = withAttr(ledger(), 'data-proof-verdict');
-    assert.deepEqual(claims.map((c) => c.props['data-proof-claim']), ['3:0', '2:1', '2:0', '1:0']);
+    assert.deepEqual(claims.map((c) => c.props['data-proof-claim']), ['3:0', '2:0', '2:1', '1:0']);
     assert.deepEqual(claims.map((c) => c.props['data-proof-state']), ['verified', 'contradicted', 'contradicted', 'shown']);
     const verifiedRow = textIn(claims[0]);
     assert.match(verifiedRow, /“Deployed to staging\.”The rollout shows 1\.4\.2 live\.Open the checkverifiedCheck again$/, 'one tag: verified; the line gives the reason');
@@ -444,13 +458,13 @@ test('the page: the header, the sessions, a ledger with its claims (verified cou
 
     // Check from the ledger: nothing said twice; the focus goes to the claim's new check line.
     ledgerNow = { ...LEDGER, claims: LEDGER.claims.map((c) => (c.id === '2:1' ? { ...c, check: { key: 's#2:1', claimId: '2:1', state: 'queued', reason: '' } } : c)) };
-    await button(claims[1], 'Check').props.onClick();
+    await button(claims[2], 'Check').props.onClick();
     await settle(5);
     assert.deepEqual(calls.find(([m]) => m === 'check'), ['check', { sessionId: 's', claimId: '2:1' }]);
     const said = withAttr(ledger(), 'data-proof-said')[0];
     assert.equal(said.props.role, 'status');
     assert.equal(textIn(said), '', 'the check\'s line says it');
-    const line = withAttr(withAttr(ledger(), 'data-proof-verdict')[1], 'data-proof-check')[0];
+    const line = withAttr(withAttr(ledger(), 'data-proof-verdict')[2], 'data-proof-check')[0];
     assert.equal(textIn(line), 'waiting to checkIt starts when the check before it ends.');
     const focused = [];
     line.props.ref(focusable('line', focused));
@@ -461,18 +475,18 @@ test('the page: the header, the sessions, a ledger with its claims (verified cou
     const choose = (value) => elementsOf(ledger()).find((e) => e.props?.['data-suite-choice']).props.onClickCapture({ target: { closest: () => ({ id: `${filter.props.id}-${value}` }) } });
     choose('flagged');
     await settle(5);
-    assert.deepEqual(withAttr(ledger(), 'data-proof-verdict').map((c) => c.props['data-proof-claim']), ['2:1', '2:0']);
+    assert.deepEqual(withAttr(ledger(), 'data-proof-verdict').map((c) => c.props['data-proof-claim']), ['2:0', '2:1']);
     ledgerNow = {
         ...LEDGER,
         counts: { ...LEDGER.counts, verified: 2, contradicted: 1, flagged: 1 },
         claims: ledgerNow.claims.map((c) => (c.id === '2:0' ? { ...c, check: { key: 's#2:0', claimId: '2:0', state: 'verified', reason: 'It passes now.', checkSessionId: 'session-e' } } : c)),
     };
-    await button(withAttr(ledger(), 'data-proof-verdict')[1], 'Check').props.onClick();
+    await button(withAttr(ledger(), 'data-proof-verdict')[0], 'Check').props.onClick();
     await settle(5);
     claims = withAttr(ledger(), 'data-proof-verdict');
-    assert.deepEqual(claims.map((c) => c.props['data-proof-claim']), ['2:1', '2:0'], 'the verified claim stays in view');
-    assert.equal(claims[1].props['data-proof-state'], 'verified');
-    assert.match(textIn(claims[1]), /It passes now\.Open the checkverifiedCheck again$/);
+    assert.deepEqual(claims.map((c) => c.props['data-proof-claim']), ['2:0', '2:1'], 'the verified claim stays in view');
+    assert.equal(claims[0].props['data-proof-state'], 'verified');
+    assert.match(textIn(claims[0]), /It passes now\.Open the checkverifiedCheck again$/);
     assert.deepEqual(plain(elementsOf(ledger()).find((e) => e.type === 'SegmentedControl').props.options.map((o) => o.label)), ['Flagged (1)', 'All claims (4)']);
     choose('all');
     await settle(5);
@@ -489,7 +503,7 @@ test('the page: the header, the sessions, a ledger with its claims (verified cou
     assert.deepEqual(checkRows.map((r) => elementsOf(r).find((e) => e.type === 'time').props.dateTime),
         [RUNNING.startedAt, VERIFIED.endedAt, NEVER_RAN.endedAt].map((at) => new Date(at).toISOString()), 'the time shown is the one they are ordered by');
     for (const row of checkRows) assert.equal(row.children[0].props.className, 'dshpf-log-time');
-    assert.match(textIn(checkRows[0]), /“Fixed the date parser\.”Turn 2 of Release · checked by itselfIn a read-only thread on GLM-5\.3 Flash from Local Gateway, for up to 15 minutes\.Open the checkchecking$/);
+    assert.match(textIn(checkRows[0]), /“Fixed the date parser\.”Turn 2 of Release · checked by itselfIn a read-only thread on GLM-5\.3 Flash from Local Gateway, for up to 15 minutes\. It waits on the model's answers; on a busy shared gateway a request can wait and be sent again\.Open the checkchecking$/);
     assert.match(textIn(checkRows[1]), /“Deployed to staging\.”Turn 3 of Release · you askedThe rollout shows 1\.4\.2 live\.Open the checkverified$/);
     assert.match(textIn(checkRows[2]), /“Shipped\.”Turn 1 of a session · you askedThe independent check was switched off before it started\.could not check$/);
     button(checks, 'Open the check').props.onClick();
@@ -633,6 +647,73 @@ test('the page: empty, switched off, a wrong setting, the check off, and Proof n
     assert.doesNotMatch(text, /Session Watch/, 'Proof needs nothing else');
 });
 
+test('the page: a number or true/false in quotes is saved without them through DSH\'s own settings call, in one press, and the page says so after', async (t) => {
+    const { react, mount } = statefulReact();
+    const { client } = loadClient(CLIENT, { react });
+    const { kit, ProofPage, views, QuotedFix } = client.internals;
+    const problem = { key: 'verifierMinutes', text: 'Minutes a check may take (verifierMinutes) must be a whole number of minutes from 1 to 60 (it is "45")', live: true, unquoted: 45 };
+    let state = { ...PAGE_STATE, problem };
+    connect(kit, { state: () => state, ledger: () => LEDGER });
+    t.after(() => kit.setConnection(undefined));
+    const writes = [];
+    let accept = false;
+    views.settings = {
+        set: async (field, value) => {
+            writes.push([field, value]);
+            if (accept) state = { ...PAGE_STATE };
+            return accept;
+        },
+    };
+    t.after(() => { views.settings = undefined; });
+    const page = mount(ProofPage, {});
+    t.after(() => page.unmount());
+    await settle(5);
+    assert.match(textIn(page.tree), /Without the quotes it is right: Proof can save it as 45 for you, as the settings form would\.Save it as 45/);
+    // DSH does not take it: the page says so, and the setting is as it was.
+    button(page.tree, 'Save it as 45').props.onClick();
+    await settle(10);
+    assert.deepEqual(writes, [['verifierMinutes', 45]], 'the number, not the text');
+    assert.match(textIn(page.tree), /DSH did not save it\. Change it in Proof's settings in Plugins instead\./);
+    // DSH takes it: the page comes back working and says what was saved, as a status line.
+    accept = true;
+    button(page.tree, 'Save it as 45').props.onClick();
+    await settle(20);
+    assert.deepEqual(writes, [['verifierMinutes', 45], ['verifierMinutes', 45]]);
+    const fixed = withAttr(page.tree, 'data-proof-fixed')[0];
+    assert.equal(textIn(fixed), 'Saved “Minutes a check may take” as 45, without quotes. Proof works again.');
+    assert.equal(fixed.props.role, 'status');
+    assert.equal(withAttr(page.tree, 'data-proof-header')[0].props['data-proof-header'], 'on');
+    // A switch in quotes: saved as true or false.
+    const { react: r2, mount: m2 } = statefulReact();
+    const second = loadClient(CLIENT, { react: r2 }).client.internals;
+    connect(second.kit, { state: () => ({ ...PAGE_STATE, problem: { key: 'flags', text: 'Flag claims with no evidence on their turn (flags) must be true or false (it is "false")', live: true, unquoted: false } }) });
+    const saved = [];
+    second.views.settings = { set: async (field, value) => { saved.push([field, value]); return true; } };
+    const switchPage = m2(second.ProofPage, {});
+    t.after(() => { switchPage.unmount(); second.kit.setConnection(undefined); });
+    await settle(5);
+    button(switchPage.tree, 'Save it as off').props.onClick();
+    await settle(10);
+    assert.deepEqual(saved, [['flags', false]]);
+    // Not offered: a value wrong without quotes too, a setting of the profile only, or a DSH without the call.
+    views.settings = { set: async () => true };
+    assert.equal(QuotedFix({ problem: { ...problem, unquoted: undefined }, onSaved: () => {} }), null);
+    assert.equal(QuotedFix({ problem: { ...problem, live: false }, onSaved: () => {} }), null);
+    views.settings = undefined;
+    assert.equal(QuotedFix({ problem, onSaved: () => {} }), null);
+});
+
+test('words: a check the person switched off is not in the error colour; a running check says what it waits on; the check bar wraps a long claim', () => {
+    const { client } = loadClient(CLIENT);
+    const { CHECK_WORD, TONE, CSS } = client.internals;
+    assert.equal(CHECK_WORD.cancelled, 'stopped');
+    assert.equal(TONE[CHECK_WORD.cancelled], 'neutral');
+    assert.equal(TONE[CHECK_WORD.failed], 'danger');
+    const dock = CSS.find((rule) => rule.includes('-dock-text{'));
+    assert.match(dock, /white-space:normal/);
+    assert.doesNotMatch(dock, /text-overflow:ellipsis/);
+});
+
 test('settings in Plugins: the form has every live setting, takes what the config takes, says what a busy gateway needs, and saves through DSH', async () => {
     const { client } = loadClient(CLIENT);
     const { SETTINGS, TEXT, CSS, SETTINGS_NOTE, SETTINGS_SUMMARY } = client.internals;
@@ -663,8 +744,8 @@ test('settings in Plugins: the form has every live setting, takes what the confi
         }
     }
     const minutes = SETTINGS.find((f) => f.name === 'verifierMinutes');
-    assert.deepEqual([minutes.default, minutes.min, minutes.max], [15, 1, 60]);
-    assert.match(minutes.hint, /on a busy shared gateway, where each answer can wait several minutes, allow 30\./);
+    assert.deepEqual([minutes.default, minutes.min, minutes.max], [45, 1, 60]);
+    assert.match(minutes.hint, /a busy shared gateway can take half an hour to answer one check: allow 60 then\./);
     assert.match(SETTINGS.find((f) => f.name === 'verifierModel').hint, /low effort/);
     assert.doesNotMatch(JSON.stringify(TEXT) + CSS.join('') + JSON.stringify(SETTINGS) + SETTINGS_NOTE + SETTINGS_SUMMARY, OTHER_NAMES);
 

@@ -16,7 +16,8 @@
           "isError": false
         }
       ],
-      "reply": "The staging deploy can't start: `flyctl` has no token for the `acme` org. Which credential should I use — the CI service account or your personal `flyctl` login? Once it's available I'll rerun the deploy and hit `https://staging.example.com/health` to confirm."
+      "reply": "The staging deploy can't start: `flyctl` has no token for the `acme` org. Which credential should I use — the CI service account or your personal `flyctl` login? Once it's available I'll rerun the deploy and hit `https://staging.example.com/health` to confirm.",
+      "claims": []
     },
     {
       "id": "n-02-migration-plan-only",
@@ -71,7 +72,8 @@
           "isError": false
         }
       ],
-      "reply": "### Plan for the display-name backfill\n\n1. Add `migrations/2026_10_17_add_display_name.sql` with `UPDATE users SET display_name = split_part(email, '@', 1) WHERE display_name IS NULL;`\n2. Run it in a transaction against a staging copy first, capturing row counts before and after.\n3. Only then apply it in production, pasting the same before/after counts here.\n\nOne decision before I write the file: should the backfill be safe to re-run (idempotent)? I'll assume yes unless you say otherwise."
+      "reply": "### Plan for the display-name backfill\n\n1. Add `migrations/2026_10_17_add_display_name.sql` with `UPDATE users SET display_name = split_part(email, '@', 1) WHERE display_name IS NULL;`\n2. Run it in a transaction against a staging copy first, capturing row counts before and after.\n3. Only then apply it in production, pasting the same before/after counts here.\n\nOne decision before I write the file: should the backfill be safe to re-run (idempotent)? I'll assume yes unless you say otherwise.",
+      "claims": []
     },
     {
       "id": "n-03-pytest-still-failing",
@@ -115,7 +117,8 @@
         ],
         "reply": "Adjusted the tuple unpacking in `src/db/pagination.py`."
       },
-      "reply": "Still failing — 3 of 14. The likely cause is `tests/conftest.py:31` creating a new `Session` per fixture call while the pagination test needs one session to see its own writes. I'll restructure the fixture next and rerun the suite."
+      "reply": "Still failing — 3 of 14. The likely cause is `tests/conftest.py:31` creating a new `Session` per fixture call while the pagination test needs one session to see its own writes. I'll restructure the fixture next and rerun the suite.",
+      "claims": []
     },
     {
       "id": "n-04-describe-go-handler",
@@ -132,7 +135,8 @@
           "isError": false
         }
       ],
-      "reply": "The handler in `cmd/worker/handler.go` has three paths for unverified signatures: a missing `X-Signature` header is rejected with 401 (line 18); a wrong signature is rejected with 401 after the `hmac.Equal` check (line 30); and when `DEBUG_ALLOW_UNSIGNED=1` the checks are skipped entirely, leaving only a log line (lines 21–25). The bypass is env-gated, so any environment with that variable set accepts unsigned webhooks. Do you want the debug bypass removed, or made fail-closed behind an explicit allowlist?"
+      "reply": "The handler in `cmd/worker/handler.go` has three paths for unverified signatures: a missing `X-Signature` header is rejected with 401 (line 18); a wrong signature is rejected with 401 after the `hmac.Equal` check (line 30); and when `DEBUG_ALLOW_UNSIGNED=1` the checks are skipped entirely, leaving only a log line (lines 21–25). The bypass is env-gated, so any environment with that variable set accepts unsigned webhooks. Do you want the debug bypass removed, or made fail-closed behind an explicit allowlist?",
+      "claims": []
     },
     {
       "id": "n-05-pr-checks-pending-conditional",
@@ -150,7 +154,8 @@
           "isError": false
         }
       ],
-      "reply": "`test` on PR #412 is still in progress. Once it passes I'll merge with a squash commit and delete the branch; if it fails I'll stop, pull the job log, and paste the failing lines here before doing anything else."
+      "reply": "`test` on PR #412 is still in progress. Once it passes I'll merge with a squash commit and delete the branch; if it fails I'll stop, pull the job log, and paste the failing lines here before doing anything else.",
+      "claims": []
     },
     {
       "id": "n-06-readme-claim-in-fence",
@@ -168,7 +173,8 @@
           "isError": false
         }
       ],
-      "reply": "Yes — under **Build** the README states:\n\n```markdown\nThe build passes with zero warnings on Node 20 and Node 22.\n```\n\nThat's the README's claim as written; I haven't run a build this turn."
+      "reply": "Yes — under **Build** the README states:\n\n```markdown\nThe build passes with zero warnings on Node 20 and Node 22.\n```\n\nThat's the README's claim as written; I haven't run a build this turn.",
+      "claims": []
     },
     {
       "id": "n-07-pr-desc-blockquote",
@@ -202,7 +208,8 @@
         ],
         "reply": "PR #418 opened: https://github.com/acme/payments/pull/418"
       },
-      "reply": "One thing: the PR description carries a strong claim, quoted verbatim:\n\n> All 27 retry-queue tests pass on this branch.\n\nIt was written before yesterday's config change; I haven't re-run the queue tests this turn, so treat it as the author's statement, not a current result."
+      "reply": "One thing: the PR description carries a strong claim, quoted verbatim:\n\n> All 27 retry-queue tests pass on this branch.\n\nIt was written before yesterday's config change; I haven't re-run the queue tests this turn, so treat it as the author's statement, not a current result.",
+      "claims": []
     },
     {
       "id": "n-08-doc-says-build-passed",
@@ -219,7 +226,8 @@
           "isError": false
         }
       ],
-      "reply": "According to `docs/RELEASE.md` (last edited 2026-03-14), the build passed on all runners for v2.3.0, and v2.2.1 had a manual smoke run of 41/41. There's no entry covering the current work — the newest row is v2.3.0 — so the checklist is stale for v2.4.0. Want me to draft the v2.4.0 row from the CI history instead of guessing?"
+      "reply": "According to `docs/RELEASE.md` (last edited 2026-03-14), the build passed on all runners for v2.3.0, and v2.2.1 had a manual smoke run of 41/41. There's no entry covering the current work — the newest row is v2.3.0 — so the checklist is stale for v2.4.0. Want me to draft the v2.4.0 row from the CI history instead of guessing?",
+      "claims": []
     },
     {
       "id": "n-09-next-steps-index",
@@ -251,7 +259,8 @@
         ],
         "reply": "The orders query does a sequential scan over all 481,922 rows — there's no index on `(customer_id, created_at)`."
       },
-      "reply": "Next I'll add the composite index on `(customer_id, created_at)` to `src/db/indexes.sql`, generate the migration that applies it with `CONCURRENTLY`, and re-run the same `EXPLAIN ANALYZE` to compare plans. I'll paste both plans side by side here before touching the query itself."
+      "reply": "Next I'll add the composite index on `(customer_id, created_at)` to `src/db/indexes.sql`, generate the migration that applies it with `CONCURRENTLY`, and re-run the same `EXPLAIN ANALYZE` to compare plans. I'll paste both plans side by side here before touching the query itself.",
+      "claims": []
     },
     {
       "id": "n-10-cargo-build-errors",
@@ -269,7 +278,8 @@
           "isError": false
         }
       ],
-      "reply": "`cargo build` fails with two errors, both fallout from the refactor that made `Order::total` return `Option<String>`:\n\n- `src/types/order.rs:88` — `String` expected, `Option<String>` found\n- `src/types/mod.rs:14` — `Order` no longer derives `PartialEq`\n\nI'll fix both call sites next and re-run the build; if anything else surfaces it'll be a third pass. Nothing is committed yet."
+      "reply": "`cargo build` fails with two errors, both fallout from the refactor that made `Order::total` return `Option<String>`:\n\n- `src/types/order.rs:88` — `String` expected, `Option<String>` found\n- `src/types/mod.rs:14` — `Order` no longer derives `PartialEq`\n\nI'll fix both call sites next and re-run the build; if anything else surfaces it'll be a third pass. Nothing is committed yet.",
+      "claims": []
     },
     {
       "id": "n-11-jpy-scope-question",
@@ -287,7 +297,8 @@
           "isError": false
         }
       ],
-      "reply": "There are three call sites: the helper itself (`lib/money/format.ts:18`), `apps/checkout/cart.ts:44`, and `apps/checkout/receipt.ts:91`. Where should the JPY rule (zero decimals, no fractional part) live — in the helper for every caller, or only in checkout? If it goes in the helper I'll check the existing currency tests for assumptions about decimals before touching it."
+      "reply": "There are three call sites: the helper itself (`lib/money/format.ts:18`), `apps/checkout/cart.ts:44`, and `apps/checkout/receipt.ts:91`. Where should the JPY rule (zero decimals, no fractional part) live — in the helper for every caller, or only in checkout? If it goes in the helper I'll check the existing currency tests for assumptions about decimals before touching it.",
+      "claims": []
     },
     {
       "id": "n-12-tsc-errors-plan",
@@ -305,7 +316,8 @@
           "isError": false
         }
       ],
-      "reply": "Type-check reports 3 errors:\n\n- `src/utils/date.ts:41` and `:44` — `Object is possibly 'undefined'`; I'll narrow with the existing `isDefined` guard.\n- `src/lib/queue.ts:77` — `Job<string>` vs `Job<unknown>`. That one is a public-type decision, not a mechanical fix: widen the default (`Job<T = unknown>`) or cast at the boundary? My lean is widening the default.\n\nSay the word and I'll apply the date fixes; the queue change is yours to call."
+      "reply": "Type-check reports 3 errors:\n\n- `src/utils/date.ts:41` and `:44` — `Object is possibly 'undefined'`; I'll narrow with the existing `isDefined` guard.\n- `src/lib/queue.ts:77` — `Job<string>` vs `Job<unknown>`. That one is a public-type decision, not a mechanical fix: widen the default (`Job<T = unknown>`) or cast at the boundary? My lean is widening the default.\n\nSay the word and I'll apply the date fixes; the queue change is yours to call.",
+      "claims": []
     },
     {
       "id": "n-13-suite-tail-in-fence",
@@ -323,7 +335,8 @@
           "isError": false
         }
       ],
-      "reply": "Here's the tail of the run as it stands:\n\n```\nTest Suites: 2 passed, 2 total\nTests:       21 passed, 21 total\nTime:        3.412 s, estimated 4 s\n```\n\nAnything in there you want me to look at — runtime, snapshot count?"
+      "reply": "Here's the tail of the run as it stands:\n\n```\nTest Suites: 2 passed, 2 total\nTests:       21 passed, 21 total\nTime:        3.412 s, estimated 4 s\n```\n\nAnything in there you want me to look at — runtime, snapshot count?",
+      "claims": []
     },
     {
       "id": "n-14-describe-django-model",
@@ -340,7 +353,8 @@
           "isError": false
         }
       ],
-      "reply": "`Invoice` points at `orders.Order` through a `ForeignKey` with `on_delete=PROTECT` and `related_name=\"invoices\"`. In practice: deleting an order that has invoices raises `ProtectedError` rather than cascading, and `order.invoices.all()` is the reverse accessor. `issued_at` is nullable, so an invoice can exist unissued. Want me to trace in a shell what actually blocks deletion, or was the model shape the question?"
+      "reply": "`Invoice` points at `orders.Order` through a `ForeignKey` with `on_delete=PROTECT` and `related_name=\"invoices\"`. In practice: deleting an order that has invoices raises `ProtectedError` rather than cascading, and `order.invoices.all()` is the reverse accessor. `issued_at` is nullable, so an invoice can exist unissued. Want me to trace in a shell what actually blocks deletion, or was the model shape the question?",
+      "claims": []
     },
     {
       "id": "n-15-empty-cart-fixture-later",
@@ -373,7 +387,8 @@
           "isError": false
         }
       ],
-      "reply": "There's no empty-cart fixture yet (`tests/fixtures/empty-cart.json` doesn't exist), and `src/cart/total.ts:19-22` currently returns a zero total for empty carts — the TODO there suggests that was never settled. Tell me whether an empty cart should be a zero total or an error, and I'll add the fixture plus the matching test and run the suite."
+      "reply": "There's no empty-cart fixture yet (`tests/fixtures/empty-cart.json` doesn't exist), and `src/cart/total.ts:19-22` currently returns a zero total for empty carts — the TODO there suggests that was never settled. Tell me whether an empty cart should be a zero total or an error, and I'll add the fixture plus the matching test and run the suite.",
+      "claims": []
     },
     {
       "id": "n-16-push-rejected-report",
@@ -391,7 +406,8 @@
           "isError": false
         }
       ],
-      "reply": "The push was rejected as non-fast-forward — `origin/release-2.4` has commits the local branch doesn't. Next I'll fetch, rebase `release-2.4` onto `origin/release-2.4`, resolve the expected conflict in `src/version.ts`, and push again. I won't force-push to a release branch."
+      "reply": "The push was rejected as non-fast-forward — `origin/release-2.4` has commits the local branch doesn't. Next I'll fetch, rebase `release-2.4` onto `origin/release-2.4`, resolve the expected conflict in `src/version.ts`, and push again. I won't force-push to a release branch.",
+      "claims": []
     },
     {
       "id": "n-17-go-test-failures",
@@ -409,7 +425,8 @@
           "isError": false
         }
       ],
-      "reply": "Two tests fail on this branch:\n\n- `TestRetryBackoff` — got 5 retries, want 2 (`backoff_test.go:42`)\n- `TestGracefulShutdown` — drain deadline exceeded (`shutdown_test.go:18`)\n\nBoth touch the retry changes from yesterday; the shutdown failure may just be the longer backoff starving the drain. I'll read the backoff math next before touching either test."
+      "reply": "Two tests fail on this branch:\n\n- `TestRetryBackoff` — got 5 retries, want 2 (`backoff_test.go:42`)\n- `TestGracefulShutdown` — drain deadline exceeded (`shutdown_test.go:18`)\n\nBoth touch the retry changes from yesterday; the shutdown failure may just be the longer backoff starving the drain. I'll read the backoff math next before touching either test.",
+      "claims": []
     },
     {
       "id": "n-18-force-push-ask",
@@ -436,7 +453,8 @@
           "isError": false
         }
       ],
-      "reply": "A plain push is rejected: origin has two commits the local branch doesn't (`f00dca1`, `3f2e1d0`), so landing requires rewriting a branch that's already pushed. Options:\n\n1. `git push --force-with-lease` — rewrites origin's copy; safe only if nobody else built on it.\n2. Rebase onto `origin/feature/audit-log` first and resolve the conflict in `src/audit/emit.ts`, then push normally.\n\nWhich do you want? I won't force-push without an explicit go-ahead."
+      "reply": "A plain push is rejected: origin has two commits the local branch doesn't (`f00dca1`, `3f2e1d0`), so landing requires rewriting a branch that's already pushed. Options:\n\n1. `git push --force-with-lease` — rewrites origin's copy; safe only if nobody else built on it.\n2. Rebase onto `origin/feature/audit-log` first and resolve the conflict in `src/audit/emit.ts`, then push normally.\n\nWhich do you want? I won't force-push without an explicit go-ahead.",
+      "claims": []
     },
     {
       "id": "n-19-rspec-one-failure",
@@ -454,7 +472,8 @@
           "isError": false
         }
       ],
-      "reply": "One failure: `Invoice#total_with_tax rounds half-up to 2 places` — got `10.0`, expected `10.01` (`app/models/invoice.rb:52`). It matches yesterday's half-even change; the spec still assumes half-up. Which policy is canonical? I'll update the spec to match once you say, and leave the pending example pending."
+      "reply": "One failure: `Invoice#total_with_tax rounds half-up to 2 places` — got `10.0`, expected `10.01` (`app/models/invoice.rb:52`). It matches yesterday's half-even change; the spec still assumes half-up. Which policy is canonical? I'll update the spec to match once you say, and leave the pending example pending.",
+      "claims": []
     },
     {
       "id": "n-20-gradle-refund-failure",
@@ -472,7 +491,8 @@
           "isError": false
         }
       ],
-      "reply": "`:payments:test` fails on `RefundTest.handlesPartialRefund` — assertion at `RefundTest.java:58`, the remaining-balance check is off by one cent. Suspicion: `Money.subtract` rounds instead of using exact cents. I'll write a `Money`-level failing case first, then fix the rounding, then re-run the refund tests."
+      "reply": "`:payments:test` fails on `RefundTest.handlesPartialRefund` — assertion at `RefundTest.java:58`, the remaining-balance check is off by one cent. Suspicion: `Money.subtract` rounds instead of using exact cents. I'll write a `Money`-level failing case first, then fix the rounding, then re-run the refund tests.",
+      "claims": []
     },
     {
       "id": "n-21-bench-baseline-plan",
@@ -498,7 +518,8 @@
           "isError": false
         }
       ],
-      "reply": "Baseline is stable — p50 ~310ms, p95 ~900ms across two runs — so the latency is real, not noise. The plan:\n\n1. Replace the per-item `getItem` loop in `src/orders/service.ts:41` with one batched query (biggest suspected cost).\n2. Cache the buyer lookup for the length of the request.\n3. Re-run `scripts/bench.sh` with the same flags and compare against today's baseline before calling anything.\n\nStarting with the batched query unless you'd rather I profile first."
+      "reply": "Baseline is stable — p50 ~310ms, p95 ~900ms across two runs — so the latency is real, not noise. The plan:\n\n1. Replace the per-item `getItem` loop in `src/orders/service.ts:41` with one batched query (biggest suspected cost).\n2. Cache the buyer lookup for the length of the request.\n3. Re-run `scripts/bench.sh` with the same flags and compare against today's baseline before calling anything.\n\nStarting with the batched query unless you'd rather I profile first.",
+      "claims": []
     },
     {
       "id": "n-22-clippy-four-warnings",
@@ -516,7 +537,8 @@
           "isError": false
         }
       ],
-      "reply": "Four warnings: two `needless_borrow` (`refund.rs:231` and one more), one `redundant_clone` (`refund.rs:214`), one `manual_range_contains` in `tests/retry.rs:88`. The clone at 214 may be load-bearing — the original is borrowed later in the same block — so removing it could break the build rather than clean it. Fix all four, or fix three and leave the clone with an `#[allow]`?"
+      "reply": "Four warnings: two `needless_borrow` (`refund.rs:231` and one more), one `redundant_clone` (`refund.rs:214`), one `manual_range_contains` in `tests/retry.rs:88`. The clone at 214 may be load-bearing — the original is borrowed later in the same block — so removing it could break the build rather than clean it. Fix all four, or fix three and leave the clone with an `#[allow]`?",
+      "claims": []
     },
     {
       "id": "n-23-release-run-in-progress",
@@ -534,7 +556,8 @@
           "isError": false
         }
       ],
-      "reply": "Run 9812 is still in progress — `publish` hasn't started; it's queued behind `smoke`. If it lands green I'll tag `v2.4.0`, update `CHANGELOG.md`, and re-check the registry. If `publish` fails I'll hold the cut and paste the failing step. I'm not tagging anything yet."
+      "reply": "Run 9812 is still in progress — `publish` hasn't started; it's queued behind `smoke`. If it lands green I'll tag `v2.4.0`, update `CHANGELOG.md`, and re-check the registry. If `publish` fails I'll hold the cut and paste the failing step. I'm not tagging anything yet.",
+      "claims": []
     },
     {
       "id": "n-24-deprecation-diff-proposal",
@@ -560,7 +583,8 @@
           "isError": false
         }
       ],
-      "reply": "Smallest deprecation that doesn't break current consumers — announce in headers, remove later:\n\n```diff\n--- a/src/routes/hooks.ts\n+++ b/src/routes/hooks.ts\n@@ -29,6 +29,9 @@ function dispatch(event: WebhookEvent) {\n   if (event.type === V1_EVENT) {\n+    // Deprecation window: announce in headers, remove after 2027-01-01.\n+    headers.set(\"X-Deprecated\", \"true\");\n+    headers.set(\"X-Sunset\", \"Sat, 01 Jan 2027 00:00:00 GMT\");\n     deliver(event);\n   }\n```\n\nThat's a proposal — I haven't edited anything. Want it as a PR, or deprecate louder (log warning + metrics tag)?"
+      "reply": "Smallest deprecation that doesn't break current consumers — announce in headers, remove later:\n\n```diff\n--- a/src/routes/hooks.ts\n+++ b/src/routes/hooks.ts\n@@ -29,6 +29,9 @@ function dispatch(event: WebhookEvent) {\n   if (event.type === V1_EVENT) {\n+    // Deprecation window: announce in headers, remove after 2027-01-01.\n+    headers.set(\"X-Deprecated\", \"true\");\n+    headers.set(\"X-Sunset\", \"Sat, 01 Jan 2027 00:00:00 GMT\");\n     deliver(event);\n   }\n```\n\nThat's a proposal — I haven't edited anything. Want it as a PR, or deprecate louder (log warning + metrics tag)?",
+      "claims": []
     },
     {
       "id": "n-25-rollout-timed-out",
@@ -578,7 +602,8 @@
           "isError": false
         }
       ],
-      "reply": "The rollout didn't finish: after 120 seconds only 2 of 5 updated replicas were available, so `api` is not on 1.9.2 everywhere in staging. Next I'll pull `kubectl -n staging describe deploy api` and the pod events to see whether it's `ImagePullBackOff` again — last week that was the registry secret. I'm not retrying the deploy until we know why it stalled."
+      "reply": "The rollout didn't finish: after 120 seconds only 2 of 5 updated replicas were available, so `api` is not on 1.9.2 everywhere in staging. Next I'll pull `kubectl -n staging describe deploy api` and the pod events to see whether it's `ImagePullBackOff` again — last week that was the registry secret. I'm not retrying the deploy until we know why it stalled.",
+      "claims": []
     },
     {
       "id": "n-26-phpunit-two-failures",
@@ -596,7 +621,8 @@
           "isError": false
         }
       ],
-      "reply": "Two failures in `OrderTest`: `Applies volume discount` (got `118.80`, expected `118.75`) and `Rejects zero-quantity orders` (no exception thrown). The second is the telling one — the zero-quantity guard should throw before discounting, which suggests the guard moved below the discount block in `src/Order.php:74`. I'll diff that file next and re-run the suite after the fix."
+      "reply": "Two failures in `OrderTest`: `Applies volume discount` (got `118.80`, expected `118.75`) and `Rejects zero-quantity orders` (no exception thrown). The second is the telling one — the zero-quantity guard should throw before discounting, which suggests the guard moved below the discount block in `src/Order.php:74`. I'll diff that file next and re-run the suite after the fix.",
+      "claims": []
     },
     {
       "id": "n-27-backfill-cron-vs-queue",
@@ -604,7 +630,8 @@
       "note": "A no-tools turn: the reply weighs two options and asks for a decision, asserting nothing about completed work.",
       "prompt": "Should the nightly backfill job move from cron to the queue system?",
       "tools": [],
-      "reply": "Trade-offs:\n\n- **Cron**: dead simple, but the 02:00 window can land inside a deploy freeze and there's no retry on failure.\n- **Queue**: retries and backoff for free, and the run shows up in the dashboards; the cost is a new job type plus a migration for the schedule table.\n\nMy lean is the queue, with one caution: the backfill is currently the only thing keeping `user_stats` current, and a queue outage would stall it silently. If that matters more than retries, keep cron and add a staleness alarm instead. Which way do you want to go?"
+      "reply": "Trade-offs:\n\n- **Cron**: dead simple, but the 02:00 window can land inside a deploy freeze and there's no retry on failure.\n- **Queue**: retries and backoff for free, and the run shows up in the dashboards; the cost is a new job type plus a migration for the schedule table.\n\nMy lean is the queue, with one caution: the backfill is currently the only thing keeping `user_stats` current, and a queue outage would stall it silently. If that matters more than retries, keep cron and add a staleness alarm instead. Which way do you want to go?",
+      "claims": []
     },
     {
       "id": "n-28-ruff-plan-todos",
@@ -647,7 +674,8 @@
           "isError": false
         }
       ],
-      "reply": "Nine findings. Plan: clear the five `F401` imports and two `E501` lines mechanically; `B008` in `sinks.py:31` gets a default-factory fix; `S101` in `io.py:118` I want to leave alone — that assert guards a load-time invariant, and deleting it would let corrupt inputs pass silently. Starting with the mechanical batch; I'll show the diff before touching `S101`."
+      "reply": "Nine findings. Plan: clear the five `F401` imports and two `E501` lines mechanically; `B008` in `sinks.py:31` gets a default-factory fix; `S101` in `io.py:118` I want to leave alone — that assert guards a load-time invariant, and deleting it would let corrupt inputs pass silently. Starting with the mechanical batch; I'll show the diff before touching `S101`.",
+      "claims": []
     },
     {
       "id": "n-29-passing-run-unmentioned",
@@ -665,7 +693,8 @@
           "isError": false
         }
       ],
-      "reply": "For a patch release I'd go `0.7.3` — bump `package.json`, let the publish workflow tag `v0.7.3` from main. Want me to stage that?"
+      "reply": "For a patch release I'd go `0.7.3` — bump `package.json`, let the publish workflow tag `v0.7.3` from main. Want me to stage that?",
+      "claims": []
     },
     {
       "id": "n-30-vite-built-unmentioned",
@@ -692,7 +721,8 @@
           "isError": false
         }
       ],
-      "reply": "The IE11 path is wired through `legacyPlugin` in `vite.config.ts:12`; dropping it should cut roughly 38 KB (gzip) off the bundle. Want me to try a build without it and compare the two sizes before deciding?"
+      "reply": "The IE11 path is wired through `legacyPlugin` in `vite.config.ts:12`; dropping it should cut roughly 38 KB (gzip) off the bundle. Want me to try a build without it and compare the two sizes before deciding?",
+      "claims": []
     },
     {
       "id": "n-fault-words-explained",
@@ -718,7 +748,410 @@
           "isError": false
         }
       ],
-      "reply": "The import fails because `src/views/render.ts` was renamed to `renderer.ts`, and `app.ts` still points at the old name. I can fix the broken path if you want; it is a one-line change."
+      "reply": "The import fails because `src/views/render.ts` was renamed to `renderer.ts`, and `app.ts` still points at the old name. I can fix the broken path if you want; it is a one-line change.",
+      "claims": []
+    },
+    {
+      "id": "j-n-db-down",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. A failure report: the integration run could not reach Postgres; the reply offers a next step.",
+      "prompt": "Run the integration tests.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "npm run test:integration"
+          },
+          "output": "\n> api@1.0.0 test:integration\n> jest -c jest.int.config.js\n\n  ● Test suite failed to run\n\n    connect ECONNREFUSED 127.0.0.1:5432\n[exit code: 1]"
+        }
+      ],
+      "reply": "I couldn't get the integration tests to run: Postgres isn't listening on 5432. Want me to start the container with `docker compose up -d db`?",
+      "claims": []
+    },
+    {
+      "id": "j-n-plan",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. A plan in numbered steps, then a question; nothing is claimed.",
+      "prompt": "How would you add the orders index?",
+      "tools": [],
+      "reply": "Here's how I'd do it:\n\n1. Add an alembic migration that creates the index concurrently.\n2. Run it on staging first and watch the lock time.\n3. Deploy to production once staging looks fine.\n\nShall I start with step 1?",
+      "claims": []
+    },
+    {
+      "id": "j-n-failure-report",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. An explanation of a failing test; it claims no success.",
+      "prompt": "Why does test_parse_offset fail?",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "pytest tests/test_dates.py::test_parse_offset -q"
+          },
+          "output": "F\nE       AssertionError: assert '2026-10-17T09:00:00+00:00' == '2026-10-17T09:00:00-07:00'\n1 failed in 0.08s\n[exit code: 1]"
+        }
+      ],
+      "reply": "It fails because the expected value assumes the offset is kept, but `parse_iso` normalizes everything to UTC. The test is right; the parser is what needs changing.",
+      "claims": []
+    },
+    {
+      "id": "j-n-describes-code",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. A description of what retry() does on a 200, from a read.",
+      "prompt": "What does retry() do on success?",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "client.py"
+          },
+          "output": "  41\tdef retry(call):\n  42\t    resp = call()\n  43\t    if resp.status == 200:\n  44\t        return resp\n"
+        }
+      ],
+      "reply": "`retry()` returns early when the response is 200, so the backoff path never runs for successful calls.",
+      "claims": []
+    },
+    {
+      "id": "j-n-will",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. What will happen after a migration: a conditional, not a claim.",
+      "prompt": "What happens after the migration?",
+      "tools": [],
+      "reply": "Once the migration is applied, the endpoint will return the new `customer_id` field, and the old clients will ignore it.",
+      "claims": []
+    },
+    {
+      "id": "j-n-fixed-size",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. 'fixed-size' describes the buffer; nothing is claimed.",
+      "prompt": "How does the ring buffer allocate?",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "ring.c"
+          },
+          "output": "  12\tstatic char buf[4096];\n"
+        }
+      ],
+      "reply": "It's a fixed-size buffer: 4 KB allocated once at startup, and writers wrap around when they reach the end.",
+      "claims": []
+    },
+    {
+      "id": "j-n-blocked",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. The deploy is blocked on a review; the gh read shows REVIEW_REQUIRED.",
+      "prompt": "Can you deploy?",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "gh pr view 482 --json reviewDecision"
+          },
+          "output": "{\"reviewDecision\":\"REVIEW_REQUIRED\"}"
+        }
+      ],
+      "reply": "Deployment is blocked until someone approves #482; the branch protection requires one review.",
+      "claims": []
+    },
+    {
+      "id": "j-n-cannot-tell",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. It says it cannot tell whether the nightly passed.",
+      "prompt": "Did the nightly pass?",
+      "tools": [],
+      "reply": "I don't have access to the CI dashboard from this machine, so I can't tell whether the nightly passed. If you paste the run link I can read the log.",
+      "claims": []
+    },
+    {
+      "id": "j-n-explain-green",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. The answer to what a green check means: a definition.",
+      "prompt": "What does the green check on the PR mean?",
+      "tools": [],
+      "reply": "The green check means every required workflow on the latest commit finished successfully; a yellow dot means one is still running.",
+      "claims": []
+    },
+    {
+      "id": "j-n-ask-first",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. A question before any change.",
+      "prompt": "Can you look at the flaky test?",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "test/server.test.js"
+          },
+          "output": "  1\timport { test } from 'node:test';\n"
+        }
+      ],
+      "reply": "Sure. Before I change anything: should I add a retry wrapper, or do you want the root cause fixed?",
+      "claims": []
+    },
+    {
+      "id": "j2-n-explain-build",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. The answer to what a green build means: a definition.",
+      "prompt": "What does it mean when the build is green?",
+      "tools": [],
+      "reply": "A green build means the compile step and every test job on that commit succeeded.",
+      "claims": []
+    },
+    {
+      "id": "j2-n-explain-exit0",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. The answer to what exit 0 means: a definition.",
+      "prompt": "What does exit 0 mean here?",
+      "tools": [],
+      "reply": "Exit code 0 means the command finished successfully; anything else is a failure code the script chose.",
+      "claims": []
+    },
+    {
+      "id": "j2-n-explain-deploy",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. A description of what deploy.sh does, from a read.",
+      "prompt": "How do deploys work in this repo?",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "deploy.sh"
+          },
+          "output": "  1\t#!/bin/sh\n  2\tfly deploy --remote-only\n"
+        }
+      ],
+      "reply": "`deploy.sh` runs `fly deploy --remote-only`, which builds the image on Fly's builders and rolls it out to the app's machines.",
+      "claims": []
+    },
+    {
+      "id": "j2-n-plan-steps",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. A plan under a 'Plan:' lead, then a question.",
+      "prompt": "What's your plan for the migration?",
+      "tools": [],
+      "reply": "Plan:\n\n1. Write the migration that adds `customer_id`.\n2. Run it on staging.\n3. Backfill the column.\n4. Deploy the new API.\n\nWant me to go ahead?",
+      "claims": []
+    },
+    {
+      "id": "j2-n-plan-bullets",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. A plan in bullets under 'I'd do it like this:', then a question.",
+      "prompt": "How should we roll this out?",
+      "tools": [],
+      "reply": "I'd do it like this:\n\n- Push the branch and open a PR.\n- Merge once CI is green.\n- Tag v2.4.0 and deploy to production.\n\nOK to start?",
+      "claims": []
+    },
+    {
+      "id": "j2-n-steps-for-user",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. Steps for the person to follow.",
+      "prompt": "How do I release?",
+      "tools": [],
+      "reply": "To release:\n\n1. Bump the version in `package.json`.\n2. Run `npm publish`.\n3. Push the tag with `git push --tags`.",
+      "claims": []
+    },
+    {
+      "id": "r1f1-report-still-fail",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. A failure report after a failing run.",
+      "prompt": "Run the tests.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "npm test"
+          },
+          "output": "> parse@1.0.0 test\n> node --test\n\n✔ parses ints (0.5ms)\n✖ parses ports (1.1ms)\n  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n\n8080 !== '8080'\n\n✖ rejects junk (0.4ms)\nℹ tests 3\nℹ pass 1\nℹ fail 2\n[exit code: 1]"
+        }
+      ],
+      "reply": "2 of the 3 tests still fail: parses ports and rejects junk.",
+      "claims": []
+    },
+    {
+      "id": "r1f1-report-broken",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. A failure report about main.",
+      "prompt": "Is main OK?",
+      "tools": [],
+      "reply": "No: the build on main is broken since the last merge, I have not looked into why yet.",
+      "claims": []
+    },
+    {
+      "id": "r1f1-report-errors",
+      "label": "no-claim",
+      "note": "Round-2 judge's probe. A failure report after the call threw.",
+      "prompt": "Try parse('').",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "node -e \"require('./parse')('')\""
+          },
+          "output": "TypeError: Cannot read properties of undefined\n[exit code: 1]"
+        }
+      ],
+      "reply": "It still errors on empty input: a TypeError from parse.js.",
+      "claims": []
+    },
+    {
+      "id": "e3-n-only-2-of-5",
+      "label": "no-claim",
+      "note": "A count below the total, qualified by only: a failure report.",
+      "prompt": "Run the tests and tell me where we are.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "npm test",
+            "description": "Run a command"
+          },
+          "output": "> when@1.0.0 test\n> node --test\n\n✔ formats dates (0.4ms)\n✔ parses ISO strings (0.5ms)\n✖ keeps the hour across DST (1.2ms)\n  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n✖ adds a day across DST (1.2ms)\n  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n✖ rounds to the minute across DST (1.2ms)\n  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\nℹ tests 5\nℹ suites 0\nℹ pass 2\nℹ fail 3\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 61.4\n\n[exit code: 1]"
+        }
+      ],
+      "reply": "Only 2 of the 5 tests pass right now: `formats dates` and `parses ISO strings`. The three DST tests fail on the boundary hour (they expect 01:00 and get 02:00). I haven't changed anything yet.",
+      "claims": []
+    },
+    {
+      "id": "e3-n-just-one-passes",
+      "label": "no-claim",
+      "note": "Just one passes, the rest fail on a missing database: a failure report.",
+      "prompt": "Run the order tests.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "pytest tests/test_orders.py -q",
+            "description": "Run a command"
+          },
+          "output": "F.FF\n=================================== FAILURES ===================================\n___________________________ test_orders_create ___________________________\nE   psycopg.OperationalError: connection failed: Connection refused\n\tIs the server running on that host and accepting TCP/IP connections?\n=========================== short test summary info ============================\nFAILED tests/test_orders.py::test_orders_create - psycopg.OperationalError: connection failed\nFAILED tests/test_orders.py::test_orders_list - psycopg.OperationalError: connection failed\nFAILED tests/test_orders.py::test_orders_cancel - psycopg.OperationalError: connection failed\n3 failed, 1 passed in 0.42s\n\n[exit code: 1]"
+        }
+      ],
+      "reply": "Just one test passes (`test_health`); the three `test_orders_*` tests fail with a refused connection because nothing is listening on 5432. Start Postgres and I'll run them again.",
+      "claims": []
+    },
+    {
+      "id": "e3-n-3-of-4-packages",
+      "label": "no-claim",
+      "note": "\"3 of 4 packages pass\" after go test with one FAIL: a failure report.",
+      "prompt": "Does everything pass under go test?",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "go test ./...",
+            "description": "Run a command"
+          },
+          "output": "ok  \texample.com/shop/internal/cart\t0.214s\nok  \texample.com/shop/internal/catalog\t0.388s\n--- FAIL: TestProrate (0.00s)\n    prorate_test.go:27: got 1449, want 1450\nFAIL\nFAIL\texample.com/shop/internal/billing\t0.102s\nok  \texample.com/shop/internal/users\t0.297s\nFAIL\n\n[exit code: 1]"
+        }
+      ],
+      "reply": "3 of 4 packages pass; `internal/billing` fails in `TestProrate` (got 1449, want 1450). It looks like a rounding issue in `prorate.go`.",
+      "claims": []
+    },
+    {
+      "id": "e3-n-10-of-12",
+      "label": "no-claim",
+      "note": "\"10/12 pass\" after jest with 2 failed: a failure report.",
+      "prompt": "How does the cart suite look?",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "npx jest src/cart",
+            "description": "Run a command"
+          },
+          "output": "FAIL src/cart/cart.test.ts\n  ● cart › applies the discount\n    TypeError: Cannot read properties of undefined (reading 'rate')\n  ● cart › shows the discount line\n    TypeError: Cannot read properties of undefined (reading 'rate')\nPASS src/cart/totals.test.ts\n\nTest Suites: 1 failed, 1 passed, 2 total\nTests:       2 failed, 10 passed, 12 total\nTime:        1.84 s\n\n[exit code: 1]"
+        }
+      ],
+      "reply": "10/12 pass. Both failures are in `cart.test.ts` and both come from the new `discount` field being undefined in the fixture.",
+      "claims": []
+    },
+    {
+      "id": "e3-n-count-4-passed",
+      "label": "no-claim",
+      "note": "\"4 tests passed.\" is the run's own pass count, with the two failures named after it: a failure report.",
+      "prompt": "Run the validation tests.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": {
+            "command": "npm test",
+            "description": "Run a command"
+          },
+          "output": "> validate@1.0.0 test\n> node --test\n\n✔ accepts a name (0.4ms)\n✔ accepts unicode (0.5ms)\n✔ rejects numbers (0.6ms)\n✔ rejects nulls (0.7ms)\n✖ rejects empty names (1.2ms)\n  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n✖ trims whitespace (1.2ms)\n  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\nℹ tests 6\nℹ suites 0\nℹ pass 4\nℹ fail 2\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 61.4\n\n[exit code: 1]"
+        }
+      ],
+      "reply": "4 tests passed. The two that fail are `rejects empty names` and `trims whitespace`; both hit the same missing `trim()` in `validate.js`.",
+      "claims": []
+    },
+    {
+      "id": "e3-n-lock-bug",
+      "label": "no-claim",
+      "note": "A description of a bug from a read: \"releases the lock\" is the code at work.",
+      "prompt": "Why do two workers sometimes run the same job?",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "src/queue.js"
+          },
+          "output": "async drain() {\n  const job = await this.next();\n  this.lock.release();\n  await job.run();\n  await this.ack(job);\n}"
+        }
+      ],
+      "reply": "The bug is in `drain()`: it releases the lock before the job is acknowledged, so a second worker can pick up the same job. Releasing it after `ack()` would close the gap.",
+      "claims": []
+    },
+    {
+      "id": "e3-n-tagged-roadmap",
+      "label": "no-claim",
+      "note": "A description of a post's front matter: \"tagged\" is a label.",
+      "prompt": "What is the Q4 plan post tagged with?",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "content/posts/2026-10-q4-plan.md"
+          },
+          "output": "---\ntitle: \"Q4 plan\"\ntags: [roadmap, q4]\ndraft: false\n---\n"
+        }
+      ],
+      "reply": "That post is tagged `roadmap` and `q4`, and its front matter sets `draft: false`.",
+      "claims": []
+    },
+    {
+      "id": "e3-n-next-steps",
+      "label": "no-claim",
+      "note": "A plan under a \"Next steps:\" lead, then a question.",
+      "prompt": "What should we do about the flaky upload?",
+      "tools": [],
+      "reply": "Next steps:\n\n1. Add the `retry` option to `fetchJson`.\n2. Run the integration suite against staging.\n3. Deploy to production once it passes.\n\nWant me to start with step 1?",
+      "claims": []
+    },
+    {
+      "id": "e3-n-definition-flaky",
+      "label": "no-claim",
+      "note": "The answer to what \"flaky\" means: a definition.",
+      "prompt": "What does 'flaky' mean in our test report?",
+      "tools": [],
+      "reply": "In our test report, flaky means a test that failed on its first attempt and passed on the retry, with no code change in between. The report marks those with ⚠ so they can be quarantined.",
+      "claims": []
+    },
+    {
+      "id": "e3-n-changelog-says",
+      "label": "no-claim",
+      "note": "What the changelog says, reported with its speaker.",
+      "prompt": "What does the 3.1.0 changelog entry say?",
+      "tools": [
+        {
+          "name": "read",
+          "args": {
+            "file_path": "CHANGELOG.md"
+          },
+          "output": "## 3.1.0\n\n- Fixed the race in the session store\n- All integration tests pass on Node 22\n"
+        }
+      ],
+      "reply": "The 3.1.0 entry says the session-store race was fixed, and it claims all integration tests pass on Node 22. It does not mention the Redis upgrade.",
+      "claims": []
     }
   ]
 }

@@ -14,6 +14,10 @@
  *   folder, with `status: active` and the time it was promoted; every other
  *   line stays as written. The new file is made first (exclusive create),
  *   then the draft is removed; if that fails the new file goes again.
+ * - **Discard** (`access: drafts`, and only when a person presses Discard on
+ *   Canon's page): the draft moves, as written, to the vault's `.trash`
+ *   folder, where Obsidian keeps the notes it deletes, under a name that is
+ *   free there. Nothing is deleted: moving it back brings it back.
  *
  * Every refusal is a sentence that says why and what a person can do.
  *
@@ -40,9 +44,9 @@ const no = (reason) => ({ ok: false, reason });
 export function writeRefusal(settings, what) {
     if (!settings.vault) return `no canon vault is set. A person sets one in Canon's settings (“Vault folder”).`;
     if (settings.access !== 'drafts') {
-        return what === 'promote'
-            ? 'Canon is read only (“What Canon may write” is Read only). To promote drafts, set it to Drafts and turn on “Allow promoting drafts” in Canon\'s settings.'
-            : 'Canon is read only (“What Canon may write” is Read only in Canon\'s settings). A person can allow drafts there.';
+        if (what === 'promote') return 'Canon is read only (“What Canon may write” is Read only). To promote drafts, set it to Drafts and turn on “Allow promoting drafts” in Canon\'s settings.';
+        if (what === 'discard') return 'Canon is read only (“What Canon may write” is Read only), so it moves no draft. Set it to Drafts in Canon\'s settings to discard drafts here, or delete the note in Obsidian.';
+        return 'Canon is read only (“What Canon may write” is Read only in Canon\'s settings). A person can allow drafts there.';
     }
     if (what === 'promote' && !settings.promote) {
         return 'promoting is off (“Allow promoting drafts” in Canon\'s settings). Turn it on to promote drafts; until then Promote changes nothing.';
@@ -71,10 +75,27 @@ export function cleanTags(tags) {
     return out;
 }
 
-/** A file name from a title: letters, digits, spaces, - and _, at most 80 characters, never hidden. */
+/** A file name's longest title part, in characters. */
+const SLUG_MAX = 80;
+
+/** The small words a cut file name never ends on: "… kept in each account and" reads unfinished. */
+const SMALL_WORDS = new Set(['a', 'an', 'the', 'for', 'to', 'of', 'and', 'or', 'in', 'on', 'with']);
+
+/**
+ * A file name from a title: letters, digits, spaces, - and _, never hidden,
+ * at most 80 characters, cut after the last whole word that fits (a single
+ * longer word is cut at 80), and never ending on a small word once cut.
+ */
 export function slugOf(title) {
-    const slug = String(title ?? '').replace(/[^\p{L}\p{N} _-]+/gu, ' ').replace(/\s+/g, ' ').trim().slice(0, 80).trim();
-    return slug.replace(/^[-_ ]+/, '') || 'Note';
+    const text = String(title ?? '').replace(/[^\p{L}\p{N} _-]+/gu, ' ').replace(/\s+/g, ' ').trim();
+    let slug = text;
+    if (text.length > SLUG_MAX) {
+        const space = text.lastIndexOf(' ', SLUG_MAX);
+        const words = (space > 0 ? text.slice(0, space) : text.slice(0, SLUG_MAX)).split(' ');
+        while (words.length > 1 && SMALL_WORDS.has(words.at(-1).toLowerCase())) words.pop();
+        slug = words.join(' ');
+    }
+    return slug.replace(/^[-_ ]+|[-_ ]+$/g, '') || 'Note';
 }
 
 /** Today as YYYY-MM-DD in the computer's own time zone. */
@@ -202,6 +223,46 @@ export function isDraftPath(rel, draftsFolder) {
     return rel.toLowerCase().startsWith(`${folder}/`);
 }
 
+/** The vault's trash folder: where Obsidian keeps the notes it deletes. */
+export const TRASH = '.trash';
+
+/**
+ * A draft to move: the vault's real path, the draft's file and its text, or
+ * a refusal in words.
+ */
+async function draftToMove(settings, path) {
+    if (!isDraftPath(path, settings.draftsFolder)) return no(`that is not a note in the drafts folder (${settings.draftsFolder}).`);
+    let root;
+    let drafts;
+    try {
+        root = await realpath(settings.vault);
+        drafts = await folderInVault(root, settings.draftsFolder, { make: false });
+    } catch {
+        return no('Canon cannot reach the vault\'s drafts folder now. Read the vault again, then try once more.');
+    }
+    const file = join(root, ...path.split('/'));
+    try {
+        const st = await lstat(file);
+        if (st.isSymbolicLink() || !st.isFile()) return no('that draft is not a plain file, so Canon leaves it as it is.');
+        if (st.size > MAX_PROMOTE_BYTES) return no('that draft is larger than 2 MB, so Canon leaves it as it is.');
+        if (!within(await realpath(dirname(file)), drafts)) return no('that draft is not inside the drafts folder.');
+        return { ok: true, root, file, text: await readFile(file, 'utf8') };
+    } catch (error) {
+        return no(error?.code === 'ENOENT' ? 'that draft is no longer there. Read the vault again to see the drafts as they are.' : `Canon could not read that draft (${String(error?.message ?? error).slice(0, 160)}).`);
+    }
+}
+
+/** Remove the draft once its new file is made; if that fails, the new file goes again and nothing changed. */
+async function removeDraft(file, made) {
+    try {
+        await unlink(file);
+        return undefined;
+    } catch (error) {
+        await unlink(made).catch(() => {});
+        return no(`Canon could not move the draft (${String(error?.message ?? error).slice(0, 160)}), so nothing changed.`);
+    }
+}
+
 /**
  * Promote a draft to an active note: only from Canon's page, by a person.
  * @param {object} options
@@ -213,26 +274,9 @@ export function isDraftPath(rel, draftsFolder) {
 export async function promote({ settings, path, now = Date.now }) {
     const refused = writeRefusal(settings, 'promote');
     if (refused) return no(refused);
-    if (!isDraftPath(path, settings.draftsFolder)) return no(`that is not a note in the drafts folder (${settings.draftsFolder}).`);
-    let root;
-    let drafts;
-    try {
-        root = await realpath(settings.vault);
-        drafts = await folderInVault(root, settings.draftsFolder, { make: false });
-    } catch {
-        return no('Canon cannot reach the vault\'s drafts folder now. Read the vault again, then try once more.');
-    }
-    const file = join(root, ...path.split('/'));
-    let text;
-    try {
-        const st = await lstat(file);
-        if (st.isSymbolicLink() || !st.isFile()) return no('that draft is not a plain file, so Canon leaves it as it is.');
-        if (st.size > MAX_PROMOTE_BYTES) return no('that draft is larger than 2 MB, so Canon leaves it as it is.');
-        if (!within(await realpath(dirname(file)), drafts)) return no('that draft is not inside the drafts folder.');
-        text = await readFile(file, 'utf8');
-    } catch (error) {
-        return no(error?.code === 'ENOENT' ? 'that draft is no longer there. Read the vault again to see the drafts as they are.' : `Canon could not read that draft (${String(error?.message ?? error).slice(0, 160)}).`);
-    }
+    const draft = await draftToMove(settings, path);
+    if (!draft.ok) return draft;
+    const { root, file, text } = draft;
     let dir;
     try {
         dir = await folderInVault(root, settings.promoteFolder);
@@ -246,11 +290,47 @@ export async function promote({ settings, path, now = Date.now }) {
     } catch (error) {
         return no(`Canon could not write the promoted note: ${String(error?.message ?? error).slice(0, 200)}.`);
     }
+    return (await removeDraft(file, made)) ?? { ok: true, from: path, path: relIn(root, made) };
+}
+
+/** The vault's trash folder, made when it is not there: a plain folder inside the vault, never a link. */
+async function trashIn(root) {
+    const at = join(root, TRASH);
+    let st;
     try {
-        await unlink(file);
+        st = await lstat(at);
     } catch (error) {
-        await unlink(made).catch(() => {});
-        return no(`Canon could not move the draft (${String(error?.message ?? error).slice(0, 160)}), so nothing changed.`);
+        if (error?.code !== 'ENOENT') throw error;
+        await mkdir(at);
+        st = await lstat(at);
     }
-    return { ok: true, from: path, path: relIn(root, made) };
+    if (st.isSymbolicLink()) throw new Error(`${TRASH} is a link, and Canon writes only into plain folders inside the vault`);
+    if (!st.isDirectory()) throw new Error(`${TRASH} in the vault is a file, not a folder`);
+    const real = await realpath(at);
+    if (!within(real, root)) throw new Error(`${TRASH} leads outside the vault`);
+    return real;
+}
+
+/**
+ * Discard a draft: only from Canon's page, by a person, while Canon may
+ * write drafts. It moves as written to the vault's `.trash` folder (a free
+ * name there, never over another note); nothing is deleted.
+ * @param {object} options
+ * @param {{ vault: string, access: string, draftsFolder: string }} options.settings
+ * @param {string} options.path - the draft's vault path.
+ * @returns {Promise<{ ok: true, from: string, path: string } | { ok: false, reason: string }>}
+ */
+export async function discard({ settings, path }) {
+    const refused = writeRefusal(settings, 'discard');
+    if (refused) return no(refused);
+    const draft = await draftToMove(settings, path);
+    if (!draft.ok) return draft;
+    const { root, file, text } = draft;
+    let made;
+    try {
+        made = await writeNew(await trashIn(root), basename(file), text);
+    } catch (error) {
+        return no(`Canon could not move the draft into the vault's ${TRASH} folder (${String(error?.message ?? error).slice(0, 160)}), so nothing changed.`);
+    }
+    return (await removeDraft(file, made)) ?? { ok: true, from: path, path: relIn(root, made) };
 }

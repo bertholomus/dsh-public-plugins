@@ -89,6 +89,12 @@ const BRIEF_CANT = 'The brief can\'t allow any of these; only the user\'s words 
 
 const HOME_NOTE = ' (the user\'s home folder: put new files in a new subfolder, and never move or delete anything you did not create)';
 
+/** A time of day as the user reads it: "2:59 PM". */
+function clockOf(iso) {
+    const at = new Date(iso);
+    return Number.isNaN(at.getTime()) ? 'an unknown time' : at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+
 /** One roster line per thread for the coordinator. */
 export function rosterLines(threads, liveStatus) {
     const rows = Object.entries(threads ?? {})
@@ -109,7 +115,11 @@ export function rosterLines(threads, liveStatus) {
             : '';
         // Said first, so it is never read as the thread's own stop: it stays stopped until the user resumes it.
         const lead = ended && t.lastEnding.text === STOPPED_BY_USER ? ' · stopped by the user (they can resume it)' : '';
-        return `- ${id} · "${t.title}" · ${status}${lead}${last}${direct}${ended && !lead ? ended : ''}${asked}${changed ? ` · ${changed}` : ''}`;
+        // How the user answered its last prompt, until it hands back after that (round-1 finding 5).
+        const answer = !t.resolved && t.lastAnswer?.at && typeof t.lastAnswer.what === 'string' && !(t.lastHandback && t.lastHandback.at > t.lastAnswer.at)
+            ? ` · the user ${t.lastAnswer.outcome === 'declined' ? 'declined' : 'allowed'} ${clip(t.lastAnswer.what, 240)} at ${clockOf(t.lastAnswer.at)}${t.lastAnswer.outcome === 'declined' ? ' (it was told to hand back needs_decision)' : ''}`
+            : '';
+        return `- ${id} · "${t.title}" · ${status}${lead}${last}${direct}${answer}${ended && !lead ? ended : ''}${asked}${changed ? ` · ${changed}` : ''}`;
     });
 }
 
@@ -237,7 +247,23 @@ const LEAD = {
 };
 
 /** How the closing notes of the plugin's messages begin (old ones: "(For the user" and "(Full conversation"). */
-export const NOTE_START = /\n\n\((?:The user has not seen this|For the user|Full conversation|Tell the user|If its last reply|Sent by the chat|Sent by the coordinator of)\b[^\n]*\)\s*$/;
+export const NOTE_START = /\n\n\((?:The user has not seen this|For the user|Full conversation|Tell the user|If its last reply|Sent by the chat|Sent by the coordinator of|DSH closed before you answered this)\b[^\n]*\)\s*$/;
+
+/** What opens the closing note of a message the plugin sends a chat again (againMessage). */
+export const AGAIN_NOTE = 'DSH closed before you answered this, so the plugin sends it again, once.';
+
+/**
+ * One of the plugin's messages to a chat, sent again because DSH closed (a
+ * quit or a crash) while the chat's turn was taking it: the same message,
+ * its closing note opened by AGAIN_NOTE, so the chat answers it now and the
+ * user's notice and the thread's card read it as before.
+ */
+export function againMessage(text) {
+    const s = String(text ?? '');
+    const m = NOTE_START.exec(s);
+    if (m && !s.slice(m.index + 3).startsWith(AGAIN_NOTE)) return `${s.slice(0, m.index)}\n\n(${AGAIN_NOTE} ${s.slice(m.index + 3)}`;
+    return m ? s : `${s}\n\n(${AGAIN_NOTE})`;
+}
 
 /**
  * What a thread reads as the result of a call the user rejected at DSH's

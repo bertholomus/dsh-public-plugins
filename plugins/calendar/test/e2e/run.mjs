@@ -13,9 +13,10 @@
  *   store, never into the plugin's files or log), and refuse what they
  *   should, with messages for the user;
  * - with a CalDAV server (Radicale, when RADICALE_VENV points at a
- *   virtualenv that has it), a CalDAV account is added: its password goes
- *   to DSH's credential store, never into the plugin's files or log, and
- *   removing the account removes it there too;
+ *   virtualenv that has it, else the stand-in in test/standins/caldav.mjs),
+ *   a CalDAV account is added: its password goes to DSH's credential store,
+ *   never into the plugin's files or log, and removing the account removes
+ *   it there too;
  * - agents' calendar tools, under each of DSH's permissions: Full access
  *   changes calendars without asking, Read Only reads but can't change
  *   them, Workspace Write asks the user first (allowed, the change is made;
@@ -25,7 +26,20 @@
  *   refused before anyone is asked;
  * - with the CalDAV server, a delete decided on an event that changed on
  *   the server meanwhile stops and says so;
- * - a restart keeps the calendars and their events.
+ * - a restart keeps the calendars and their events;
+ * - wrong values in the profile (a number in quotes, "yes" for a switch, an
+ *   unknown time zone or agentChanges) leave the plugin running, each named
+ *   in words for the window and in the log, with the safe choice meanwhile:
+ *   no calendar tools for chats, every chat's change asking first;
+ * - its files are in the DSH's own home (DSH_HOME), never in the home's own
+ *   DSH folder;
+ * - switched off (enabled: false), nothing syncs or is written, chats get
+ *   no tools, and the window's calls say so in words ('calendar/off');
+ *   switched on again, its accounts, calendars and events are as they were,
+ *   nothing is made a second time, and chats have the tools again;
+ * - then the window (ui.mjs) on the same DSH, in Chromium, its checks counted
+ *   with these: PLAYWRIGHT_MODULE, else the suite's .e2e/tools copy of
+ *   playwright-core; CALENDAR_UI=0 leaves it out.
  *
  *   DSH_BIN=/path/to/node_modules/@deepseek-ai/dsh/lib/bin.js node plugins/calendar/test/e2e/run.mjs
  *
@@ -36,10 +50,11 @@ import { execFileSync, spawn } from 'node:child_process';
 import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { createServer, request } from 'node:http';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { zstdDecompressSync } from 'node:zlib';
+import { start as startCalDavStandIn } from '../standins/caldav.mjs';
 import { startFakeModel } from './fake-model.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -480,12 +495,13 @@ try {
     r = await api('exportCalendar', { id: personal.id });
     check('a calendar exports as iCalendar', r.ok && /BEGIN:VCALENDAR/.test(r.value?.ics ?? '') && r.value.events === 3, JSON.stringify(r).slice(0, 300));
 
-    // CalDAV: the password lives in DSH's credential store only.
+    // CalDAV, against Radicale when it is installed, else the stand-in server: the password lives in DSH's credential store only.
     const python = findRadicale();
     let caldavAccount;
-    if (python) {
+    {
         const password = `pw-${randomUUID()}`;
-        radicale = await startRadicale(python, 'alice', password);
+        radicale = python ? await startRadicale(python, 'alice', password) : await startCalDavStandIn({ user: 'alice', password });
+        console.log(`# the CalDAV account: ${python ? 'Radicale' : 'the stand-in CalDAV server (test/standins/caldav.mjs; RADICALE_VENV for Radicale)'}`);
         r = await api('addAccount', { input: { kind: 'caldav', url: radicale.base, username: 'alice', password, preset: 'other', name: 'Home server', allowHttp: true } });
         caldavAccount = r.value?.account;
         check('a CalDAV account is added', r.ok && caldavAccount?.kind === 'caldav', JSON.stringify(r));
@@ -515,8 +531,6 @@ try {
         check('and nowhere in the plugin\'s files or log', leaks.length === 0, leaks.join(', '));
         r = await api('removeAccount', { id: caldavAccount?.id });
         check('removing the account removes its password', r.ok && !readText(credentialsFile).includes(password), JSON.stringify(r));
-    } else {
-        console.log('# skipped the CalDAV account: set RADICALE_VENV to a virtualenv with radicale installed');
     }
 
     // Agents' tools, on Full access.
@@ -571,25 +585,36 @@ try {
     const prompts = await approvalsOf(asking);
     const titleNow = async () => (await webApi(asking, 'dsh-plugin-calendar/search', { query: 'haircut' })).value?.occurrences?.[0]?.title;
     try {
-        const ofRename = (from) => (q) => q.toolName === 'calendar_update_event' && String(q.reason ?? '').includes(`Change “${from}” (2026-10-16 17:00, Personal): title?`);
+        // The question says what the change does, in words: the event as it is, and the new title or time.
+        const when = 'Fri, Oct 16(?:, 2026)?, 5:00 – 5:45 PM';
+        const asks = (pattern) => (q) => q.toolName === 'calendar_update_event' && new RegExp(pattern).test(String(q.reason ?? ''));
+        const ofRename = (from, to) => asks(`Rename “${from}” \\(${when}, Personal\\) to “${to}”\\?$`);
         let pending = agentCall('calendar_update_event', { id: haircut?.id ?? 'missing', title: 'Haircut at 5' });
-        let prompt = await prompts.next('the rename prompt', ofRename('Haircut')).catch(() => undefined);
+        let prompt = await prompts.next('the rename prompt', ofRename('Haircut', 'Haircut at 5')).catch(() => undefined);
         const allowed = prompt ? await prompts.answer(prompt, 'allowed-once') : undefined;
         call = await pending;
         check('allowed, the change is made', allowed?.ok === true && /^TOOL-RESULT: Changed:/.test(call.result) && await titleNow() === 'Haircut at 5',
             `${JSON.stringify(prompt?.request)} ${JSON.stringify(allowed)} ${call.result}`);
         pending = agentCall('calendar_update_event', { id: haircut?.id ?? 'missing', title: 'Haircut, cancelled' });
-        prompt = await prompts.next('the second rename prompt', ofRename('Haircut at 5')).catch(() => undefined);
+        prompt = await prompts.next('the second rename prompt', ofRename('Haircut at 5', 'Haircut, cancelled')).catch(() => undefined);
         const rejected = prompt ? await prompts.answer(prompt, 'rejected') : undefined;
         call = await pending;
         check('rejected, it isn\'t, and the model hears so', rejected?.ok === true && !/^TOOL-RESULT: Changed:/.test(call.result) && await titleNow() === 'Haircut at 5',
             `${JSON.stringify(rejected)} ${call.result}`);
+        // A new time: from when to when, on the user's clock.
+        pending = agentCall('calendar_update_event', { id: haircut?.id ?? 'missing', start: '2026-10-16T18:00' });
+        prompt = await prompts.next('the move prompt', asks(`Move “Haircut at 5” \\(Personal\\) from ${when} to 6:00 – 6:45 PM\\?$`)).catch(() => undefined);
+        const notMoved = prompt ? await prompts.answer(prompt, 'rejected') : undefined;
+        call = await pending;
+        const startNow = (await webApi(asking, 'dsh-plugin-calendar/search', { query: 'haircut' })).value?.occurrences?.[0]?.startLocal;
+        check('a new time asks from when to when (Fri, Oct 16, 5:00 – 5:45 PM to 6:00 – 6:45 PM); rejected, it stays', prompt !== undefined && notMoved?.ok === true && startNow === '2026-10-16T17:00',
+            `${JSON.stringify(prompt?.request ?? prompt)} ${startNow}`);
     } finally {
         prompts.close();
     }
     await stopDsh(child);
     const reason = sessionEvents(askingSession).find((e) => e.type === 'approval/asked')?.data?.reason ?? '';
-    check('the question says what would change', reason === 'Calendar: Delete “Haircut” (2026-10-16 17:00, Personal)?', reason);
+    check('the question says what would change', /^Calendar: Delete “Haircut” \(Fri, Oct 16(?:, 2026)?, 5:00 – 5:45 PM, Personal\)\?$/.test(reason), reason);
 
     // 4. agentChanges: off, even on Full access; and the restart kept everything.
     writeProfile(model.port, { agentChanges: 'off' });
@@ -603,6 +628,70 @@ try {
     r = await webApi(web2, 'dsh-plugin-calendar/state', {});
     check('with the subscription', r.ok && r.value?.accounts?.some((a) => a.id === feedAccount?.id), JSON.stringify(r.value?.accounts));
     check('no event text in the log', !/Dentist|Standup|Haircut|Main Street|Plumber|Team offsite|Party|ann@example/.test(readText(logFile)), readText(logFile).slice(-800));
+    await stopDsh(child);
+
+    // 5. Wrong values in the profile never stop the plugin: each is named in words, and the safe choice holds meanwhile.
+    writeProfile(model.port, { syncMinutes: '30', tools: 'yes', timeZone: 'Mars/Phobos' });
+    child = await boot(dsh, 'danger-full-access', 'wrong settings');
+    const web3 = await signInWeb();
+    r = await waitFor(async () => { const s = await webApi(web3, 'dsh-plugin-calendar/state', {}); return s.ok ? s : null; }, 'the calendar with wrong settings', 30000).catch((e) => ({ ok: false, error: String(e) }));
+    const wrongKeys = (r.value?.settingsProblems ?? []).map((p) => p.key).sort();
+    const toolsWords = r.value?.settingsProblems?.find((p) => p.key === 'tools')?.text ?? '';
+    check('a number in quotes, "yes" for a switch and an unknown time zone leave the plugin running, each named in words for the window',
+        r.ok && wrongKeys.join() === 'syncMinutes,timeZone,tools' && /tools must be true or false \(it is "yes"\); chats get no calendar tools until it's fixed/.test(toolsWords)
+        && r.value.calendars?.some((c) => c.id === personal.id) && r.value.zone !== 'Mars/Phobos', JSON.stringify(r.value?.settingsProblems ?? r));
+    r = await webApi(web3, 'dsh-plugin-calendar/events', { from, to });
+    check('and the calendar still shows its events', r.ok && r.value?.occurrences?.length === 5, JSON.stringify(r).slice(0, 300));
+    call = await agentCall('calendar_events', { from: '2026-10-12', to: '2026-10-18' });
+    check('while tools is wrong, chats get no calendar tools (the safe choice)', call.offered.length > 0 && !call.offered.some((t) => t.startsWith('calendar_')), call.offered.join(', '));
+    check('each wrong setting is in the log, by name only', /setting wrong tools/.test(readText(logFile)) && /setting wrong syncMinutes/.test(readText(logFile)) && !readText(logFile).includes('Mars/Phobos'),
+        readText(logFile).slice(-400));
+    await stopDsh(child);
+    writeProfile(model.port, { agentChanges: 'sometimes' });
+    child = await boot(dsh, 'danger-full-access', 'unknown agentChanges');
+    call = await agentCall('calendar_create_event', { title: 'Unasked', start: '2026-10-17T10:00' });
+    const unasked = (await webApi(await signInWeb(), 'dsh-plugin-calendar/search', { query: 'unasked' })).value?.occurrences ?? [];
+    const beforeOff = (await webApi(await signInWeb(), 'dsh-plugin-calendar/state', {})).value;
+    check('an unknown agentChanges asks before every change: on Full access, which can\'t ask, a change is refused, saying why', /can't ask \(its approval prompts are off\)/.test(call.result)
+        && unasked.length === 0 && /policy calendar_create_event access=danger-full-access deny/.test(readText(logFile)), call.result);
+    // The store followed this DSH's home: nothing of this run is in the home's own DSH folder (the feed's calendar id is this run's own).
+    const runOwn = feedCalendar?.id ?? 'missing';
+    check('the plugin keeps its files in this DSH\'s home (DSH_HOME), not in the home\'s own DSH folder', existsSync(join(calendarDir, 'events', `${runOwn}.json`))
+        && !existsSync(join(homedir(), '.dsh', 'calendar', 'events', `${runOwn}.json`)), runOwn);
+
+    // 6. Switched off (enabled: false): nothing syncs, nothing is written, chats get no tools, and the window's calls say so.
+    await stopDsh(child);
+    writeProfile(model.port, { enabled: false });
+    const logBefore = readText(logFile);
+    const storeBefore = statSync(storeFile).mtimeMs;
+    child = await boot(dsh, 'danger-full-access', 'switched off');
+    const web4 = await signInWeb();
+    const off = await waitFor(async () => { const s = await webApi(web4, 'dsh-plugin-calendar/state', {}); return s.error?.code === 'calendar/off' ? s : null; },
+        'the switched-off calendar', 30000).catch(() => null);
+    const offEvents = await webApi(web4, 'dsh-plugin-calendar/events', { from, to });
+    call = await agentCall('calendar_events', { from: '2026-10-12', to: '2026-10-18' });
+    check('switched off (enabled: false), the window\'s calls say so in words, naming the setting and where it is, rather than going unanswered',
+        off?.ok === false && /^The calendar is switched off: enabled is false in its entry \(id: calendar\) in this profile's cordis\.patch\.yml\./.test(off.error?.message ?? '')
+        && offEvents.ok === false && offEvents.error?.code === 'calendar/off', JSON.stringify({ off, offEvents }).slice(0, 400));
+    check('and chats get no calendar tools, nothing syncs and the plugin writes nothing', call.offered.length > 0 && !call.offered.some((t) => t.startsWith('calendar_'))
+        && readText(logFile) === logBefore && statSync(storeFile).mtimeMs === storeBefore, call.offered.join(', '));
+
+    // 7. Switched on again: its accounts, calendars and events as they were, nothing made a second time, and the tools back.
+    await stopDsh(child);
+    writeProfile(model.port);
+    const logOff = readText(logFile);
+    child = await boot(dsh, 'danger-full-access', 'on again');
+    const web5 = await signInWeb();
+    const again = await waitFor(async () => { const s = await webApi(web5, 'dsh-plugin-calendar/state', {}); return s.ok ? s.value : null; }, 'the calendar on again', 30000).catch(() => null);
+    const againEvents = await webApi(web5, 'dsh-plugin-calendar/events', { from, to });
+    const idsOf = (list) => (list ?? []).map((x) => x.id).sort();
+    const logAgain = readText(logFile).slice(logOff.length);
+    check('switched on again, its accounts, calendars and events are as they were, and nothing is made a second time',
+        Boolean(again) && idsOf(again.accounts).join() === idsOf(beforeOff?.accounts).join() && idsOf(again.calendars).join() === idsOf(beforeOff?.calendars).join()
+        && idsOf(beforeOff?.calendars).length > 1 && againEvents.ok && againEvents.value?.occurrences?.length === 5
+        && !/ (account added|calendar added|create|import) /.test(logAgain), JSON.stringify({ accounts: idsOf(again?.accounts), calendars: idsOf(again?.calendars), log: logAgain.slice(0, 300) }));
+    call = await agentCall('calendar_events', { from: '2026-10-12', to: '2026-10-18' });
+    check('and chats get the calendar tools again', call.offered.includes('calendar_events') && /Dentist/.test(call.result), call.result.slice(0, 300));
 } catch (error) {
     failed += 1;
     console.log(`not ok - the run stopped: ${redact(error?.stack ?? error)}`);
@@ -617,5 +706,55 @@ try {
     if (sockDir !== root) rmSync(sockDir, { recursive: true, force: true });
 }
 
+// 7. The window (ui.mjs) on this same DSH, in Chromium, once this run's own DSH has stopped. CALENDAR_UI=0 leaves it out.
+await windowTest();
+
 console.log(`\n# ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exitCode = 1;
+
+/** Run the window test and count its checks with these; without Playwright it says so and counts nothing. */
+async function windowTest() {
+    if (process.env.CALENDAR_UI === '0') {
+        console.log('# the window test left out (CALENDAR_UI=0)');
+        return;
+    }
+    const shared = resolve(pluginsDir, '..', '.e2e', 'tools', 'node_modules', 'playwright-core', 'index.mjs');
+    const playwright = process.env.PLAYWRIGHT_MODULE || (existsSync(shared) ? shared : '');
+    if (!playwright) {
+        console.log('# the window test skipped: no Playwright here (set PLAYWRIGHT_MODULE to playwright-core\'s index.mjs)');
+        return;
+    }
+    console.log('\n# the window, in this DSH and Chromium (ui.mjs)');
+    const text = await new Promise((done) => {
+        const run = spawn(process.execPath, [join(here, 'ui.mjs')], { env: { ...process.env, PLAYWRIGHT_MODULE: playwright }, stdio: ['ignore', 'pipe', 'pipe'] });
+        let out = '';
+        let partial = '';
+        // Its own count is said in other words, so that the last count printed (the runner's summary) is the whole run's.
+        const say = (line) => {
+            const count = /^(\d+) passed, (\d+) failed\s*$/.exec(line);
+            process.stdout.write(`${count ? `# the window test: ${count[1]} checks passed and ${count[2]} failed` : line}\n`);
+        };
+        run.stdout.on('data', (chunk) => {
+            out += chunk;
+            const lines = (partial + chunk).split('\n');
+            partial = lines.pop();
+            for (const line of lines) say(line);
+        });
+        run.stderr.on('data', (chunk) => process.stderr.write(chunk));
+        run.on('close', () => {
+            if (partial) say(partial);
+            done(out);
+        });
+        run.on('error', (error) => done(`${out}\n${error.message}`));
+    });
+    const counts = /^(\d+) passed, (\d+) failed\s*$/m.exec(text.trim().split('\n').at(-1) ?? '');
+    if (counts) {
+        passed += Number(counts[1]);
+        failed += Number(counts[2]);
+    } else if (/^skipped/m.test(text)) {
+        console.log('# the window test skipped itself');
+    } else {
+        failed += 1;
+        console.log('not ok - the window test ran to its end');
+    }
+}

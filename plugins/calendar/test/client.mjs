@@ -618,6 +618,38 @@ test('the store asks the host\'s version and reads state again only when it move
     assert.deepEqual(plain(store.notices().map((n) => n.text)), ['Another one.']);
 });
 
+test('a choice from the settings menu shows at once, is saved, and a refusal puts back what the host has', async () => {
+    let prefs = { hideWeekends: false, weekNumbers: false };
+    let refuse = false;
+    let release;
+    const link = {
+        async call(method, args) {
+            if (method === 'state') return { ok: true, value: { version: 1, calendars: [], accounts: [], prefs } };
+            if (method === 'setPrefs') {
+                await new Promise((resolve) => { release = resolve; });
+                if (refuse) return { ok: false, error: { code: 'calendar/failed', message: 'No.' } };
+                prefs = { ...prefs, ...args.patch };
+                return { ok: true, value: { prefs } };
+            }
+            return { ok: true, value: {} };
+        },
+    };
+    const store = I.calendarStore(link);
+    await store.loadState();
+    let saving = store.choose({ weekNumbers: true });
+    assert.equal(store.state().prefs.weekNumbers, true, 'shown before the host answers');
+    release();
+    assert.equal((await saving).ok, true);
+    assert.equal(store.state().prefs.weekNumbers, true, 'and kept once saved');
+    refuse = true;
+    saving = store.choose({ hideWeekends: true });
+    assert.equal(store.state().prefs.hideWeekends, true);
+    release();
+    assert.equal((await saving).ok, false);
+    assert.equal(store.state().prefs.hideWeekends, false, 'refused: what the host has');
+    assert.equal(store.state().prefs.weekNumbers, true);
+});
+
 test('what was emailed, in a sentence', () => {
     assert.equal(I.emailedText({ what: 'an update', to: ['ann@example.com', 'bob@example.com'] }), 'Emailed an update to ann@example.com and bob@example.com.');
     assert.equal(I.emailedText({ what: 'the invitation', to: ['a@x.org', 'b@x.org', 'c@x.org', 'd@x.org', 'e@x.org'] }), 'Emailed the invitation to a@x.org, b@x.org, c@x.org and 2 others.');
@@ -952,4 +984,208 @@ test('motion stops for the loading bar too, the view has its own tint, and one r
     assert.ok(css.includes('.dshcal-main.dshcal-glass{background:var(--cal-conv)}'));
     assert.equal(css.match(/\.dshcal-note\{/g).length, 1);
     assert.equal(css.match(/\.dshcal-notice\{/g).length, 1);
+});
+
+test('the look is DSH\'s (DESIGN.md): its tokens deepened for glass, its ring, its floating layers at its levels, its cards in a chat', () => {
+    const css = I.CSS;
+    const rules = css.split('}').map((rule) => rule.trim()).filter(Boolean);
+    // Every token of the plugin's own that a rule reads is set on its roots (none falls back silently).
+    // (Set on the roots in the style sheet, or on an element by the view: a calendar's own colour.)
+    const set = new Set([...css.matchAll(/(--cal-[\w-]+):/g), ...SOURCE.matchAll(/'(--cal-[\w-]+)':/g)].map((m) => m[1]));
+    const read = new Set([...css.matchAll(/var\((--cal-[\w-]+)/g)].map((m) => m[1]));
+    for (const name of read) assert.ok(set.has(name), `${name} is read but never set`);
+    // Its colours are DSH's: no colour literal for text, lines or fills in the token block, only the glass grounds' rgba.
+    const tokens = css.slice(0, css.indexOf('@media (prefers-reduced-transparency'));
+    for (const name of ['--cal-text', '--cal-meta', '--cal-faint', '--cal-soft', '--cal-accent', '--cal-link', '--cal-danger', '--cal-warn', '--cal-ok', '--cal-line', '--cal-hover']) {
+        const value = new RegExp(`${name}:([^;]+);`).exec(tokens)?.[1] ?? '';
+        assert.match(value, /^(var\(--dsw-|color-mix\(in srgb,var\(--dsw-)/, `${name} is ${value}`);
+    }
+    // Secondary text deepened toward DSH's label colour, as section 3 does, and more on thinner glass (a tint under .55).
+    assert.ok(tokens.includes('--cal-meta:color-mix(in srgb,var(--dsw-alias-label-secondary) min(55%,calc(var(--wp-tint,.55) * 100%)),var(--dsw-alias-label-primary))'));
+    assert.ok(tokens.includes('--cal-faint:color-mix(in srgb,var(--dsw-alias-label-secondary) min(65%,calc(var(--wp-tint,.55) * 118.2%)),var(--dsw-alias-label-primary))'));
+    // The side column, all small text, sits at tint + .2 as the view does, never on the plain tint.
+    assert.ok(css.includes('.dshcal-side.dshcal-glass{background:var(--cal-conv)}'));
+    // No token DSH doesn't define, and Wallpaper read only by its public values.
+    assert.ok(!/--dsh-font-mono|--dsh-color-bg-hover|--wp-(?!blur|tint)[\w-]+/.test(css));
+    assert.ok(css.includes('var(--ds-font-family-code,'));
+    // DSH's focus ring on every ring the plugin draws.
+    for (const outline of css.match(/outline:2px solid [^;}]+/g)) assert.equal(outline, 'outline:2px solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))');
+    // Glass goes near-opaque where the system asks for less transparency.
+    assert.match(css, /@media \(prefers-reduced-transparency:reduce\)\{:is\([^)]*\)\{--cal-glass:rgba\(14,18,17,\.9\);--cal-conv:rgba\(10,13,12,\.95\)\}/);
+    // Floating layers at DSH's levels: the popover with DSH's menus and hover cards (100); nothing in the page reaches it.
+    const zOf = (selector) => Number(/z-index:(\d+)/.exec(rules.find((r) => r.startsWith(selector)) ?? '')?.[1]);
+    assert.equal(zOf('.dshcal-pop{'), 100);
+    assert.equal(zOf('.dshcal-toast{'), 1100);
+    for (const rule of rules) {
+        const z = Number(/z-index:(\d+)/.exec(rule)?.[1] ?? 0);
+        if (!rule.startsWith('.dshcal-pop{') && !rule.startsWith('.dshcal-toast{')) assert.ok(z < 100, rule.slice(0, 80));
+    }
+    assert.match(rules.find((r) => r.startsWith('.dshcal-pop{')), /background:var\(--dsw-specific-menu\);-webkit-backdrop-filter:var\(--dsw-menu-backdrop-filter\)/);
+    // DSH's Modal and Menu as DSH draws them: no ground, blur, line or corner of the plugin's on them.
+    for (const rule of rules.filter((r) => /^\.dshcal-(dlg|menu)[.{,\s]/.test(r))) assert.ok(!/background|backdrop-filter|border|radius/.test(rule), rule);
+    // No :has() on <body> (nor anywhere it could reach DSH's list).
+    assert.ok(!css.includes('body:has('));
+    // Cards in a chat draw like DSH's own there: opaque, a .5px line, DSH's large corner, no blur.
+    for (const name of ['.dshcal-chat-card{', '.dshcal-chat-line{']) {
+        const rule = rules.find((r) => r.startsWith(name));
+        assert.match(rule, /border:\.5px solid var\(--dsw-alias-border-l4\);border-radius:var\(--dsw-radius-lg\);background:var\(--dsw-alias-bg-layer-1\)/, name);
+        assert.ok(!rule.includes('backdrop-filter'), name);
+    }
+});
+
+test('corners, type and motion are DSH\'s (DESIGN.md sections 5 and 6): its radius tokens, its ladder of sizes, its durations', () => {
+    const css = I.CSS;
+    // Every corner one of DSH's (or a circle).
+    for (const radius of css.match(/border-radius:[^;}]+/g)) assert.match(radius, /^border-radius:(var\(--dsw-radius-(xs|sm|md|lg|xl|panel)\)|50%)$/, radius);
+    // Every size a step of DSH's ladder, by its token, with the step's own value if a DSH lacks it.
+    for (const size of css.match(/font-size:[^;}]+/g)) {
+        if (size === 'font-size:.95em') continue; // a code word in a sentence, a little smaller than the sentence
+        const step = /^font-size:var\(--dsw-font-(xxxs|xxs|xs|s|base|l|xl)-(\d+)-font-size,(\d+)px\)$/.exec(size);
+        assert.ok(step && step[2] === step[3] && ['11', '12', '13', '14', '16', '20', '24'].includes(step[2]), size);
+    }
+    // The pop-in on DSH's durations and easing; nothing else moves but the spinner and the loading bar.
+    const moves = css.match(/animation:[^;}]+/g).filter((a) => !a.includes('none!important'));
+    assert.deepEqual(plain(moves.filter((a) => a.startsWith('animation:dshcal-in')).map((a) => /^animation:dshcal-in var\(--ds-transition-duration(-fast)?,\.[12]s\) var\(--ds-ease-in-out,/.test(a))), [true, true]);
+    assert.deepEqual(plain(moves.filter((a) => !a.startsWith('animation:dshcal-in')).map((a) => a.split(' ')[0])).sort(), ['animation:dshcal-slide', 'animation:dshcal-spin']);
+    assert.ok(!/transition:(?!none)/.test(css), 'no transitions of its own');
+    // An event that has ended fades without dimming its words: opacity only on its dot or bar.
+    const past = css.split('}').filter((rule) => rule.includes('[data-past]'));
+    assert.ok(past.length >= 4);
+    for (const rule of past.filter((r) => r.includes('opacity'))) assert.match(rule, /\[data-past\]>\.dshcal-(dot|pane-bar)\{opacity:[.\d]+$/, rule);
+});
+
+test('toasts are DSH\'s Toast: a done one with its green check, a failure holding longer with its warning glyph', () => {
+    const done = I.toastProps({ text: 'Saved “Lunch”.', tone: 'ok', id: 1 }, () => {});
+    assert.equal(done.text, 'Saved “Lunch”.');
+    assert.equal(done.tone, 'success');
+    assert.equal(done.holdMs, 3000);
+    assert.equal(done.icon, undefined);
+    const failed = I.toastProps({ text: 'Not changed: the server said no.', tone: 'error', id: 2 }, () => {});
+    assert.equal(failed.tone, undefined, 'no green check on a failure');
+    assert.equal(failed.holdMs, 6000);
+    assert.equal(failed.icon?.type, 'IconWarningOutlineRegular');
+    // The store's toast: one at a time, gone when DSH's Toast says it faded, a newer one kept.
+    const store = I.calendarStore({ call: async () => ({}) });
+    store.toast('First');
+    const first = store.currentToast();
+    store.toast('Second', 'error');
+    const second = store.currentToast();
+    store.clearToast(first.id);
+    assert.equal(store.currentToast()?.text, 'Second', 'a faded older toast leaves the newer one');
+    store.clearToast(second.id);
+    assert.equal(store.currentToast(), null);
+});
+
+test('a reminder in DSH\'s banner: the event, how soon, its time and calendar; Open and Join', async () => {
+    const zone = 'America/Los_Angeles';
+    const now = Date.parse('2026-10-26T16:50:00Z'); // 9:50 AM here
+    const sync = { title: 'Team sync', calendar: 'Work', allDay: false, start: Date.parse('2026-10-26T17:00:00Z'), end: Date.parse('2026-10-26T17:30:00Z') };
+    const when = I.shortWhen(sync, zone);
+    assert.equal(I.reminderText(sync, now, zone), `Team sync in 10 min · ${when}, Work`);
+    assert.equal(I.reminderText(sync, sync.start, zone), `Team sync starts now · ${when}, Work`);
+    assert.equal(I.reminderText(sync, sync.start + 3 * 60000, zone), `Team sync started 3 minutes ago · ${when}, Work`);
+    const tomorrow = { ...sync, title: 'Dentist', calendar: 'Personal', start: sync.start + 86_400_000, end: sync.end + 86_400_000 };
+    assert.equal(I.reminderText(tomorrow, now, zone), `Dentist tomorrow · ${I.shortWhen(tomorrow, zone)}, Personal`);
+    assert.equal(I.reminderText({ title: 'Holiday', calendar: 'Personal', allDay: true, startDay: '2026-10-27', lastDay: '2026-10-27' }, now, zone), 'Holiday tomorrow · All day, Personal');
+    assert.ok(I.REMINDER_STEP <= 30_000 && I.REMINDER_HOLD >= 20_000, 'asked every half minute, held long enough to read');
+    // The store asks the host, and keeps only well-formed reminders, with the host's zone.
+    const asked = [];
+    const store = I.calendarStore({
+        async call(method) {
+            asked.push(method);
+            return { ok: true, value: { zone, reminders: [{ ...sync, id: 'ev-1', reminder: { key: 'k1', minutes: 10, at: now } }, { title: 'broken' }] } };
+        },
+    });
+    const due = await store.reminders();
+    assert.deepEqual(plain(asked), ['reminders']);
+    assert.equal(due.zone, zone);
+    assert.deepEqual(plain(due.list.map((r) => r.id)), ['ev-1']);
+    const off = I.calendarStore({ async call() { return { ok: false, error: { code: 'calendar/off', message: 'off' } } } });
+    assert.deepEqual(plain((await off.reminders()).list), [], 'switched off: none, and no error');
+});
+
+test('the default calendar moved without the user choosing it (an account added) is said once; their own choice isn\'t news', async () => {
+    let value = { version: 1, defaultCalendar: 'cal-personal', calendars: [{ id: 'cal-personal', name: 'Personal' }, { id: 'cal-work', name: 'Work' }], accounts: [] };
+    const store = I.calendarStore({ async call(method) { return method === 'state' ? { ok: true, value } : { ok: true, value: {} }; } });
+    await store.loadState();
+    value = { ...value, version: 2, defaultCalendar: 'cal-work' };
+    await store.loadState();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.equal(store.currentToast()?.text, 'New events now go to “Work”. To keep them in “Personal”, choose Use for new events in its menu.');
+    store.clearToast(store.currentToast().id);
+    store.choseDefault('cal-personal');
+    value = { ...value, version: 3, defaultCalendar: 'cal-personal' };
+    await store.loadState();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    assert.equal(store.currentToast(), null, 'the user\'s own choice');
+});
+
+test('an account that couldn\'t sync: one line names it, says why and when it last synced, and offers Retry (Accounts for a sign-in)', () => {
+    const hours = (n) => Date.now() - n * 3600_000;
+    assert.equal(I.troubleWords([]), null, 'every account fine: no line');
+    const down = I.troubleWords([{ id: 'acct-1', name: 'alice', status: 'error', error: 'Couldn\'t reach dav.example.com: the connection was refused', syncedAt: hours(2) }]);
+    assert.deepEqual(plain(down), { id: 'acct-1', text: 'alice: Couldn\'t reach dav.example.com: the connection was refused. Last synced 2 hours ago.', fix: 'retry' });
+    const named = I.troubleWords([{ id: 'acct-2', name: 'Team feed', status: 'error', error: 'Team: Reading the calendar at feeds.example.com: the server answered HTTP 500.' }]);
+    assert.equal(named.text, 'Team feed: Team: Reading the calendar at feeds.example.com: the server answered HTTP 500.', 'its own stop kept; never synced: no time');
+    const signin = I.troubleWords([{ id: 'acct-3', name: 'Sam', status: 'signin' }]);
+    assert.deepEqual(plain(signin), { id: 'acct-3', text: 'Sam: it needs signing in again.', fix: 'accounts' });
+    const several = I.troubleWords([{ id: 'a', name: 'alice', status: 'error' }, { id: 'b', name: 'Team feed', status: 'error' }, { id: 'c', name: 'Sam', status: 'signin' }]);
+    assert.deepEqual(plain(several), { id: '', text: '3 accounts couldn\'t sync: alice, Team feed and Sam.', fix: 'accounts' });
+});
+
+test('wrong settings: one box, where to change them once, then a line each', () => {
+    assert.equal(I.settingsWords([]), null);
+    const one = I.settingsWords([{ key: 'syncMinutes', text: 'syncMinutes must be a number of minutes, 5 to 1440 (it is "15"); 15 is used until it\'s fixed.' }]);
+    assert.equal(one.head, 'A setting of the calendar plugin is wrong; change it in its entry (id: calendar) in this profile\'s cordis.patch.yml:');
+    assert.equal(one.lines.length, 1);
+    const five = I.settingsWords(['timeZone', 'syncMinutes', 'tools', 'agentChanges', 'askBeforeEmails'].map((key) => ({ key, text: `${key} must be …` })).concat([{ key: 1 }, null]));
+    assert.equal(five.head, '5 settings of the calendar plugin are wrong; change them in its entry (id: calendar) in this profile\'s cordis.patch.yml:');
+    assert.deepEqual(plain(five.lines.map((l) => l.key)), ['timeZone', 'syncMinutes', 'tools', 'agentChanges', 'askBeforeEmails']);
+    assert.ok(five.lines.every((l) => !l.text.includes('cordis.patch.yml')), 'where to change them is said once, in the head');
+});
+
+test('a chat\'s list or search says on its card which calendars hidden on the page it left out', () => {
+    assert.equal(I.leftOutWords({ kind: 'events', occurrences: [] }), '');
+    assert.equal(I.leftOutWords({ kind: 'events', hidden: [] }), '');
+    assert.equal(I.leftOutWords({ kind: 'events', hidden: ['Work'] }), 'Not listed: “Work”, hidden on the Calendar page.');
+    assert.equal(I.leftOutWords({ kind: 'events', query: 'board', hidden: ['Personal', 'Work'] }), 'Not searched: “Personal” and “Work”, hidden on the Calendar page.');
+    // Drawn under the card's events, and only when something was left out.
+    const lines = (node, out = []) => {
+        if (node && typeof node === 'object') {
+            if (node.props && node.props['data-calendar-chat-hidden'] !== undefined) out.push(node.children.join(''));
+            for (const child of node.children ?? []) (Array.isArray(child) ? child : [child]).forEach((c) => lines(c, out));
+        }
+        return out;
+    };
+    const o = { id: 'ev-1', title: 'Lunch with Ann', calendar: 'Personal', allDay: false, start: Date.parse('2026-10-12T19:00:00Z'), end: Date.parse('2026-10-12T20:00:00Z') };
+    const card = (view) => lines(I.ToolCard({ view: { kind: 'events', occurrences: [o], ...view }, zone: LA, cal: { openAt() {} } }));
+    assert.deepEqual(plain(card({ hidden: ['Work'] })), ['Not listed: “Work”, hidden on the Calendar page.']);
+    assert.deepEqual(plain(card({})), []);
+});
+
+test('switched off is the owner\'s choice: the store says so, forgets what it showed, and comes back by itself', async () => {
+    let off = false;
+    const value = { version: 1, defaultCalendar: 'cal-personal', calendars: [{ id: 'cal-personal', name: 'Personal' }], accounts: [] };
+    const store = I.calendarStore({
+        async call(method) {
+            if (off) return { ok: false, error: { code: 'calendar/off', message: 'The calendar is switched off: enabled is false in its entry (id: calendar) in this profile\'s cordis.patch.yml. Set it to true to use it again.' } };
+            return method === 'state' ? { ok: true, value } : { ok: true, value: { occurrences: [], more: false } };
+        },
+    });
+    await store.loadState();
+    assert.equal(store.stateOff(), false);
+    assert.ok(store.state());
+    off = true;
+    await store.loadState();
+    assert.equal(store.stateOff(), true, 'off, not a failure');
+    assert.equal(store.state(), undefined, 'what it showed goes');
+    assert.match(store.stateError(), /^The calendar is switched off: enabled is false/);
+    off = false;
+    await store.loadState();
+    assert.equal(store.stateOff(), false);
+    assert.equal(store.state()?.version, 1, 'on again by itself');
+    // A failure that isn't off stays a failure (an error with Retry on the page).
+    const broken = I.calendarStore({ async call() { return { ok: false, error: { code: 'calendar/unreachable', message: '' } }; } });
+    await broken.loadState();
+    assert.equal(broken.stateOff(), false);
 });

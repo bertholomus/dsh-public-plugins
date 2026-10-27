@@ -18,8 +18,15 @@
 import { chmodSync, existsSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { plainText } from './plain.js';
 
-/** Bump when the tables change: an index of another version is built again. */
-export const SCHEMA_VERSION = 4;
+/** Bump when the tables change: an index of another version is built again, unless `MIGRATIONS` brings it up. */
+export const SCHEMA_VERSION = 5;
+/**
+ * An index one version back, brought up to this one in place: version 4 kept at most 400 sections of a note, so
+ * every note is marked to be read again (the next walk reads them; sessions and transcripts stay as they are).
+ */
+const MIGRATIONS = Object.freeze({
+    4: "UPDATE files SET size = -1, mtime = 0, ino = 0, offset = 0, state = NULL WHERE kind = 'handoff'",
+});
 
 /** bm25 weights of the columns: title, prompt, reply, tools. */
 const WEIGHTS = [4.0, 2.0, 1.0, 0.7];
@@ -80,6 +87,12 @@ CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(title, prompt, reply, tools, t
 `;
 
 /** Escape a folder for LIKE (its subfolders: folder || '/%'). */
+/**
+ * A file read in part: a note searched in part ("Only its first 1 MB and its last 3 MB are searched …", handoffs.js's
+ * `cutWords`), or a log read on past a torn write ("Part of it could not be read …"). It is searched, so it is not one
+ * of the files Recall could not read.
+ */
+const PART = "(error LIKE 'Only its first%' OR error LIKE 'Part of it%')";
 const likePrefix = (folder) => `${folder.replace(/[\\%_]/g, (c) => `\\${c}`)}/%`;
 
 export class Store {
@@ -123,8 +136,12 @@ export class Store {
                 db.exec('PRAGMA journal_mode = WAL');
                 db.exec('PRAGMA synchronous = NORMAL');
                 const version = db.prepare('PRAGMA user_version').get()?.user_version ?? 0;
-                if (!empty && version !== SCHEMA_VERSION) throw Object.assign(new Error(`the index is version ${version}, not ${SCHEMA_VERSION}`), { stale: true });
+                if (!empty && version !== SCHEMA_VERSION && !MIGRATIONS[version]) throw Object.assign(new Error(`the index is version ${version}, not ${SCHEMA_VERSION}`), { stale: true });
                 db.exec(SCHEMA);
+                if (!empty && version !== SCHEMA_VERSION) {
+                    db.exec(MIGRATIONS[version]);
+                    this.log('info', `The index was brought up from version ${version} of Recall: its notes are read again, to keep every section.`);
+                }
                 db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
                 if (unclean && !empty) {
                     const check = db.prepare('PRAGMA quick_check').get();
@@ -350,6 +367,12 @@ export class Store {
         if (found) {
             id = found.id;
             this.sql('UPDATE docs SET seq = ?, time = ?, done = ?, ended = ?, why = ?, kind = ?, folder = ?, model = ?, label = ?, line = ? WHERE id = ?').run(...values, id);
+            // A note is read again whole when it changes: a section whose words did not change keeps its place in the
+            // search index (a log that grew at the bottom costs its new sections, not all of them).
+            if (file.kind === 'handoff') {
+                const was = this.sql('SELECT title, prompt, reply, tools FROM fts WHERE rowid = ?').get(id);
+                if (was && was.title === (file.title ?? '') && was.prompt === (row.prompt ?? '') && was.reply === (row.reply ?? '') && was.tools === (row.tools ?? '')) return id;
+            }
             this.sql('DELETE FROM fts WHERE rowid = ?').run(id);
         } else {
             id = Number(this.sql('INSERT INTO docs (seq, time, done, ended, why, kind, folder, model, label, line, file, turn) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(...values, fileId, row.turn).lastInsertRowid);
@@ -358,12 +381,16 @@ export class Store {
         return id;
     }
 
-    /** The rows of a file past its last turn (a note that got shorter). */
-    trimRows(fileId, lastTurn) {
-        for (const { id } of this.sql('SELECT id FROM docs WHERE file = ? AND turn > ?').all(fileId, lastTurn)) {
-            this.sql('DELETE FROM fts WHERE rowid = ?').run(id);
-            this.sql('DELETE FROM docs WHERE id = ?').run(id);
-        }
+    /** The ids of a file's rows but these (by turn): what a note that got shorter, or whose middle is no longer kept, takes out. */
+    rowsBut(fileId, turns) {
+        const keep = new Set(turns);
+        return this.sql('SELECT id, turn FROM docs WHERE file = ?').all(fileId).filter((r) => !keep.has(r.turn)).map((r) => r.id);
+    }
+
+    /** Take out one row and its words. */
+    dropRow(id) {
+        this.sql('DELETE FROM fts WHERE rowid = ?').run(id);
+        if (this.sql('DELETE FROM docs WHERE id = ?').run(id).changes > 0) this.taken += 1;
     }
 
     // ── Reading ───────────────────────────────────────────────────────
@@ -385,11 +412,11 @@ export class Store {
      * The best-matching rows for an FTS5 query (or the newest rows with no
      * query), at most `cap`, with their file's facts. Each row has `own`,
      * its score on its own text (below 0 when its request, reply or tools
-     * say the words; 0 when only its file's title does), and `score`, on
-     * its title too (below `own` when the title says some of them). Best
-     * first: the rows whose own text matches come first, by `own`, then the
-     * rows that match by their title alone. Newest first: by time (the
-     * engine puts the rows that say the words first).
+     * say any of the words; 0 when only its file's title does), and
+     * `score`, on its title too (below `own` when the title says some of
+     * them). Best first: by `own`. Newest first: by time. The engine asks
+     * for the rows whose own text says every word (query.js's `own`), then
+     * for those that match only with their title (`titled`).
      * @param {{ match?: string, sort?: 'best'|'newest', cap?: number, filters?: object }} q
      */
     candidates({ match = '', sort = 'best', cap = 400, filters = {} }) {
@@ -408,9 +435,16 @@ export class Store {
             FROM fts CROSS JOIN docs d ON d.id = fts.rowid WHERE fts MATCH ?${w.sql} ORDER BY ${order} LIMIT ?`).all(match, ...w.args, cap);
     }
 
+    /** The ids of the rows that match an FTS5 query with the filters, at most `cap` (no scoring: the index alone answers). */
+    ids({ match, filters = {}, cap = 20000 }) {
+        if (!match) return new Set();
+        const w = Store.where(filters);
+        return new Set(this.db.prepare(`SELECT d.id AS id FROM fts CROSS JOIN docs d ON d.id = fts.rowid WHERE fts MATCH ?${w.sql} LIMIT ?`).all(match, ...w.args, cap).map((r) => r.id));
+    }
+
     /**
      * How many rows match an FTS5 query (the engine gives query.js's `own`,
-     * so a row that matches only by its file's title is not counted), or
+     * so a row that matches only with its file's title is not counted), or
      * how many rows there are with no query, counting up to `cap` (more is
      * said as "cap+").
      */
@@ -490,6 +524,11 @@ export class Store {
         return out;
     }
 
+    /** One row's facts for its state (no text): kind, how it ended, its file. */
+    rowState(fileId, turn) {
+        return this.sql('SELECT id, file, turn, kind, done, ended, why FROM docs WHERE file = ? AND turn = ?').get(fileId, turn);
+    }
+
     /** One row in full: its text and facts. */
     doc(fileId, turn) {
         const d = this.sql('SELECT * FROM docs WHERE file = ? AND turn = ?').get(fileId, turn);
@@ -511,20 +550,24 @@ export class Store {
         return { folders, models, kinds };
     }
 
-    /** Counts for the page. */
+    /**
+     * Counts for the page: `turns` counts every row, `sections` the note sections among them; `problems` the files
+     * it could not read, `partial` those read in part (searched up to a cap, or past a torn write).
+     */
     totals() {
         const docs = this.sql('SELECT count(*) AS n, max(time) AS last FROM docs').get();
-        const files = this.sql("SELECT count(*) AS n, sum(CASE WHEN error != '' THEN 1 ELSE 0 END) AS problems, sum(CASE WHEN skip != '' THEN 1 ELSE 0 END) AS skipped FROM files").get();
-        return { turns: docs.n, last: docs.last ?? 0, files: files.n, problems: files.problems ?? 0, skipped: files.skipped ?? 0 };
+        const sections = this.sql("SELECT count(*) AS n FROM docs WHERE kind = 'handoff'").get();
+        const files = this.sql(`SELECT count(*) AS n, sum(CASE WHEN error != '' AND NOT ${PART} THEN 1 ELSE 0 END) AS problems, sum(CASE WHEN ${PART} THEN 1 ELSE 0 END) AS partial, sum(CASE WHEN skip != '' THEN 1 ELSE 0 END) AS skipped FROM files`).get();
+        return { turns: docs.n, sections: sections.n, last: docs.last ?? 0, files: files.n, problems: files.problems ?? 0, partial: files.partial ?? 0, skipped: files.skipped ?? 0 };
     }
 
-    /** Files that could not be read, with why: the newest first. */
+    /** Files that could not be read, or were read in part (`part`: 1), with why: the newest first. */
     problems(limit = 20) {
-        return this.sql("SELECT id, path, kind, root, error, updated FROM files WHERE error != '' ORDER BY id DESC LIMIT ?").all(limit);
+        return this.sql(`SELECT id, path, kind, root, error, updated, ${PART} AS part FROM files WHERE error != '' ORDER BY id DESC LIMIT ?`).all(limit);
     }
 
-    /** Per folder searched: files, turns, problems. */
+    /** Per folder searched: files, turns, files it could not read, files read in part. */
     rootTotals() {
-        return this.sql("SELECT root, kind, count(*) AS files, sum(turns) AS turns, sum(CASE WHEN error != '' THEN 1 ELSE 0 END) AS problems, max(updated) AS last FROM files WHERE skip = '' GROUP BY root, kind").all();
+        return this.sql(`SELECT root, kind, count(*) AS files, sum(turns) AS turns, sum(CASE WHEN error != '' AND NOT ${PART} THEN 1 ELSE 0 END) AS problems, sum(CASE WHEN ${PART} THEN 1 ELSE 0 END) AS partial, max(updated) AS last FROM files WHERE skip = '' GROUP BY root, kind`).all();
     }
 }

@@ -29,6 +29,12 @@ const files = {
 const at = { cwd: '/w', read: (path) => files[path] };
 
 const SENDS = [
+  // Round-1 probes: Perl's web clients and OpenSSL's TLS client.
+  `perl -MLWP::UserAgent -e 'LWP::UserAgent->new->post("http://x/y", {a=>1})'`,
+  `perl -MHTTP::Tiny -e 'HTTP::Tiny->new->request("POST", "http://x/y", {content=>"a"})'`,
+  `perl -MLWP::UserAgent -MHTTP::Request::Common -e '$ua=LWP::UserAgent->new; $ua->request(POST "http://x/y", [a=>1])'`,
+  'openssl s_client -connect example.com:443',
+  'printf "GET / HTTP/1.0\\r\\n\\r\\n" | openssl s_client -quiet -connect example.com:443',
   'curl -X POST http://127.0.0.1:8787/deploy',
   'curl -sS -X POST -H "Content-Type: application/json" -d \'{"a":1}\' http://127.0.0.1:8787/deploy',
   'curl -sSLXPOST http://x/y',
@@ -179,6 +185,10 @@ const SENDS = [
 ];
 
 const READS = [
+  `perl -MHTTP::Tiny -e 'print HTTP::Tiny->new->get("http://x/y")->{content}'`,
+  `perl -e 'my %h=(a=>1); delete $h{a}; print 1'`,
+  'openssl x509 -in cert.pem -noout -text',
+  'openssl rand -hex 16',
   'curl http://127.0.0.1:8787/health',
   'curl -s https://x/y | jq .',
   'curl -I https://x',
@@ -333,6 +343,8 @@ test('sends: what a send says, after "it"', () => {
     assert.equal(said('npx vercel --prod'), 'deploys (vercel)');
     assert.equal(said('aws s3 sync dist s3://site'), 'copies to S3 (aws s3 sync → site)');
     assert.equal(said('scp a.txt prod-1:/tmp/'), 'copies files to prod-1 (scp)');
+    assert.equal(said('echo | openssl s_client -connect example.com:443 -showcerts'), 'opens a raw connection to example.com:443 (openssl s_client)');
+    assert.equal(said(`perl -MLWP::UserAgent -e 'LWP::UserAgent->new->put("http://x/y")'`), 'runs code that sends a PUT (perl)');
     assert.equal(said('./deploy.sh'), 'runs ./deploy.sh, which can send a POST to 127.0.0.1:8787/deploy (curl)');
     assert.equal(said('cd sub && npm run deploy'), 'runs npm run deploy, which can make a change on Firebase (firebase deploy)');
     assert.equal(said('make -C m'), 'runs make all, which can run ./deploy.sh, which can copy files to host (rsync)');

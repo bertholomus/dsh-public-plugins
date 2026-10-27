@@ -182,13 +182,16 @@ export const isActive = (data) => {
 };
 
 const HEADING = /^(#{1,6})[ \t]+(.+?)[ \t#]*$/;
+/** A term a list defines, in bold before a colon or a dash ("- **Standby**: the copy of a database…"). */
+const DEFINED = /^\s*(?:[-*+]|\d+[.)])\s+\*\*([^*\n]{1,80}?)\*\*\s*(?::|—|–|\s-\s)/;
 const INLINE_TAG = /(?:^|[\s(])#([\p{L}\p{N}_/-]*[\p{L}_/-][\p{L}\p{N}_/-]*)/gu;
 const FENCE = /^\s*(```|~~~)/;
 
-/** The body's headings and inline #tags, outside code. */
+/** The body's headings, the terms its lists define and its inline #tags, outside code. */
 export function bodyMarks(body) {
     const headings = [];
     const tags = [];
+    const defined = [];
     let fenced = false;
     for (const line of String(body ?? '').split('\n')) {
         if (FENCE.test(line)) {
@@ -201,20 +204,22 @@ export function bodyMarks(body) {
             headings.push({ level: h[1].length, text: h[2].trim() });
             continue;
         }
+        const d = DEFINED.exec(line);
+        if (d) defined.push(d[1].trim());
         if (line.includes('#')) for (const m of line.replace(/`[^`]*`/g, '').matchAll(INLINE_TAG)) tags.push(m[1]);
     }
-    return { headings, tags };
+    return { headings, tags, defined };
 }
 
 /**
  * What Canon keeps of a note: title, tags, aliases, project names, headings,
- * status, and the body for its terms.
+ * the terms its lists define, status, and the body for its terms.
  * @param {string} path - the note's path in the vault (`a/b/Note.md`).
  * @param {string} text - the note.
  */
 export function noteOf(path, text) {
     const { data, body } = parseNote(text);
-    const { headings, tags: inline } = bodyMarks(body);
+    const { headings, tags: inline, defined } = bodyMarks(body);
     const file = String(path).split('/').at(-1).replace(/\.md$/i, '');
     const titled = field(data, 'title');
     const h1 = headings.find((h) => h.level === 1)?.text;
@@ -222,7 +227,7 @@ export function noteOf(path, text) {
     const tags = [...new Set([...listOf(field(data, 'tags', 'tag')), ...inline].map((t) => t.toLowerCase()))].slice(0, 50);
     const aliases = listOf(field(data, 'aliases', 'alias'), { split: false });
     const projects = [...listOf(field(data, 'project', 'projects')), ...listOf(field(data, 'repo', 'repos'))].map(nameKey).filter(Boolean);
-    return { path, title, tags, aliases, projects, headings: headings.map((h) => h.text), status: statusOf(data), active: isActive(data), data, body };
+    return { path, title, tags, aliases, projects, headings: headings.map((h) => h.text), defined: defined.slice(0, 50), status: statusOf(data), active: isActive(data), data, body };
 }
 
 // ── Writing ─────────────────────────────────────────────────────────

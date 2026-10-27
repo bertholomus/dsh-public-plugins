@@ -43,6 +43,14 @@ export function pasteSwitch(text) {
 }
 
 /**
+ * A message as it is typed in: no control key goes in as part of it
+ * (Ctrl-C, Ctrl-D, Escape, a C1 code), only tabs and line breaks stay.
+ */
+export function plainMessage(text) {
+    return String(text ?? '').replace(/\r\n?/g, '\n').replace(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/g, '');
+}
+
+/**
  * What to send for a message: bracketed paste when the program asked for
  * it (its lines stay one message), else the text typed as keys with its
  * line breaks as spaces (a line break would send it early).
@@ -51,7 +59,7 @@ export function pasteSwitch(text) {
  * @returns {{ data: string, paste: boolean, flattened: boolean }}
  */
 export function messageKeys(text, paste) {
-    const body = String(text ?? '').replace(/\r\n?/g, '\n').replace(/\x1b/g, '');
+    const body = plainMessage(text);
     const multiline = body.includes('\n');
     // Unknown: a one-line message is safe as keys anywhere; more lines need a paste to stay one message.
     const usePaste = paste ?? multiline;

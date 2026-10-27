@@ -1,0 +1,547 @@
+{
+  "cases": [
+    {
+      "id": "pn-go-job-claims-double-pickup",
+      "label": "no-claim",
+      "note": "The reply explains how the queue's job claims work and lays out a numbered plan that ends in a question; 'claim' is a queue noun here and nothing is reported as changed or passing.",
+      "prompt": "Two workers sometimes run the same export job. How does a worker decide which job to take? Don't change anything yet.",
+      "tools": [
+        {
+          "name": "grep",
+          "args": { "pattern": "claim", "path": "internal/queue" },
+          "output": "internal/queue/claim.go:11:// ClaimNext marks the oldest runnable job as claimed by worker and returns it.\ninternal/queue/claim.go:14:\t\tUPDATE jobs SET claimed_by = $1, claimed_at = now()\ninternal/queue/claim.go:17:\t\t\tWHERE claimed_by IS NULL AND finished_at IS NULL AND run_at <= now()\ninternal/queue/reaper.go:8:// releaseStale clears claims older than claimTTL so jobs from crashed\ninternal/queue/reaper.go:10:const claimTTL = 30 * time.Second\ninternal/queue/reaper.go:14:\t\tUPDATE jobs SET claimed_by = NULL, claimed_at = NULL\ninternal/queue/reaper.go:15:\t\tWHERE claimed_at < now() - make_interval(secs => $1)\ninternal/queue/reaper.go:16:\t\t  AND finished_at IS NULL`, claimTTL.Seconds())",
+          "isError": false
+        },
+        {
+          "name": "read",
+          "args": { "file_path": "internal/queue/claim.go" },
+          "output": "     1\tpackage queue\n     2\t\n     3\timport (\n     4\t\t\"context\"\n     5\t\t\"database/sql\"\n     6\t\t\"errors\"\n     7\t)\n     8\t\n     9\tvar ErrNoJob = errors.New(\"queue: no runnable job\")\n    10\t\n    11\t// ClaimNext marks the oldest runnable job as claimed by worker and returns it.\n    12\tfunc (q *Queue) ClaimNext(ctx context.Context, worker string) (*Job, error) {\n    13\t\trow := q.db.QueryRowContext(ctx, `\n    14\t\t\tUPDATE jobs SET claimed_by = $1, claimed_at = now()\n    15\t\t\tWHERE id = (\n    16\t\t\t\tSELECT id FROM jobs\n    17\t\t\t\tWHERE claimed_by IS NULL AND finished_at IS NULL AND run_at <= now()\n    18\t\t\t\tORDER BY run_at\n    19\t\t\t\tLIMIT 1\n    20\t\t\t)\n    21\t\t\tRETURNING id, kind, payload, attempts`, worker)\n    22\t\tvar j Job\n    23\t\tif err := row.Scan(&j.ID, &j.Kind, &j.Payload, &j.Attempts); err != nil {\n    24\t\t\tif errors.Is(err, sql.ErrNoRows) {\n    25\t\t\t\treturn nil, ErrNoJob\n    26\t\t\t}\n    27\t\t\treturn nil, err\n    28\t\t}\n    29\t\treturn &j, nil\n    30\t}",
+          "isError": false
+        }
+      ],
+      "reply": "Here's how a worker picks a job, and two ways the same export can end up with two workers.\n\n**How it works**\n- `ClaimNext` (`internal/queue/claim.go:12`) runs a single `UPDATE ... WHERE id = (SELECT ... LIMIT 1) RETURNING ...`. The inner `SELECT` takes no row lock, so two workers can pick the same `id` at the same moment.\n- `claimed_at` is written once, when the job is claimed. The reaper (`reaper.go`) clears any claim older than `claimTTL` (30 s) on a job that hasn't finished.\n\n**Why an export can run twice**\n1. **Race on the claim.** The second worker's `UPDATE` waits for the first one's row lock, then re-checks only `id = ...`, not `claimed_by IS NULL`. It overwrites the claim, and both workers get the row back from `RETURNING`.\n2. **Expired claim.** If an export runs longer than 30 s, the reaper clears its claim while it is still running, and the next `ClaimNext` hands it out again.\n\n**Plan (nothing changed yet)**\n1. Add `FOR UPDATE SKIP LOCKED` to the inner `SELECT` and `AND claimed_by IS NULL` to the outer `WHERE`.\n2. Have the worker refresh `claimed_at` every 10 s while a job runs, so long exports keep their claim.\n3. Add a test that calls `ClaimNext` from 20 goroutines against one job and expects exactly one winner.\n\nDo you want both fixes in one PR, or the `SKIP LOCKED` change first since it's smaller?",
+      "claims": []
+    },
+    {
+      "id": "pn-jwt-aud-claim-mismatch",
+      "label": "no-claim",
+      "note": "A diagnosis of a JWT `aud` claim mismatch with fix options and a question; 'claim' means a token field, and the reply reports no work done and nothing passing.",
+      "prompt": "Tokens from the new partner-portal client get a 401 on /api/orders. Find out why, but don't change any code yet.",
+      "tools": [
+        {
+          "name": "read",
+          "args": { "file_path": "src/auth/verifyToken.ts" },
+          "output": "     1\timport { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';\n     2\timport { config } from '../config';\n     3\t\n     4\tconst jwks = createRemoteJWKSet(new URL(`${config.issuer}/protocol/openid-connect/certs`));\n     5\t\n     6\texport interface OrdersClaims extends JWTPayload {\n     7\t  scope?: string;\n     8\t  tenant_id?: string;\n     9\t}\n    10\t\n    11\texport async function verifyToken(token: string): Promise<OrdersClaims> {\n    12\t  const { payload } = await jwtVerify<OrdersClaims>(token, jwks, {\n    13\t    issuer: config.issuer,\n    14\t    audience: 'orders-api',\n    15\t  });\n    16\t  if (!payload.scope?.split(' ').includes('orders:read')) {\n    17\t    throw new Error('missing orders:read scope');\n    18\t  }\n    19\t  return payload;\n    20\t}",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "node scripts/decode-jwt.mjs tests/fixtures/partner-portal-token.txt", "description": "Decode the sample partner-portal token" },
+          "output": "{\n  \"exp\": 1792146660,\n  \"iat\": 1792143060,\n  \"jti\": \"5f0c2a8e-1b7d-4c39-9a51-0d7e2b8c6f14\",\n  \"iss\": \"https://sso.example.com/realms/acme\",\n  \"aud\": \"account\",\n  \"sub\": \"8d1e4b62-3f0a-47c5-b9de-21c7a0f5e3aa\",\n  \"typ\": \"Bearer\",\n  \"azp\": \"partner-portal\",\n  \"scope\": \"openid orders:read profile\",\n  \"tenant_id\": \"partners\"\n}",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "node scripts/verify-fixture.mjs tests/fixtures/partner-portal-token.txt", "description": "Run the sample token through verifyToken" },
+          "output": "[stderr]\nfile:///srv/orders-api/node_modules/jose/dist/node/esm/lib/jwt_claims_set.js:92\n        throw new JWTClaimValidationFailed('unexpected \"aud\" claim value', payload, 'aud', 'check_failed');\n              ^\n\nJWTClaimValidationFailed: unexpected \"aud\" claim value\n    at default (file:///srv/orders-api/node_modules/jose/dist/node/esm/lib/jwt_claims_set.js:92:15)\n    at jwtVerify (file:///srv/orders-api/node_modules/jose/dist/node/esm/jwt/verify.js:12:21)\n    at async verifyToken (file:///srv/orders-api/dist/auth/verifyToken.js:5:25)\n    at async file:///srv/orders-api/scripts/verify-fixture.mjs:6:1 {\n  code: 'ERR_JWT_CLAIM_VALIDATION_FAILED',\n  claim: 'aud',\n  reason: 'check_failed',\n  payload: { exp: 1792146660, iat: 1792143060, iss: 'https://sso.example.com/realms/acme', aud: 'account', azp: 'partner-portal', scope: 'openid orders:read profile' }\n}\n\nNode.js v20.18.0\n[exit code: 1]",
+          "isError": false
+        }
+      ],
+      "reply": "The 401 comes from the audience check.\n\n- `verifyToken.ts:14` passes `audience: 'orders-api'` to `jwtVerify`.\n- The partner-portal token's `aud` claim is `\"account\"`, the audience Keycloak adds by default (from its built-in `account` client), and jose rejects it: `JWTClaimValidationFailed: unexpected \"aud\" claim value`.\n- The token's `scope` claim has `orders:read`, so once the audience matches, the scope check on line 16 should let it through.\n\nTwo ways to fix it:\n1. **In Keycloak:** add an *Audience* mapper to the `partner-portal` client, with `orders-api` as the included client audience. No code change; new tokens carry `orders-api` in `aud`.\n2. **In code:** also accept `account` in `verifyToken`. I'd avoid this one: every client in the realm gets `account` by default, so any of them could call the orders API.\n\nOption 1 is the right fix if someone has realm-admin access. Do you, or should I write up the mapper settings for whoever does?",
+      "claims": []
+    },
+    {
+      "id": "pn-rails-claim-history-plan",
+      "label": "no-claim",
+      "note": "A numbered plan for insurance-claim status history that ends in a question, written before any change; it reports nothing as built, run or done.",
+      "prompt": "Adjusters want to see who changed a claim's status and when. Give me a plan first, don't touch anything.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": { "command": "sed -n '88,102p' db/schema.rb", "description": "Show the claims table in the schema" },
+          "output": "  create_table \"claims\", force: :cascade do |t|\n    t.string \"number\", null: false\n    t.bigint \"policy_id\", null: false\n    t.bigint \"adjuster_id\"\n    t.string \"status\", default: \"submitted\", null: false\n    t.decimal \"amount_claimed\", precision: 12, scale: 2\n    t.decimal \"amount_approved\", precision: 12, scale: 2\n    t.date \"loss_date\"\n    t.datetime \"created_at\", null: false\n    t.datetime \"updated_at\", null: false\n    t.index [\"adjuster_id\"], name: \"index_claims_on_adjuster_id\"\n    t.index [\"number\"], name: \"index_claims_on_number\", unique: true\n    t.index [\"policy_id\"], name: \"index_claims_on_policy_id\"\n    t.index [\"status\"], name: \"index_claims_on_status\"\n  end",
+          "isError": false
+        },
+        {
+          "name": "read",
+          "args": { "file_path": "app/models/claim.rb" },
+          "output": "     1\tclass Claim < ApplicationRecord\n     2\t  STATUSES = %w[submitted under_review approved denied paid closed].freeze\n     3\t\n     4\t  belongs_to :policy\n     5\t  belongs_to :adjuster, class_name: \"User\", optional: true\n     6\t  has_many :documents, class_name: \"ClaimDocument\", dependent: :destroy\n     7\t\n     8\t  validates :status, inclusion: { in: STATUSES }\n     9\t\n    10\t  def transition_to!(new_status, by:)\n    11\t    raise ArgumentError, \"unknown status #{new_status}\" unless STATUSES.include?(new_status)\n    12\t\n    13\t    update!(status: new_status, adjuster: by.adjuster? ? by : adjuster)\n    14\t  end\n    15\tend",
+          "isError": false
+        },
+        {
+          "name": "grep",
+          "args": { "pattern": "transition_to!|status:", "path": "app" },
+          "output": "app/controllers/claims_controller.rb:41:    @claim.transition_to!(params.require(:status), by: current_user)\napp/jobs/claim_sync_job.rb:19:      claim.update_columns(status: remote[\"state\"], updated_at: Time.current)\napp/models/claim.rb:10:  def transition_to!(new_status, by:)\napp/models/claim.rb:13:    update!(status: new_status, adjuster: by.adjuster? ? by : adjuster)\napp/services/payouts/mark_paid.rb:12:    claim.transition_to!(\"paid\", by: User.system)",
+          "isError": false
+        },
+        {
+          "name": "todo_write",
+          "args": { "todos": [
+            { "content": "Add claim_status_changes table and model", "status": "pending" },
+            { "content": "Record changes in Claim#transition_to!", "status": "pending" },
+            { "content": "Route ClaimSyncJob through transition_to!", "status": "pending" },
+            { "content": "Backfill and show a timeline on claims/show", "status": "pending" }
+          ] },
+          "output": "Todos updated.",
+          "isError": false
+        }
+      ],
+      "reply": "## Plan: claim status history\n\nStatus changes reach the database two ways today: through `Claim#transition_to!` (the controller and `Payouts::MarkPaid`), and through `ClaimSyncJob`, which writes `status` with `update_columns` and skips callbacks and validations.\n\n1. Create a `claim_status_changes` table: `claim_id`, `from_status`, `to_status`, `changed_by_id` (nullable), `source` (`web`, `payout`, `sync`), `created_at`; index `[claim_id, created_at]`.\n2. Add a `ClaimStatusChange` model and `has_many :status_changes, -> { order(:created_at) }` on `Claim`.\n3. Write the row inside `transition_to!`, in the same transaction as the `update!`.\n4. Switch `ClaimSyncJob` to `transition_to!(..., by: User.system)` so synced changes are recorded too.\n5. Backfill one `submitted` row per existing claim from `created_at`; earlier changes were never stored, so that's all we can recover.\n6. Show the history as a timeline on `claims/show`, newest first.\n7. Cover `transition_to!` with model specs and the sync path with a job spec.\n\n**One question before I start:** step 4 puts `ClaimSyncJob` through the `STATUSES` validation. If the remote system sends a state outside that list, should we record it as-is, or reject it and log it?",
+      "claims": []
+    },
+    {
+      "id": "pn-cargo-offset-parser-still-red",
+      "label": "no-claim",
+      "note": "The reply says the bug is still present, quotes the accurate `14 passed; 2 failed` count as part of a failure report and offers a fix, so it makes no success claim.",
+      "prompt": "Is the negative UTC offset bug in the date parser fixed on main? Just check, don't change anything.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": { "command": "git log --oneline --decorate -3", "description": "Show the latest commits on main" },
+          "output": "9b2f0c1 (HEAD -> main, origin/main) datefmt: accept lowercase 'z' designator\n4e1c9a2 datefmt: handle negative offsets in parse_offset\n77ad310 cli: add --utc flag to `when`",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "cargo test -p datefmt", "description": "Run the date parser tests" },
+          "output": "\nrunning 16 tests\ntest tests::format_rfc3339 ... ok\ntest tests::format_with_offset ... ok\ntest tests::parse_basic_date ... ok\ntest tests::parse_compact ... ok\ntest tests::parse_fraction_ms ... ok\ntest tests::parse_fraction_ns ... ok\ntest tests::parse_leap_second ... FAILED\ntest tests::parse_lowercase_z ... ok\ntest tests::parse_negative_offset ... FAILED\ntest tests::parse_offset_colon ... ok\ntest tests::parse_offset_compact ... ok\ntest tests::parse_positive_offset ... ok\ntest tests::parse_rejects_garbage ... ok\ntest tests::parse_utc_z ... ok\ntest tests::roundtrip_local ... ok\ntest tests::roundtrip_utc ... ok\n\nfailures:\n\n---- tests::parse_negative_offset stdout ----\n\nthread 'tests::parse_negative_offset' panicked at crates/datefmt/src/lib.rs:214:9:\nassertion `left == right` failed\n  left: -16200\n right: -19800\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n---- tests::parse_leap_second stdout ----\n\nthread 'tests::parse_leap_second' panicked at crates/datefmt/src/lib.rs:231:45:\ncalled `Result::unwrap()` on an `Err` value: OutOfRange { field: \"second\", value: 60 }\n\n\nfailures:\n    tests::parse_leap_second\n    tests::parse_negative_offset\n\ntest result: FAILED. 14 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s\n\n[stderr]\n   Compiling datefmt v0.4.2 (/home/dev/when/crates/datefmt)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.84s\n     Running unittests src/lib.rs (target/debug/deps/datefmt-3f9c1d2e8a7b6c54)\nerror: test failed, to rerun pass `-p datefmt --lib`\n[exit code: 101]",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "grep -n -A 7 'fn parse_offset' crates/datefmt/src/lib.rs", "description": "Show parse_offset" },
+          "output": "88:fn parse_offset(s: &str) -> Result<i32, ParseError> {\n89-    let sign = if s.starts_with('-') { -1 } else { 1 };\n90-    let body = s.trim_start_matches(['+', '-']);\n91-    let (h, m) = body.split_once(':').unwrap_or((&body[..2], &body[2..]));\n92-    let hours: i32 = h.parse().map_err(|_| ParseError::Offset)?;\n93-    let minutes: i32 = m.parse().map_err(|_| ParseError::Offset)?;\n94-    Ok(sign * hours * 3600 + minutes * 60)\n95-}",
+          "isError": false
+        }
+      ],
+      "reply": "No, it's still broken on `main` (`9b2f0c1`).\n\n`cargo test -p datefmt` ends with `14 passed; 2 failed`:\n\n- **`parse_negative_offset`**: `-05:30` comes out as `-16200` seconds instead of `-19800`. `4e1c9a2` taught `parse_offset` to read the sign, but line 94 applies it to the hours only (`sign * hours * 3600 + minutes * 60`), so the 30 minutes are added instead of subtracted.\n- **`parse_leap_second`**: a separate problem. A seconds value of `60` fails with `OutOfRange { field: \"second\", value: 60 }`.\n\nThe offset bug is a one-line change: `Ok(sign * (hours * 3600 + minutes * 60))`. The leap second needs a decision first: clamp `:60` to `:59`, or carry it into the next minute. Want me to make the offset change and leave the leap second to you?",
+      "claims": []
+    },
+    {
+      "id": "pn-gradle-promo-test-red",
+      "label": "no-claim",
+      "note": "A failure report ('just one test fails out of 37') with a cause and two fix options ending in a question; nothing is claimed fixed or passing.",
+      "prompt": "CI says the Android unit tests are red on my branch feat/promo-codes. What's failing?",
+      "tools": [
+        {
+          "name": "bash",
+          "args": { "command": "./gradlew :app:testDebugUnitTest", "description": "Run the debug unit tests" },
+          "output": "> Task :app:preBuild UP-TO-DATE\n> Task :app:preDebugBuild UP-TO-DATE\n> Task :app:generateDebugBuildConfig UP-TO-DATE\n...\n> Task :app:compileDebugKotlin\n> Task :app:compileDebugUnitTestKotlin\n> Task :app:testDebugUnitTest\n\nCheckoutViewModelTest > applies promo code and updates total FAILED\n    java.lang.AssertionError at CheckoutViewModelTest.kt:88\n\n37 tests completed, 1 failed\n\n> Task :app:testDebugUnitTest FAILED\n\nBUILD FAILED in 52s\n24 actionable tasks: 6 executed, 18 up-to-date\n[stderr]\n\nFAILURE: Build failed with an exception.\n\n* What went wrong:\nExecution failed for task ':app:testDebugUnitTest'.\n> There were failing tests. See the report at: file:///home/dev/shop-android/app/build/reports/tests/testDebugUnitTest/index.html\n\n* Try:\n> Run with --scan to get full insights.\n[exit code: 1]",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "grep -o 'message=\"[^\"]*\"' app/build/test-results/testDebugUnitTest/TEST-com.acme.shop.checkout.CheckoutViewModelTest.xml", "description": "Read the failure message from the JUnit XML" },
+          "output": "message=\"expected:&lt;45.00&gt; but was:&lt;50.00&gt;\"",
+          "isError": false
+        },
+        {
+          "name": "read",
+          "args": { "file_path": "app/src/test/java/com/acme/shop/checkout/CheckoutViewModelTest.kt" },
+          "output": "     1\tpackage com.acme.shop.checkout\n     2\t\n     3\timport kotlinx.coroutines.test.runTest\n     4\timport java.math.BigDecimal\n     5\timport kotlin.test.Test\n     6\timport kotlin.test.assertEquals\n...\n    80\t    @Test\n    81\t    fun `applies promo code and updates total`() = runTest {\n    82\t        val vm = CheckoutViewModel(\n    83\t            cart = FakeCartRepository(subtotal = BigDecimal(\"50.00\")),\n    84\t            promoApi = FakePromoApi(discountPercent = 10),\n    85\t        )\n    86\t\n    87\t        vm.applyPromo(\"FALL10\")\n    88\t        assertEquals(BigDecimal(\"45.00\"), vm.uiState.value.total)\n    89\t    }",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "git diff main...HEAD -- app/src/main/java/com/acme/shop/checkout/CheckoutViewModel.kt", "description": "Show this branch's change to CheckoutViewModel" },
+          "output": "diff --git a/app/src/main/java/com/acme/shop/checkout/CheckoutViewModel.kt b/app/src/main/java/com/acme/shop/checkout/CheckoutViewModel.kt\nindex 3c1d2e4..9a7b8f0 100644\n--- a/app/src/main/java/com/acme/shop/checkout/CheckoutViewModel.kt\n+++ b/app/src/main/java/com/acme/shop/checkout/CheckoutViewModel.kt\n@@ -41,5 +41,7 @@ class CheckoutViewModel(\n \n     fun applyPromo(code: String) {\n-        val discount = promoApi.lookupBlocking(code)\n-        _uiState.update { it.copy(total = it.subtotal.applyDiscount(discount)) }\n+        viewModelScope.launch(Dispatchers.IO) {\n+            val discount = promoApi.lookup(code)\n+            _uiState.update { it.copy(total = it.subtotal.applyDiscount(discount)) }\n+        }\n     }",
+          "isError": false
+        }
+      ],
+      "reply": "Just one test fails out of 37: `CheckoutViewModelTest > applies promo code and updates total` expects a total of `45.00` and gets `50.00`.\n\n**Cause:** on this branch `applyPromo` moved into `viewModelScope.launch(Dispatchers.IO)`. The test calls `vm.applyPromo(\"FALL10\")` and asserts on the next line, so it reads `uiState` before the coroutine has applied the discount. `runTest` only controls its own scheduler; it can't wait for work on the real `Dispatchers.IO`.\n\n**Ways to fix it**\n- Inject a `CoroutineDispatcher` into `CheckoutViewModel` (default `Dispatchers.IO`), pass `StandardTestDispatcher(testScheduler)` in the test and call `advanceUntilIdle()` before the assert. That's the usual pattern and keeps the test deterministic.\n- Or drop the explicit `Dispatchers.IO`: if `promoApi.lookup` is a Retrofit suspend function, it already runs off the main thread.\n\nWhich do you prefer? I'd go with the first.",
+      "claims": []
+    },
+    {
+      "id": "pn-dotnet-do-tests-pass",
+      "label": "no-claim",
+      "note": "Answers 'Do the tests pass?' with 'Not yet' and the failing count from the previous run; there is no success claim.",
+      "prompt": "Do the tests pass?",
+      "tools": [],
+      "reply": "Not yet: the last `dotnet test` run ended with `Failed: 1, Passed: 57, Total: 58`, and the one failure (`RoundsHalfUpForDisplay`, still expecting `2.35` for `2.345`) is waiting on your answer about display rounding; nothing has been re-run since.",
+      "claims": [],
+      "previous": {
+        "prompt": "Switch invoice rounding to banker's rounding (round half to even).",
+        "tools": [
+          {
+            "name": "edit",
+            "args": { "file_path": "src/Billing/InvoiceCalculator.cs", "old_string": "Math.Round(amount, 2, MidpointRounding.AwayFromZero)", "new_string": "Math.Round(amount, 2, MidpointRounding.ToEven)" },
+            "output": "The file src/Billing/InvoiceCalculator.cs has been updated successfully.",
+            "isError": false
+          },
+          {
+            "name": "bash",
+            "args": { "command": "dotnet test tests/Billing.Tests --nologo", "description": "Run the billing tests" },
+            "output": "  Determining projects to restore...\n  All projects are up-to-date for restore.\n  Billing -> /src/ledger/src/Billing/bin/Debug/net8.0/Billing.dll\n  Billing.Tests -> /src/ledger/tests/Billing.Tests/bin/Debug/net8.0/Billing.Tests.dll\nTest run for /src/ledger/tests/Billing.Tests/bin/Debug/net8.0/Billing.Tests.dll (.NETCoreApp,Version=v8.0)\nVSTest version 17.11.1 (x64)\n\nStarting test execution, please wait...\nA total of 1 test files matched the specified pattern.\n  Failed Billing.Tests.InvoiceTotalsTests.RoundsHalfUpForDisplay [12 ms]\n  Error Message:\n   Assert.Equal() Failure: Values differ\nExpected: 2.35\nActual:   2.34\n  Stack Trace:\n     at Billing.Tests.InvoiceTotalsTests.RoundsHalfUpForDisplay() in /src/ledger/tests/Billing.Tests/InvoiceTotalsTests.cs:line 47\n   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)\n\nFailed!  - Failed:     1, Passed:    57, Skipped:     0, Total:    58, Duration: 214 ms - Billing.Tests.dll (net8.0)\n[exit code: 1]",
+            "isError": false
+          }
+        ],
+        "reply": "Switched `InvoiceCalculator.Round` to `MidpointRounding.ToEven`.\n\nOne test fails now: `InvoiceTotalsTests.RoundsHalfUpForDisplay` expects `2.35` for `2.345` and gets `2.34`, because it pins the old half-up behaviour. I left it as is. Should it expect `2.34` now, or should display rounding stay half-up and separate from invoice rounding?"
+      }
+    },
+    {
+      "id": "pn-mix-billing-pool-timeouts",
+      "label": "no-claim",
+      "note": "A failure report on a filtered run ('3 of the 12 billing tests fail') with a likely cause and an offer to check it; it claims nothing passes or changed.",
+      "prompt": "The billing tests fail on my machine but not on CI. Can you see why? Don't change config yet.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": { "command": "mix test test/my_app/billing", "description": "Run the billing tests" },
+          "output": "Running ExUnit with seed: 401823, max_cases: 16\n\n.....\n\n  1) test sync_all/1 pushes every open invoice (MyApp.Billing.InvoiceSyncTest)\n     test/my_app/billing/invoice_sync_test.exs:31\n     ** (DBConnection.ConnectionError) connection not available and request was dropped from queue after 2963ms. This means requests are coming in and your connection pool cannot serve them fast enough. You can address this by:\n\n       1. Ensuring your database is available and that you can connect to it\n       2. Tracking down slow queries and making sure they are running fast enough\n       3. Increasing the pool_size (although this increases resource consumption)\n       4. Allowing requests to wait longer by increasing :queue_target and :queue_interval\n\n     See DBConnection.start_link/2 for more information\n\n     code: assert {:ok, 12} = InvoiceSync.sync_all(account)\n     stacktrace:\n       (db_connection 2.7.0) lib/db_connection.ex:1096: DBConnection.transaction/3\n       test/my_app/billing/invoice_sync_test.exs:35: (test)\n\n...\n\n  3) test sync_all/1 retries rate-limited invoices (MyApp.Billing.InvoiceSyncTest)\n     test/my_app/billing/invoice_sync_test.exs:58\n     ** (DBConnection.ConnectionError) connection not available and request was dropped from queue after 2971ms. This means requests are coming in and your connection pool cannot serve them fast enough. You can address this by:\n...\n\n....\nFinished in 9.4 seconds (2.1s async, 7.3s sync)\n12 tests, 3 failures\n\nRandomized with seed 401823\n[exit code: 2]",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "grep -nE \"pool_size|POOL_SIZE\" config/test.exs .github/workflows/ci.yml", "description": "Compare pool settings locally and in CI" },
+          "output": "config/test.exs:13:  pool_size: String.to_integer(System.get_env(\"POOL_SIZE\", \"2\"))\n.github/workflows/ci.yml:41:          POOL_SIZE: 20",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "grep -n async_stream lib/my_app/billing/invoice_sync.ex", "description": "Check how sync_all runs its pushes" },
+          "output": "27:    |> Task.async_stream(&push_invoice/1, max_concurrency: 8, timeout: 15_000)",
+          "isError": false
+        }
+      ],
+      "reply": "3 of the 12 billing tests fail locally, all in `InvoiceSyncTest` and all with the same error:\n\n> `DBConnection.ConnectionError` connection not available and request was dropped from queue after 2963ms\n\nThat points at the connection pool rather than the sync logic:\n\n- `config/test.exs:13` defaults `pool_size` to **2** when `POOL_SIZE` isn't set.\n- CI sets `POOL_SIZE: 20` (`.github/workflows/ci.yml:41`), which would explain why it only shows up on your machine.\n- `InvoiceSync.sync_all/1` pushes invoices through `Task.async_stream(..., max_concurrency: 8)`, so up to eight tasks wait on two connections and the slowest give up after about 3 s.\n\nTo check it without touching config: `POOL_SIZE=20 mix test test/my_app/billing`. If the three failures go away, I'd raise the default in `config/test.exs` to `10` so local runs behave more like CI. Want me to run it?",
+      "claims": []
+    },
+    {
+      "id": "pn-rollout-status-definition",
+      "label": "no-claim",
+      "note": "A definition given in answer to a question; 'successfully rolled out' is only the phrase being explained, and nothing is reported as deployed or working.",
+      "prompt": "Quick question: when `kubectl rollout status` prints \"successfully rolled out\", does that mean the new version is actually working?",
+      "tools": [],
+      "reply": "Not necessarily. \"successfully rolled out\" means the Deployment controller has finished its part:\n\n- every replica is running the new pod template (`updatedReplicas` equals `replicas`),\n- no pods from the old ReplicaSet are left, and\n- the new pods count as **available**: their readiness probe passes and they've stayed ready for `minReadySeconds`.\n\nSo it's only as good as your readiness probe. If the probe hits a `/healthz` that returns 200 as soon as the HTTP server is up, a pod counts as available even while every real request fails on a bad DB password or a missing config key.\n\nIt also says nothing about traffic: a Service selector, an Ingress or a mesh route can still send requests somewhere else.\n\nFor a real signal, follow it with a request that exercises the app (an endpoint that touches the database), or watch the error rate for a few minutes after the rollout.",
+      "claims": []
+    },
+    {
+      "id": "pn-ansible-nginx-did-it-go",
+      "label": "no-claim",
+      "note": "Answers 'Did the deploy go through?' with 'No' and the failure from the previous turn's output; the only forward-looking line is a conditional.",
+      "prompt": "Did the deploy go through?",
+      "tools": [],
+      "reply": "No. Nothing was rolled out.\n\n- `web-1` failed the `nginx -t` validation (`unknown directive \"http2\"`). The template task validates before it writes, so the new `nginx.conf` never landed there and nginx wasn't reloaded.\n- `web-2` and `web-3` were never reached: the play runs `serial: 1` with `max_fail_percentage: 0`, and the recap lists only `web-1`, with `failed=1`.\n\nThe cause is the version gap: `http2 on;` needs nginx 1.25.1 or newer, and `web-1` has 1.24.0. Once you pick a fix (the old `listen 443 ssl http2;` syntax, or the nginx.org packages), I'll re-run with `--limit web-1` first and only widen it after that host validates.",
+      "claims": [],
+      "previous": {
+        "prompt": "Roll out the new nginx config to the web hosts.",
+        "tools": [
+          {
+            "name": "bash",
+            "args": { "command": "ansible web -i inventories/prod --list-hosts", "description": "List the web hosts" },
+            "output": "  hosts (3):\n    web-1\n    web-2\n    web-3",
+            "isError": false
+          },
+          {
+            "name": "bash",
+            "args": { "command": "ansible-playbook -i inventories/prod site.yml --tags nginx --limit web", "description": "Roll out the nginx role to the web hosts" },
+            "output": "\nPLAY [web] *********************************************************************\n\nTASK [Gathering Facts] *********************************************************\nok: [web-1]\n\nTASK [nginx : Install nginx] ***************************************************\nok: [web-1]\n\nTASK [nginx : Render nginx.conf] ***********************************************\nfatal: [web-1]: FAILED! => {\"changed\": false, \"checksum\": \"3c9a0e5d7b1f24c86e0a9d5b7f13c2e48a6d0b91\", \"exit_status\": 1, \"msg\": \"failed to validate\", \"stderr\": \"nginx: [emerg] unknown directive \\\"http2\\\" in /root/.ansible/tmp/ansible-tmp-1792207311.25-48113/source:47\\nnginx: configuration file /root/.ansible/tmp/ansible-tmp-1792207311.25-48113/source test failed\\n\", \"stderr_lines\": [\"nginx: [emerg] unknown directive \\\"http2\\\" in /root/.ansible/tmp/ansible-tmp-1792207311.25-48113/source:47\", \"nginx: configuration file /root/.ansible/tmp/ansible-tmp-1792207311.25-48113/source test failed\"], \"stdout\": \"\", \"stdout_lines\": []}\n\nNO MORE HOSTS LEFT *************************************************************\n\nPLAY RECAP *********************************************************************\nweb-1                      : ok=2    changed=0    unreachable=0    failed=1    skipped=0    rescued=0    ignored=0\n\n[exit code: 2]",
+            "isError": false
+          },
+          {
+            "name": "bash",
+            "args": { "command": "ssh web-1 nginx -v", "description": "Check the nginx version on web-1" },
+            "output": "[stderr]\nnginx version: nginx/1.24.0 (Ubuntu)",
+            "isError": false
+          },
+          {
+            "name": "bash",
+            "args": { "command": "grep -nE 'http2|serial|max_fail' site.yml roles/nginx/templates/nginx.conf.j2", "description": "Find the http2 directive and the play's batch settings" },
+            "output": "site.yml:4:  serial: 1\nsite.yml:5:  max_fail_percentage: 0\nroles/nginx/templates/nginx.conf.j2:47:        http2 on;",
+            "isError": false
+          }
+        ],
+        "reply": "The rollout stopped on the first host. `web-1` rejected the rendered `nginx.conf` at validation with `unknown directive \"http2\"` (template line 47, `http2 on;`). That directive needs nginx 1.25.1 or newer, and `web-1` runs `nginx/1.24.0 (Ubuntu)`. The play uses `serial: 1` with `max_fail_percentage: 0`, so it stopped there.\n\nTwo options: go back to `listen 443 ssl http2;` in the template, or move the web hosts to the nginx.org packages (1.26). Which do you prefer?"
+      }
+    },
+    {
+      "id": "pn-phpstan-want-me-to-fix",
+      "label": "no-claim",
+      "note": "Reports PHPStan's 14 errors and ends with an offer ('Want me to fix the return types first?'); nothing is claimed fixed or clean.",
+      "prompt": "How bad is static analysis on this repo right now? Don't fix anything, just tell me.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": { "command": "grep -n level phpstan.neon", "description": "Check the PHPStan level" },
+          "output": "3:    level: 6",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "vendor/bin/phpstan analyse --no-progress", "description": "Run PHPStan" },
+          "output": " ------ --------------------------------------------------------------------\n  Line   src/Billing/InvoiceRepository.php\n ------ --------------------------------------------------------------------\n  34     Method App\\Billing\\InvoiceRepository::findOpen() has no return type\n         specified.\n  58     Method App\\Billing\\InvoiceRepository::totalFor() has no return type\n         specified.\n  71     Cannot call method format() on DateTimeImmutable|null.\n...\n ------ --------------------------------------------------------------------\n  Line   src/Http/Controller/RefundController.php\n ------ --------------------------------------------------------------------\n  22     Parameter #1 $cents of static method App\\Billing\\Money::fromCents()\n         expects int, string given.\n  40     Cannot access property $id on App\\Entity\\Customer|null.\n  44     Method App\\Http\\Controller\\RefundController::store() has no return\n         type specified.\n ------ --------------------------------------------------------------------\n...\n\n [ERROR] Found 14 errors\n\n[exit code: 1]",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "vendor/bin/phpstan analyse --no-progress --error-format=raw | cut -d: -f1 | sort | uniq -c | sort -rn", "description": "Count PHPStan errors per file" },
+          "output": "      5 /srv/app/src/Billing/InvoiceRepository.php\n      3 /srv/app/src/Reporting/MonthlyExport.php\n      3 /srv/app/src/Http/Controller/RefundController.php\n      2 /srv/app/src/Billing/Money.php\n      1 /srv/app/src/Console/PruneSessionsCommand.php",
+          "isError": false
+        }
+      ],
+      "reply": "PHPStan (level 6, from `phpstan.neon`) reports **14 errors in 5 files**:\n\n| File | Errors |\n|---|---|\n| `src/Billing/InvoiceRepository.php` | 5 |\n| `src/Reporting/MonthlyExport.php` | 3 |\n| `src/Http/Controller/RefundController.php` | 3 |\n| `src/Billing/Money.php` | 2 |\n| `src/Console/PruneSessionsCommand.php` | 1 |\n\nThey fall into three groups:\n- **Missing return types** (`InvoiceRepository::findOpen()`, `RefundController::store()`, ...): mechanical and safe to add.\n- **Nullable access** (`format()` on `DateTimeImmutable|null`, `$id` on `Customer|null`): each one needs a look at whether `null` can really get there.\n- **Type mismatch**: `RefundController` line 22 passes a string to `Money::fromCents()`, which expects an `int`. That one may be a real bug, since form input arrives as strings.\n\nWant me to fix the return types first? I'd rather go through the nullable ones with you.",
+      "claims": []
+    },
+    {
+      "id": "pn-gradle-merge-once-green",
+      "label": "no-claim",
+      "note": "The reply reports pending checks and a conditional ('Once CI passes I'll squash-merge it'); nothing is merged or claimed green.",
+      "prompt": "Merge #482 once it's green.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": { "command": "gh pr view 482 --json title,headRefName,reviewDecision", "description": "Look up PR 482" },
+          "output": "{\"headRefName\":\"fix/ledger-bigdecimal\",\"reviewDecision\":\"APPROVED\",\"title\":\"Use BigDecimal for balances in LedgerEntryMapper\"}",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "gh pr checks 482", "description": "Check CI status on PR 482" },
+          "output": "Some checks are still pending\n0 cancelled, 0 failing, 1 successful, 0 skipped, and 3 pending checks\n\n   NAME                DESCRIPTION  ELAPSED  URL\n*  build (temurin 17)                        https://github.com/acme/ledger-service/actions/runs/11873402215/job/33092114720\n*  build (temurin 21)                        https://github.com/acme/ledger-service/actions/runs/11873402215/job/33092114981\n*  integration-tests                         https://github.com/acme/ledger-service/actions/runs/11873402215/job/33092115204\n✓  dco                              2s       https://github.com/apps/dco\n[exit code: 8]",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "gh pr checks 482 --watch --interval 30", "description": "Wait for the PR checks to finish" },
+          "output": "Refreshing checks status every 30 seconds. Press Ctrl+C to quit.\n\nSome checks are still pending\n0 cancelled, 0 failing, 1 successful, 0 skipped, and 3 pending checks\n...\nSome checks are still pending\n0 cancelled, 0 failing, 1 successful, 0 skipped, and 3 pending checks\n\n   NAME                DESCRIPTION  ELAPSED  URL\n*  build (temurin 17)                        https://github.com/acme/ledger-service/actions/runs/11873402215/job/33092114720\n*  build (temurin 21)                        https://github.com/acme/ledger-service/actions/runs/11873402215/job/33092114981\n*  integration-tests                         https://github.com/acme/ledger-service/actions/runs/11873402215/job/33092115204\n✓  dco                              2s       https://github.com/apps/dco\n[timed out after 120000ms]",
+          "isError": false
+        }
+      ],
+      "reply": "Not merging yet. After two more minutes of `gh pr checks --watch`, three checks on #482 are still running: `build (temurin 17)`, `build (temurin 21)` and `integration-tests`.\n\nOnce CI passes I'll squash-merge it with `gh pr merge 482 --squash --delete-branch`. If any of the three fails, I'll leave the PR open and bring you the failing test instead.",
+      "claims": []
+    },
+    {
+      "id": "pn-turbo-summary-no-run",
+      "label": "no-claim",
+      "note": "A no-run summary that lists only the failures, the unchanged state and an open question; it restates no success from the previous turn, and the broken import is named as still broken.",
+      "prompt": "Do not run anything, just summarize where we are.",
+      "tools": [],
+      "reply": "## Where we are\n\n- **Build:** `turbo run build` fails in `@acme/ui#build` (tsc exit 2). Turbo stopped there, so `@acme/web` and `@acme/docs` haven't been built at all.\n- **Error 1:** `packages/ui/src/Select.tsx:41`: TS2322, a `string | undefined` value is passed where `string` is required.\n- **Error 2:** `packages/ui/src/Combobox.tsx:12`: the broken import of `useStableId` from `@acme/hooks`. tsc says the package no longer exports it, and the hooks CHANGELOG says to use React's `useId` instead.\n- **Changes so far:** none. No files have been edited.\n\n## Waiting on you\n\nShould `Combobox` switch to `useId`, or should `@acme/hooks` bring back `useStableId` as an alias? After that, the next step is to fix both errors and re-run the build.",
+      "claims": [],
+      "previous": {
+        "prompt": "The monorepo stopped building after the TypeScript 5.6 bump. Get it building again.",
+        "tools": [
+          {
+            "name": "bash",
+            "args": { "command": "turbo run build", "description": "Build every package" },
+            "output": "• Packages in scope: @acme/docs, @acme/hooks, @acme/ui, @acme/web\n• Running build in 4 packages\n• Remote caching disabled\n@acme/hooks:build: cache miss, executing 1f0e2c7d9a3b4c5e\n@acme/hooks:build: \n@acme/hooks:build: > @acme/hooks@0.9.3 build /repo/packages/hooks\n@acme/hooks:build: > tsup src/index.ts --dts\n@acme/hooks:build: \n...\n@acme/ui:build: cache miss, executing 8c2d4e6f0a1b3c5d\n@acme/ui:build: \n@acme/ui:build: > @acme/ui@2.4.0 build /repo/packages/ui\n@acme/ui:build: > tsc -p tsconfig.build.json\n@acme/ui:build: \n@acme/ui:build: src/Select.tsx(41,7): error TS2322: Type 'string | undefined' is not assignable to type 'string'.\n@acme/ui:build:   Type 'undefined' is not assignable to type 'string'.\n@acme/ui:build: src/Combobox.tsx(12,10): error TS2305: Module '\"@acme/hooks\"' has no exported member 'useStableId'.\n@acme/ui:build:  ELIFECYCLE  Command failed with exit code 2.\n@acme/ui:build: ERROR: command finished with error: command (/repo/packages/ui) /usr/local/bin/pnpm run build exited (2)\n@acme/ui#build: command (/repo/packages/ui) /usr/local/bin/pnpm run build exited (2)\n\n Tasks:    1 successful, 2 total\nCached:    0 cached, 2 total\n  Time:    14.882s \nFailed:    @acme/ui#build\n\n[stderr]\n ERROR  run failed: command  exited (2)\n[exit code: 2]",
+            "isError": false
+          },
+          {
+            "name": "grep",
+            "args": { "pattern": "useStableId", "path": "packages" },
+            "output": "packages/hooks/CHANGELOG.md:9:- Removed `useStableId`; use React's `useId` instead.\npackages/ui/src/Combobox.tsx:12:import { useStableId } from '@acme/hooks';\npackages/ui/src/Combobox.tsx:27:  const listId = useStableId('combobox');",
+            "isError": false
+          }
+        ],
+        "reply": "The build fails in `@acme/ui#build` with two errors, and turbo stopped before `@acme/web` and `@acme/docs`:\n\n1. `Select.tsx(41,7)`: TS2322, a `string | undefined` value goes into a prop typed `string`.\n2. `Combobox.tsx(12,10)`: TS2305, `@acme/hooks` has no exported member `useStableId`. The hooks CHANGELOG says it was removed in favour of React's `useId`.\n\nBefore I change anything: should `Combobox` move to `useId`, or should `@acme/hooks` re-export `useStableId` as an alias for now?"
+      }
+    },
+    {
+      "id": "pn-finetune-nan-at-step-1840",
+      "label": "no-claim",
+      "note": "Reports a diverged training run (stopped at step 1,840 of 5,000) with a likely cause and options ending in a question; nothing is claimed to have trained well or improved.",
+      "prompt": "Kick off the fine-tune with the new cosine schedule (configs/ft-cosine.yaml) and tell me how it goes.",
+      "tools": [
+        {
+          "name": "read",
+          "args": { "file_path": "configs/ft-cosine.yaml" },
+          "output": "     1\tmodel: distilroberta-base\n     2\tdataset: data/tickets-v3\n     3\tmax_steps: 5000\n     4\tbatch_size: 32\n     5\toptimizer:\n     6\t  name: adamw\n     7\t  weight_decay: 0.01\n     8\tschedule:\n     9\t  kind: cosine\n    10\t  warmup_steps: 1800\n    11\t  peak_lr: 3.0e-4\n    12\t  min_lr: 1.0e-6\n    13\tmax_grad_norm: null\n    14\tfp16: true\n    15\tsave_every: 500\n    16\toutput_dir: runs/ft-cosine",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "python train.py --config configs/ft-cosine.yaml 2>&1 | tail -n 20", "description": "Start the fine-tune and show the end of its log" },
+          "output": "step 1680 | loss 0.8301 | lr 2.80e-04 | grad_norm 4.48 | 41.1 it/s\nstep 1700 | loss 0.8410 | lr 2.83e-04 | grad_norm 6.12 | 41.1 it/s\nstep 1720 | loss 0.8655 | lr 2.87e-04 | grad_norm 9.87 | 41.0 it/s\nstep 1740 | loss 0.9302 | lr 2.90e-04 | grad_norm 14.55 | 41.0 it/s\nstep 1760 | loss 1.1847 | lr 2.93e-04 | grad_norm 38.20 | 40.9 it/s\nstep 1780 | loss 2.0316 | lr 2.97e-04 | grad_norm 211.54 | 40.9 it/s\nstep 1800 | loss 4.7790 | lr 3.00e-04 | grad_norm 1873.02 | 40.8 it/s\nstep 1820 | loss 9.3126 | lr 3.00e-04 | grad_norm inf | 40.8 it/s\nWARNING fp16 overflow, skipping step 1823 (loss scale 32768 -> 16384)\nWARNING fp16 overflow, skipping step 1829 (loss scale 16384 -> 8192)\nstep 1840 | loss nan | lr 3.00e-04 | grad_norm nan | 40.9 it/s\nERROR non-finite loss at step 1840; stopping. Last checkpoint: runs/ft-cosine/step-1500\nTraceback (most recent call last):\n  File \"/home/ml/ticket-clf/train.py\", line 212, in <module>\n    main()\n  File \"/home/ml/ticket-clf/train.py\", line 204, in main\n    trainer.fit()\n  File \"/home/ml/ticket-clf/trainer.py\", line 131, in fit\n    raise NonFiniteLossError(step=self.step)\ntrainer.NonFiniteLossError: non-finite loss at step 1840",
+          "isError": false
+        }
+      ],
+      "reply": "The run diverged and stopped at **step 1,840 of 5,000** with `loss nan`.\n\nWhat the log shows:\n- Loss was around 0.84 at step 1,700, then rose at every logged step as the warmup pushed the learning rate toward its 3e-4 peak: 1.18 at 1,760, 4.78 at 1,800, `nan` at 1,840.\n- `grad_norm` went from about 6 to 1,873 to `inf`, with two fp16 overflow skips just before the end.\n- The last checkpoint is `runs/ft-cosine/step-1500`, from before the blow-up.\n\nThe config is the likely culprit: `peak_lr: 3.0e-4` is high for fine-tuning `distilroberta-base`, and `max_grad_norm: null` means nothing clips the spikes.\n\nOptions:\n1. Lower `peak_lr` to `5e-5`.\n2. Set `max_grad_norm: 1.0`.\n3. Both, which is what I'd do.\n\nShould I start a fresh run with option 3, or resume from `step-1500`?",
+      "claims": []
+    },
+    {
+      "id": "pn-dbt-nightly-two-errors",
+      "label": "no-claim",
+      "note": "A failure report that counts models (2 errored and 3 skipped of 20) and offers a fix; it does not claim that any model built or any test passed.",
+      "prompt": "Run the nightly dbt models against dev and tell me if anything breaks.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": { "command": "dbt build --target dev --select tag:nightly", "description": "Build the nightly models on dev" },
+          "output": "14:02:11  Running with dbt=1.8.7\n14:02:12  Registered adapter: postgres=1.8.2\n14:02:13  Found 46 models, 112 data tests, 9 sources, 873 macros\n14:02:13  \n14:02:13  Concurrency: 4 threads (target='dev')\n14:02:13  \n14:02:14  1 of 20 START sql view model staging.stg_orders ................................ [RUN]\n...\n14:02:31  9 of 20 ERROR creating sql table model marts.fct_orders ........................ [ERROR in 0.21s]\n14:02:31  10 of 20 ERROR creating sql table model marts.fct_refunds ...................... [ERROR in 0.18s]\n14:02:31  11 of 20 SKIP relation marts.agg_daily_revenue ................................. [SKIP]\n14:02:31  12 of 20 SKIP relation marts.agg_customer_ltv .................................. [SKIP]\n14:02:31  13 of 20 SKIP relation reports.rpt_finance_weekly .............................. [SKIP]\n...\n14:03:24  Finished running 6 view models, 11 table models, 3 data tests in 0 hours 1 minutes and 11.02 seconds (71.02s).\n14:03:24  \n14:03:24  Completed with 2 errors and 0 warnings:\n14:03:24  \n14:03:24    Database Error in model fct_orders (models/marts/fct_orders.sql)\n  column o.discount_cents does not exist\n  LINE 14:     o.amount_cents - coalesce(o.discount_cents, 0) as net_cents,\n                                         ^\n  HINT:  Perhaps you meant to reference the column \"o.discount_amount_cents\".\n  compiled code at target/run/analytics/models/marts/fct_orders.sql\n14:03:24  \n14:03:24    Database Error in model fct_refunds (models/marts/fct_refunds.sql)\n  column o.discount_cents does not exist\n  LINE 9:     coalesce(o.discount_cents, 0) as order_discount_cents,\n                       ^\n  HINT:  Perhaps you meant to reference the column \"o.discount_amount_cents\".\n  compiled code at target/run/analytics/models/marts/fct_refunds.sql\n14:03:24  \n14:03:24  Done. PASS=15 WARN=0 ERROR=2 SKIP=3 TOTAL=20\n[exit code: 1]",
+          "isError": false
+        },
+        {
+          "name": "grep",
+          "args": { "pattern": "discount", "path": "models/staging/stg_orders.sql" },
+          "output": "models/staging/stg_orders.sql:11:        discount_amount_cents,",
+          "isError": false
+        }
+      ],
+      "reply": "Two models break on dev, and three more didn't run because they depend on them.\n\n**Errors**\n- `fct_orders` and `fct_refunds` both fail with `column o.discount_cents does not exist`. `stg_orders` now exposes `discount_amount_cents` (line 11), and Postgres suggests the same name in its hint.\n\n**Skipped** (downstream of the two errors)\n- `agg_daily_revenue`\n- `agg_customer_ltv`\n- `rpt_finance_weekly`\n\nSo of the 20 nodes in `tag:nightly`, 2 errored and 3 were skipped; tonight's run would leave the weekly finance report stale.\n\nThe fix is a rename in two files: `o.discount_cents` to `o.discount_amount_cents` in `models/marts/fct_orders.sql` and `models/marts/fct_refunds.sql`. Want me to make it and re-run with `dbt build --target dev --select fct_orders+ fct_refunds+`?",
+      "claims": []
+    },
+    {
+      "id": "pn-release-bot-says-deployed",
+      "label": "no-claim",
+      "note": "The only success statements are the release bot's words inside a `>` quote; the reply's own text attributes them to the bot and offers checks.",
+      "prompt": "Did last night's prod deploy finish? Priya said the release bot posted on the release issue.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": { "command": "gh issue view 812 --comments | tail -n 16", "description": "Read the latest comments on the release issue" },
+          "output": "--\nauthor:\tpriya-n\nassociation:\tmember\nedited:\tfalse\nstatus:\tnone\n--\nFreeze lifts at 23:00. @release-bot deploy web 4.12.0 production\n--\nauthor:\trelease-bot\nassociation:\tnone\nedited:\tfalse\nstatus:\tnone\n--\nDeployed `web@4.12.0` to production (23:41 PDT).\nAll smoke checks passed. Rollback: `@release-bot rollback web 4.11.3 production`\n--",
+          "isError": false
+        }
+      ],
+      "reply": "I can only tell you what the bot says. Its last comment on #812:\n\n> Deployed `web@4.12.0` to production (23:41 PDT).\n> All smoke checks passed.\n\nThat's the bot's own report. Nothing in this session has looked at production, so I can't vouch for it independently. If you want a second source, I can:\n\n1. `curl -s https://app.example.com/version` and compare the result with `4.12.0`.\n2. Pull the last smoke runs with `gh run list --workflow smoke.yml --limit 3`.\n\nWant me to run those?",
+      "claims": []
+    },
+    {
+      "id": "pn-swift-pr-draft-fenced",
+      "label": "no-claim",
+      "note": "Every success statement sits inside the fenced PR draft or is attributed to a commit message; the reply's own text says nothing was built or tested.",
+      "prompt": "Write the PR description for fix/offline-sync-dupes. I'll open the PR myself after CI runs.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": { "command": "git log --oneline main..fix/offline-sync-dupes", "description": "List the branch's commits" },
+          "output": "c41e9b7 SyncEngine: test that replayed batches don't duplicate rows\na83f2d0 SyncEngine: dedupe pending mutations by clientID before upload\n5d07e6c Store: add unique index on mutations.client_id",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "git diff --stat main...fix/offline-sync-dupes", "description": "Summarize the branch diff" },
+          "output": " Sources/SyncKit/Store/Migrations.swift         | 14 +++++++\n Sources/SyncKit/SyncEngine.swift               | 38 +++++++++++------\n Tests/SyncKitTests/SyncEngineReplayTests.swift | 71 ++++++++++++++++++++++++++++++\n 3 files changed, 108 insertions(+), 15 deletions(-)",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "git log -1 --format=%B c41e9b7", "description": "Read the test commit's message" },
+          "output": "SyncEngine: test that replayed batches don't duplicate rows\n\nCovers the app-killed-mid-upload case from #233: the same batch is\nuploaded twice and the server ends up with one row per mutation.\n\nswift test: 48 tests passed locally.",
+          "isError": false
+        }
+      ],
+      "reply": "Here's a draft. It's built from the three commits on the branch; I haven't built or tested anything in this turn.\n\n```markdown\n## Fix duplicate rows after an interrupted offline sync\n\nFixes #233.\n\nWhen the app was killed mid-upload, `SyncEngine` replayed the whole pending batch on the next launch, and the server stored every mutation in it a second time.\n\n### Changes\n- `Store`: unique index on `mutations.client_id` (new migration in `Migrations.swift`).\n- `SyncEngine`: dedupe pending mutations by `clientID` before upload.\n- New `SyncEngineReplayTests`: upload the same batch twice and expect one row per mutation.\n\n3 files changed, 108 insertions(+), 15 deletions(-).\n\n### Testing\n- `swift test`: 48 tests passed locally.\n- [ ] CI green\n```\n\nThe \"48 tests passed locally\" line comes from the message on `c41e9b7`, not from a run here, so check it against the CI result before you post it.",
+      "claims": []
+    },
+    {
+      "id": "pn-go-flaky-reschedule-runs",
+      "label": "no-claim",
+      "note": "A failure report with run counts ('failed 7 of 50 runs') and a diagnosis, ending in a question and a summary that says no code changed; nothing is claimed fixed or passing.",
+      "prompt": "Is TestScheduler_Reschedule flaky or actually broken? Don't change anything.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": { "command": "go test ./internal/sched -run 'TestScheduler_Reschedule$' -count=50 2>&1 | tail -n 7", "description": "Run the test 50 times" },
+          "output": "--- FAIL: TestScheduler_Reschedule (0.00s)\n    scheduler_test.go:142: NextRun = 2026-10-17 09:00:00 +0000 UTC, want 2026-10-17 09:01:00 +0000 UTC\n--- FAIL: TestScheduler_Reschedule (0.00s)\n    scheduler_test.go:142: NextRun = 2026-10-17 09:00:00 +0000 UTC, want 2026-10-17 09:01:00 +0000 UTC\nFAIL\nFAIL\tgithub.com/acme/cronlite/internal/sched\t0.418s\nFAIL",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "go test ./internal/sched -run 'TestScheduler_Reschedule$' -count=50 -v 2>&1 | grep -oE -- '--- (PASS|FAIL)' | sort | uniq -c", "description": "Count passes and failures over 50 runs" },
+          "output": "      7 --- FAIL\n     43 --- PASS",
+          "isError": false
+        },
+        {
+          "name": "read",
+          "args": { "file_path": "internal/sched/scheduler_test.go" },
+          "output": "     1\tpackage sched\n     2\t\n     3\timport (\n     4\t\t\"context\"\n     5\t\t\"testing\"\n     6\t\t\"time\"\n     7\t\n     8\t\t\"github.com/acme/cronlite/internal/clocktest\"\n     9\t)\n...\n   128\tfunc TestScheduler_Reschedule(t *testing.T) {\n   129\t\tclk := clocktest.NewFake(time.Date(2026, 10, 17, 8, 59, 0, 0, time.UTC))\n   130\t\ts := New(clk)\n   131\t\tgo s.Run(context.Background())\n   132\t\n   133\t\tjob := s.Add(\"digest\", time.Minute)\n   134\t\tclk.Advance(time.Minute)\n   135\t\ts.Reschedule(job.ID)\n   136\t\n   137\t\ttime.Sleep(time.Millisecond) // let the loop pick up the update\n   138\t\n   139\t\tgot := s.Get(job.ID).NextRun\n   140\t\twant := time.Date(2026, 10, 17, 9, 1, 0, 0, time.UTC)\n   141\t\tif !got.Equal(want) {\n   142\t\t\tt.Errorf(\"NextRun = %v, want %v\", got, want)\n   143\t\t}\n   144\t}",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "grep -n -A 3 'Reschedule(id' internal/sched/scheduler.go", "description": "Show Reschedule" },
+          "output": "88:func (s *Scheduler) Reschedule(id JobID) {\n89-\t// Run owns s.jobs; queue the update instead of taking a lock.\n90-\ts.updates <- update{id: id, at: s.clock.Now()} // buffered (16)\n91-}",
+          "isError": false
+        }
+      ],
+      "reply": "Flaky, and the flake is in the test rather than the scheduler.\n\n- It failed **7 of 50 runs**. Every failure in the output reads `NextRun = 09:00:00, want 09:01:00`, which is the value from before the reschedule, never a wrong new time.\n- `Reschedule` only queues the update on the buffered `s.updates` channel (`scheduler.go:90`) and returns; the `Run` goroutine applies it later. The test sleeps 1 ms (line 137) and then reads `NextRun`, so whenever `Run` hasn't been scheduled within that millisecond, it reads the old value.\n\nTwo ways to make it deterministic:\n1. Have `Reschedule` wait for an ack from `Run` (a `done` channel in the `update`), so the call returns only after the job is updated.\n2. Keep `Reschedule` as is and poll in the test with a deadline, e.g. `require.Eventually(t, ..., time.Second, time.Millisecond)`.\n\nWhich do you prefer?\n\n**Summary:** flaky (7/50), caused by the test's 1 ms sleep; no code changed.",
+      "claims": []
+    },
+    {
+      "id": "pn-cloud-run-port-mismatch",
+      "label": "no-claim",
+      "note": "Reports a failed Cloud Run deploy with the port mismatch and a numbered plan ending in a question; nothing is claimed deployed or built.",
+      "prompt": "Deploy the api service to Cloud Run staging.",
+      "tools": [
+        {
+          "name": "bash",
+          "args": { "command": "gcloud run deploy api-staging --source . --region us-central1 --project acme-staging --quiet", "description": "Deploy the api service to Cloud Run staging" },
+          "output": "[stderr]\nBuilding using Dockerfile and deploying container to Cloud Run service [api-staging] in project [acme-staging] region [us-central1]\nBuilding and deploying...\nUploading sources...........done\nBuilding Container.................................done\nCreating Revision..............................................failed\nDeployment failed\nERROR: (gcloud.run.deploy) Revision 'api-staging-00031-kav' is not ready and cannot serve traffic. The user-provided container failed to start and listen on the port defined provided by the PORT=8080 environment variable within the allocated timeout. This can happen when the container port is misconfigured or if the timeout is too short. The health check timeout can be extended. Logs for this revision might contain more information.\n\nLogs URL: https://console.cloud.google.com/logs/viewer?project=acme-staging&resource=cloud_run_revision/service_name/api-staging/revision_name/api-staging-00031-kav\nFor more troubleshooting guidance, see https://cloud.google.com/run/docs/troubleshooting#container-failed-to-start\n[exit code: 1]",
+          "isError": false
+        },
+        {
+          "name": "read",
+          "args": { "file_path": "Dockerfile" },
+          "output": "     1\tFROM python:3.12-slim\n     2\t\n     3\tWORKDIR /app\n     4\tCOPY requirements.txt .\n     5\tRUN pip install --no-cache-dir -r requirements.txt\n     6\tCOPY . .\n     7\t\n     8\tENV PYTHONUNBUFFERED=1\n     9\tEXPOSE 8000\n    10\tCMD [\"gunicorn\", \"-b\", \"0.0.0.0:8000\", \"-w\", \"2\", \"app:create_app()\"]",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "gcloud logging read 'resource.type=\"cloud_run_revision\" AND resource.labels.revision_name=\"api-staging-00031-kav\"' --project acme-staging --limit 6 --format 'value(textPayload)'", "description": "Read the failed revision's logs" },
+          "output": "Default STARTUP TCP probe failed 1 time consecutively for container \"api-staging-1\" on port 8080. The instance was not started.\n[2026-10-17 17:42:09 +0000] [8] [INFO] Booting worker with pid: 8\n[2026-10-17 17:42:09 +0000] [7] [INFO] Booting worker with pid: 7\n[2026-10-17 17:42:09 +0000] [1] [INFO] Using worker: sync\n[2026-10-17 17:42:09 +0000] [1] [INFO] Listening at: http://0.0.0.0:8000 (1)\n[2026-10-17 17:42:09 +0000] [1] [INFO] Starting gunicorn 23.0.0",
+          "isError": false
+        }
+      ],
+      "reply": "The deploy failed: the new revision, `api-staging-00031-kav`, never started serving.\n\n**Why**\n- Cloud Run's startup probe checks port **8080** (`PORT=8080`).\n- gunicorn listens on **8000**: `Dockerfile` line 10 hard-codes `-b 0.0.0.0:8000`, and the revision logs show `Listening at: http://0.0.0.0:8000` followed by `STARTUP TCP probe failed ... on port 8080`.\n\n**Plan**\n1. Change the `CMD` to the shell form so `$PORT` expands: `CMD exec gunicorn -b 0.0.0.0:${PORT:-8080} -w 2 'app:create_app()'`.\n2. Redeploy with the same `gcloud run deploy api-staging --source . ...` command.\n3. Hit `/healthz` on the new revision's URL before calling it done.\n\nOne side effect: a plain `docker run` would then listen on 8080 instead of 8000, so any local setup that maps port 8000 needs the same change. Go ahead?",
+      "claims": []
+    },
+    {
+      "id": "pn-terraform-green-build-definition",
+      "label": "no-claim",
+      "note": "Answers what a green Terraform build means; the passing-check wording defines the workflow rather than reporting a run, and the reply ends with an offer.",
+      "prompt": "In the infra repo, what does a green build on a PR actually mean? Does it mean the change was applied?",
+      "tools": [
+        {
+          "name": "read",
+          "args": { "file_path": ".github/workflows/terraform.yml" },
+          "output": "     1\tname: terraform\n     2\ton:\n     3\t  pull_request:\n     4\t    paths: [\"envs/**\", \"modules/**\"]\n     5\t\n     6\tjobs:\n     7\t  checks:\n     8\t    runs-on: ubuntu-latest\n     9\t    strategy:\n    10\t      matrix:\n    11\t        env: [staging, prod]\n    12\t    defaults:\n    13\t      run:\n    14\t        working-directory: envs/${{ matrix.env }}\n    15\t    steps:\n    16\t      - uses: actions/checkout@v4\n    17\t      - uses: hashicorp/setup-terraform@v3\n    18\t        with:\n    19\t          terraform_version: 1.9.8\n    20\t      - run: terraform fmt -check -recursive\n    21\t      - run: terraform init -input=false\n    22\t      - run: terraform validate\n    23\t      - uses: terraform-linters/setup-tflint@v4\n    24\t      - run: tflint --recursive\n    25\t      - run: terraform plan -input=false -lock=false -out=tfplan\n    26\t      - run: terraform show -no-color tfplan > plan.txt\n    27\t      - uses: actions/upload-artifact@v4\n    28\t        with:\n    29\t          name: plan-${{ matrix.env }}\n    30\t          path: envs/${{ matrix.env }}/plan.txt",
+          "isError": false
+        },
+        {
+          "name": "grep",
+          "args": { "pattern": "branches|environment|terraform apply", "path": ".github/workflows/apply.yml" },
+          "output": ".github/workflows/apply.yml:4:    branches: [main]\n.github/workflows/apply.yml:16:    environment: ${{ matrix.env }}\n.github/workflows/apply.yml:29:      - run: terraform apply -input=false -auto-approve",
+          "isError": false
+        }
+      ],
+      "reply": "No. A green build on an infra PR never means anything was applied.\n\n**What green means here:** the `checks` job in `.github/workflows/terraform.yml` finished successfully for both `staging` and `prod`. For each env that means:\n- `terraform fmt -check` found no formatting drift,\n- `init` and `validate` succeeded,\n- `tflint` reported nothing, and\n- `terraform plan` produced a plan without errors.\n\nA plan that would destroy half of prod still goes green: the job only checks that Terraform *can* plan, not what the plan does. The plan text is uploaded as the `plan-staging` and `plan-prod` artifacts for a reviewer to read.\n\n**When it's applied:** only after merge. `apply.yml` runs on pushes to `main` and uses the `staging` and `prod` GitHub environments, so it waits for whatever approval rules those environments have before `terraform apply -auto-approve` runs.\n\nIf you want the PR itself to show what will change, we could post the plan as a PR comment. Want me to sketch that step?",
+      "claims": []
+    },
+    {
+      "id": "pn-bash-readme-says-supported",
+      "label": "no-claim",
+      "note": "The only passing statement is the README's, quoted with `>`; the reply describes the script and asks which fix to take.",
+      "prompt": "Someone filed an issue saying dotsync breaks on a fresh Mac. Is stock macOS bash supported?",
+      "tools": [
+        {
+          "name": "read",
+          "args": { "file_path": "README.md" },
+          "output": "     1\t# dotsync\n     2\t\n     3\tKeep dotfiles in sync across machines with one small bash script.\n     4\t\n...\n    41\t## Compatibility\n    42\t\n    43\tThe bats suite passes on bash 4.4 and 5.2 (Linux, and macOS with Homebrew bash).\n    44\tWindows is not supported.",
+          "isError": false
+        },
+        {
+          "name": "read",
+          "args": { "file_path": "docs/compat.md" },
+          "output": "File not found: docs/compat.md",
+          "isError": true
+        },
+        {
+          "name": "bash",
+          "args": { "command": "head -1 bin/dotsync; grep -nF -e mapfile -e 'declare -A' -e ',,}' bin/dotsync", "description": "Check the shebang and bash 4 features in the script" },
+          "output": "#!/bin/bash\n37:  mapfile -t targets < <(list_targets \"$profile\")\n52:declare -A linked=()\n88:  case \"${answer,,}\" in",
+          "isError": false
+        },
+        {
+          "name": "bash",
+          "args": { "command": "/bin/bash --version | head -1", "description": "Check the system bash version" },
+          "output": "GNU bash, version 3.2.57(1)-release (arm64-apple-darwin25)",
+          "isError": false
+        }
+      ],
+      "reply": "Short answer: no, and the README doesn't say it is.\n\nThe README's compatibility section says:\n\n> The bats suite passes on bash 4.4 and 5.2 (Linux, and macOS with Homebrew bash).\n\nStock macOS ships bash 3.2 (`/bin/bash` here is `3.2.57`), and `bin/dotsync` uses three things that need bash 4:\n\n- `mapfile -t` (line 37)\n- `declare -A` associative arrays (line 52)\n- `${answer,,}` lowercasing (line 88)\n\nThe shebang is `#!/bin/bash`, so on a fresh Mac the script runs under 3.2 even if a newer bash is installed elsewhere, which fits the issue.\n\nOptions:\n1. Change the shebang to `#!/usr/bin/env bash` and state \"needs bash 4+ (Homebrew)\" in the README.\n2. Rewrite those three spots for bash 3.2: a `while read` loop, two parallel arrays, and `tr` for lowercasing.\n\nOption 2 would make it work out of the box. Which way do you want to go?",
+      "claims": []
+    }
+  ]
+}

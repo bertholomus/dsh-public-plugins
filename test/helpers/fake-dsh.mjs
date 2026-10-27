@@ -15,8 +15,11 @@ import { KEY, foldAll, viewOf } from '../../plugins/session-watch/lib/fold.js';
  * @param {object} [options]
  * @param {() => number} [options.now] - the clock events are stamped with.
  * @param {boolean} [options.autoRead] - an idle agent reads a message as soon as it is queued (DSH's own behaviour).
+ * @param {boolean} [options.dshQueue] - the queue as DSH keeps it: two lists (next-turn, next-step) saved with the
+ *   session (they outlive a stop), DSH's splice coordinates in the log, a turn that claims every next-step message and
+ *   one next-turn message, and a steer that wakes an idle agent.
  */
-export function fakeDsh({ now = Date.now, autoRead = true } = {}) {
+export function fakeDsh({ now = Date.now, autoRead = true, dshQueue = false } = {}) {
     const sessions = new Map();
     const agents = new Map();
     const flushed = [];
@@ -63,12 +66,70 @@ export function fakeDsh({ now = Date.now, autoRead = true } = {}) {
         watch?.onStatus(agent, status);
     }
 
-    function makeAgent(s) {
-        return {
+    /** DSH's queue for one session (dshQueue): saved with the session, so it outlives its agent. */
+    function queueOf(s) {
+        s.queue ??= { 'next-turn': [], 'next-step': [] };
+        return s.queue;
+    }
+
+    /** A splice of a session's queue, committed to its log with DSH's coordinates; gives what it removed. */
+    function spliceQueue(s, target, start, removedCount, inserted, outcome) {
+        const list = queueOf(s)[target];
+        const removed = list.splice(start, removedCount, ...inserted);
+        commit(s.id, 'agent/inbox/spliced', { target, start, ...(removedCount ? { removedCount } : {}), inserted, ...(outcome ? { outcome } : {}) });
+        return removed;
+    }
+
+    function makeQueueAgent(s) {
+        const q = queueOf(s);
+        const agent = {
             id: s.id,
             status: 'idle',
             session: s.handle,
-            inbox: [],
+            inbox: {
+                get nextTurn() { return [...q['next-turn']]; },
+                get nextStep() { return [...q['next-step']]; },
+                remove(id) {
+                    for (const target of ['next-turn', 'next-step']) {
+                        const at = q[target].findIndex((m) => m.id === id);
+                        if (at < 0) continue;
+                        const [gone] = spliceQueue(s, target, at, 1, [], 'canceled');
+                        watch?.onDiscarded(agent, gone);
+                        return true;
+                    }
+                    return false;
+                },
+            },
+            followup(msg) {
+                if (dsh.refuse) throw new Error(dsh.refuse);
+                spliceQueue(s, 'next-turn', q['next-turn'].length, 0, [msg]);
+                if (autoRead && this.status === 'idle') setImmediate(() => dsh.read(s.id));
+            },
+            steer(msg) {
+                if (dsh.refuse) throw new Error(dsh.refuse);
+                this.steered = (this.steered ?? 0) + 1;
+                spliceQueue(s, 'next-step', q['next-step'].length, 0, [msg]);
+                // A running turn reads it at its next step; an idle agent wakes, and its turn reads it first.
+                setImmediate(() => {
+                    if (!q['next-step'].includes(msg)) return;
+                    if (this.status === 'running') {
+                        spliceQueue(s, 'next-step', 0, q['next-step'].length, []);
+                        commit(s.id, 'user/message', msg);
+                    } else if (autoRead) dsh.read(s.id);
+                });
+            },
+        };
+        return agent;
+    }
+
+    function makeAgent(s) {
+        if (dshQueue) return makeQueueAgent(s);
+        const inbox = [];
+        const agent = {
+            id: s.id,
+            status: 'idle',
+            session: s.handle,
+            inbox,
             followup(msg) {
                 if (dsh.refuse) throw new Error(dsh.refuse);
                 this.inbox.push(msg);
@@ -89,6 +150,18 @@ export function fakeDsh({ now = Date.now, autoRead = true } = {}) {
                 });
             },
         };
+        // DSH's inbox removal: a pending message out of the queue, recorded in the log, and told as discarded.
+        Object.defineProperty(inbox, 'remove', {
+            value: (id) => {
+                const at = inbox.findIndex((m) => m.id === id);
+                if (at < 0) return false;
+                const [gone] = inbox.splice(at, 1);
+                commit(s.id, 'agent/inbox/spliced', { target: 'next-turn', start: at, removedCount: 1, inserted: [], outcome: 'canceled' });
+                watch?.onDiscarded(agent, gone);
+                return true;
+            },
+        });
+        return agent;
     }
 
     /** The goal driver: an armed, active goal starts a round when its agent is idle. */
@@ -112,6 +185,8 @@ export function fakeDsh({ now = Date.now, autoRead = true } = {}) {
         extra: {},
         /** When set, `followup` throws with these words. */
         refuse: undefined,
+        /** dshQueue: when set, a turn claims its messages but DSH stops before it reads them (no user/message). */
+        claimOnly: false,
         add,
         commit,
         save,
@@ -136,10 +211,21 @@ export function fakeDsh({ now = Date.now, autoRead = true } = {}) {
             watch?.onAgent(agent, 'created');
             return agent;
         },
-        /** The agent reads its queued messages into a new turn. */
+        /** The agent reads its queued messages into a new turn (dshQueue: every next-step message and one next-turn message, as DSH claims them). */
         read(id) {
             const s = sessions.get(id);
             const agent = agents.get(id);
+            if (dshQueue) {
+                const q = s ? queueOf(s) : undefined;
+                if (!agent || agent.status === 'running' || (q['next-turn'].length === 0 && q['next-step'].length === 0)) return;
+                setStatus(agent, 'running');
+                commit(id, 'turn/start', { turn: (foldOf(s).turn ?? 0) + 1 });
+                const claimed = [];
+                if (q['next-step'].length) claimed.push(...spliceQueue(s, 'next-step', 0, q['next-step'].length, []));
+                if (q['next-turn'].length) claimed.push(...spliceQueue(s, 'next-turn', 0, 1, []));
+                if (!dsh.claimOnly) for (const msg of claimed) commit(id, 'user/message', msg);
+                return;
+            }
             if (!agent || agent.status === 'running' || agent.inbox.length === 0) return;
             const queued = agent.inbox.splice(0);
             setStatus(agent, 'running');
@@ -166,7 +252,8 @@ export function fakeDsh({ now = Date.now, autoRead = true } = {}) {
             if (reason.kind === 'error' && s.goal) s.goal.activation = 'disarmed';
             if (agent) {
                 setStatus(agent, 'idle');
-                if (agent.inbox.length && autoRead) setImmediate(() => dsh.read(id));
+                const pending = dshQueue ? queueOf(s)['next-turn'].length + queueOf(s)['next-step'].length : agent.inbox.length;
+                if (pending && autoRead) setImmediate(() => dsh.read(id));
                 else setImmediate(() => driveGoal(id));
             }
         },
@@ -196,8 +283,12 @@ export function fakeDsh({ now = Date.now, autoRead = true } = {}) {
                 const g = sessions.get(agent.id)?.goal;
                 if (!g || g.id !== id || g.revision !== revision) throw new Error('That goal changed.');
                 if (g.phase === 'active' && g.activation === 'armed') throw new Error('The goal is already running.');
+                if (g.roundsStarted >= g.maxGoalRounds) throw new Error(`goal "${g.id}" exhausted ${g.maxGoalRounds} goal rounds; increase maxGoalRounds before resuming`);
+                // As DSH's own: a start writes the goal's next revision, and the round it begins carries it.
                 g.phase = 'active';
                 g.activation = 'armed';
+                g.revision += 1;
+                commit(agent.id, 'goal/change', { operation: 'resume', goal: { id: g.id, revision: g.revision, objective: g.objective, phase: 'active', maxGoalRounds: g.maxGoalRounds }, roundsStarted: g.roundsStarted });
                 setImmediate(() => driveGoal(agent.id));
             },
         },
@@ -224,8 +315,8 @@ export function fakeDsh({ now = Date.now, autoRead = true } = {}) {
                 if (!s) throw new Error(`Session ${id} not found`);
                 const events = [...s.events];
                 const st = foldOf(s);
-                // A cold read closes an open turn, as DSH's own reader does.
-                if (st.open) events.push({ type: 'turn/end', time: now(), data: { turn: st.turn, reason: { kind: 'interrupted' } } });
+                // A cold read closes an open turn, as DSH's own reader does: at the time of the log's last event.
+                if (st.open) events.push({ type: 'turn/end', time: events.at(-1)?.time ?? now(), data: { turn: st.turn, reason: { kind: 'interrupted' } } });
                 return { meta: { sessionId: id }, events };
             },
             async resolveAgent(id) {

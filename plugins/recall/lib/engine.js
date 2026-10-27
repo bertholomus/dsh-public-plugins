@@ -5,15 +5,17 @@
  * run it in their own thread.
  *
  * Search: the words become an FTS5 query (lib/query.js); the best 400 or
- * so matching turns are ranked by bm25 over their own text (the request,
- * the reply, the tools), lifted a fifth when their session's title says
- * the words too and a little when recent, and grouped by session (or
- * file), so one long session does not fill the page: each result is a
- * session's best turn, with how many of its other turns match and which.
- * A title's words are in every turn of its session, so a turn that matches
- * by its title alone is never a hit of its own: a session that matches
- * only by its title is one result, after every turn that says the words,
- * at its first turn.
+ * so turns whose own text (the request, the reply, the tools) says every
+ * word are ranked by bm25 over that text, lifted a fifth when their
+ * session's title says the words too and a little when recent, and grouped
+ * by session (or file), so one long session does not fill the page: each
+ * result is a session's best turn, with how many of its other turns say
+ * the words and which. A title's words are in every turn of its session,
+ * so a turn that matches only with its title is never a hit of its own: a
+ * session none of whose turns says every word, but which matches with its
+ * title, is one result, after every turn that says them, at the turn that
+ * says the most of them (its first turn when none says any), and it is
+ * counted apart.
  *
  * @module dsh-plugin-recall/engine
  */
@@ -43,7 +45,10 @@ export function folderOf(value, home = homedir()) {
 const lift = (time, now) => 1 + 0.3 * Math.exp(-Math.max(0, now - time) / (20 * DAY));
 /** How much more a turn that says the words counts when its session's title says them too. */
 const TITLE_LIFT = 1.2;
-/** A candidate row whose own text matches (its request, reply or tools say the words), not only its file's title. */
+/**
+ * A row that matches only with its file's title, but whose own text says some of the words: bm25 with the title's
+ * weight at 0 is below 0 then, and exactly 0 when only the title says them (lib/store.js).
+ */
 const ownHit = (r) => r.own < 0;
 
 /** A transcript has no end-of-turn mark: its last turn is still running only while the transcript was written to lately. */
@@ -96,6 +101,13 @@ export class Engine {
         this.shrinkFrom = 0;
         /** Why it gives space back: 'taken-out' (a folder no longer searched, files gone) or 'rebuild'. */
         this.shrinkCause = 'taken-out';
+        /**
+         * A number that moves whenever a row or a turn's state may have changed (rows put or taken out, DSH's word on
+         * which sessions run): the page asks for the states of the rows it shows when it moves.
+         */
+        this.version = 0;
+        /** When the next session DSH said stopped is cut off if its end was not read (see `settle`). */
+        this.graceDue = undefined;
     }
 
     /** One request from the plugin. Throws a message in words. */
@@ -109,6 +121,7 @@ export class Engine {
                 // out writes to the write-ahead log, so the files are briefly bigger).
                 if (this.store.taken > taken && !this.shrinkFrom) this.shrinkFrom = size;
                 this.facetCache = undefined;
+                this.version += 1;
                 // A folder no longer searched is taken out at once: look at the space it left on the next slice.
                 this.shrinkLooked = 0;
                 return this.status();
@@ -119,13 +132,23 @@ export class Engine {
             case 'running': {
                 // DSH's word on which of its sessions run now (sent again whenever one starts or stops).
                 const live = new Set((Array.isArray(args.sessions) ? args.sessions : []).filter((id) => typeof id === 'string').slice(0, 5000));
-                for (const id of this.live) if (!live.has(id)) this.stoppedAt.set(id, this.now());
+                const known = args.known === true;
+                const moved = known !== this.liveKnown || live.size !== this.live.size || [...live].some((id) => !this.live.has(id));
+                const now = this.now();
+                for (const id of this.live) {
+                    if (live.has(id)) continue;
+                    this.stoppedAt.set(id, now);
+                    if (this.graceDue === undefined || now + END_GRACE_MS < this.graceDue) this.graceDue = now + END_GRACE_MS;
+                }
                 for (const id of live) this.stoppedAt.delete(id);
                 if (this.stoppedAt.size > 5000) this.stoppedAt.clear();
                 this.live = live;
-                this.liveKnown = args.known === true;
+                this.liveKnown = known;
+                if (moved) this.version += 1;
                 return true;
             }
+            case 'states':
+                return this.states(args.ids);
             case 'rescan':
                 this.indexer.scan();
                 return this.status();
@@ -161,11 +184,13 @@ export class Engine {
             this.busyRows = this.indexer.rowsPut;
             this.busySections = this.indexer.sectionsPut;
         }
+        const taken = this.store.taken;
         const more = this.indexer.step(budgetMs);
         if (this.indexer.rowsPut !== this.busyRowsSeen) {
             this.busyRowsSeen = this.indexer.rowsPut;
             this.facetCache = undefined;
-        }
+            this.version += 1;
+        } else if (this.store.taken !== taken) this.version += 1;
         if (more) return { more };
         const idle = { read: this.indexer.read - this.busyRead, rows: this.indexer.rowsPut - this.busyRows, sections: this.indexer.sectionsPut - this.busySections, ms: this.now() - this.busySince };
         this.busySince = 0;
@@ -255,10 +280,17 @@ export class Engine {
         // The tool's search leaves out the turn that asks (its session's open turn): it says its own words.
         const leaveFile = typeof q.leave?.session === 'string' ? this.store.ownSessionFile(q.leave.session) : undefined;
         const asking = leaveFile !== undefined ? this.store.openTurnOf(leaveFile) : undefined;
+        const leave = (got) => (asking === undefined ? got : got.filter((r) => r.id !== asking));
         const look = (cap) => {
-            const got = this.store.candidates({ match: parsed.match, sort: parsed.match ? sort : 'newest', cap, filters });
-            const rows = asking === undefined ? got : got.filter((r) => r.id !== asking);
-            return { rows, got: got.length, cap, ordered: this.groupsOf(rows, { parsed, sort, file }) };
+            // The turns whose own text says every word, best (or newest) first; with nothing typed, the newest turns.
+            const said = this.store.candidates({ match: parsed.match ? parsed.own : '', sort: parsed.match ? sort : 'newest', cap, filters });
+            // Then, while the cap leaves room, the rows that match only with their file's title (some or all of the
+            // words are in the title alone), the turn whose own text says the most of the words first.
+            const room = parsed.match ? cap - said.length : 0;
+            const titled = room > 0 ? this.store.candidates({ match: parsed.titled, sort: 'best', cap: room, filters }) : [];
+            if (titled.length > 0) this.mostSaid(titled, parsed, filters);
+            const rows = leave(said);
+            return { rows, got: said.length + titled.length, said: said.length, cap, ordered: this.groupsOf(rows, leave(titled), { parsed, sort, file }) };
         };
         let found = look(Math.min(SEARCH_LIMITS.candidates, Math.max(400, (offset + limit) * 10)));
         // A few sessions hold most of the matching turns: look through more of them before a page comes up short.
@@ -270,7 +302,7 @@ export class Engine {
         const page = ordered.slice(offset, end);
         const more = ordered.length > end && end < SEARCH_LIMITS.offset;
         const cut = more ? undefined : ordered.length > end ? 'length' : capped ? 'cap' : undefined;
-        // A file that matches by its title alone opens at its first turn: no turn of it says the words.
+        // A file that matches by its title alone opens at its first turn: no turn of it says any of the words.
         for (const g of page) {
             if (g.titleOnly) g.best = this.store.firstRow(g.best.file) ?? g.best;
         }
@@ -280,19 +312,20 @@ export class Engine {
         const ends = this.store.endsOf(page.map((g) => g.best.id));
         const files = this.store.filesByIds([...new Set(page.map((g) => g.best.file))]);
         // Every row that says the words is here unless the cap cut them short: then the index counts them.
-        const all = !capped || (sort === 'best' && parsed.match && !ownHit(rows.at(-1)));
-        const counted = () => this.store.count({ match: parsed.own, filters, cap: SEARCH_LIMITS.count }) - (asking !== undefined && parsed.own && this.store.says(parsed.own, asking) ? 1 : 0);
-        const total = all ? rows.filter(ownHit).length : Math.max(0, counted());
+        const counted = () => this.store.count({ match: parsed.own, filters, cap: SEARCH_LIMITS.count }) - (asking !== undefined && this.store.says(parsed.own, asking) ? 1 : 0);
+        const total = found.said < cap ? rows.length : Math.max(0, counted());
         const results = page.map((g) => this.resultOf(g, files.get(g.best.file), snippets.get(g.best.id), asked.get(g.best.id), ends.get(g.best.id)));
-        const titled = ordered.filter((g) => g.titleOnly).length;
+        const byTitle = ordered.filter((g) => g.titleOnly || g.titlePart);
         return {
             ...base,
             total: Math.min(total, SEARCH_LIMITS.count),
             totalMore: total > SEARCH_LIMITS.count,
-            sessions: ordered.length - titled,
-            sessionsMore: capped,
-            titled,
-            titledMore: capped && titled > 0,
+            sessions: ordered.length - byTitle.length,
+            sessionsMore: found.said >= cap,
+            titled: byTitle.length,
+            titledMore: capped && byTitle.length > 0,
+            // Of those, the ones whose turn says some of the words (their title the rest), not none.
+            titledPart: byTitle.filter((g) => g.titlePart).length,
             results,
             more,
             ...(cut ? { cut, looked: cap } : {}),
@@ -301,35 +334,57 @@ export class Engine {
     }
 
     /**
-     * The candidate rows ranked and sorted (the rows that say the words first, best or newest first; then those
-     * that match by their file's title alone), as one group per file: its best turn that says the words, with its
-     * other turns that do. Within one file (`file`), one group per turn.
+     * Rows that match only with their title, put in the order a file opens at: the one whose own text says the
+     * most of the query's groups of words first (each row's `parts`), then by its own score. With one group, a
+     * titled row says none of it (else it would say the whole query).
      */
-    groupsOf(rows, { parsed, sort, file }) {
+    mostSaid(titled, parsed, filters) {
+        const counts = new Map();
+        for (const part of parsed.parts) {
+            for (const id of this.store.ids({ match: `(${parsed.titled}) AND (${part})`, filters })) counts.set(id, (counts.get(id) ?? 0) + 1);
+        }
+        for (const r of titled) r.parts = counts.get(r.id) ?? 0;
+        titled.sort((a, b) => b.parts - a.parts || a.own - b.own || b.time - a.time || b.id - a.id);
+    }
+
+    /**
+     * The candidate rows ranked and sorted as one group per file (`said`: rows whose own text says every word;
+     * `titled`: rows that match only with their file's title, best first): first the files with a turn that says
+     * the words, at their best such turn, with their other turns that say them; then, once each, the files none of
+     * whose turns says them all, at the turn whose own text says the most of the words (`titlePart`), or at their
+     * first turn when no turn says any of them (`titleOnly`). Within one file (`file`), one group per turn.
+     */
+    groupsOf(said, titled = [], { parsed, sort, file }) {
         if (parsed.match && sort === 'best') {
             const now = this.now();
-            for (const r of rows) r.rank = (ownHit(r) ? r.own * (r.score < r.own ? TITLE_LIFT : 1) : r.score) * lift(r.time, now);
+            for (const r of said) r.rank = r.own * (r.score < r.own ? TITLE_LIFT : 1) * lift(r.time, now);
+            const byRank = (a, b) => a.rank - b.rank || b.time - a.time || b.id - a.id;
+            said.sort(byRank);
         }
-        if (parsed.match) {
-            const byTime = (a, b) => b.time - a.time || b.id - a.id;
-            rows.sort((a, b) => (ownHit(a) !== ownHit(b) ? (ownHit(a) ? -1 : 1) : sort === 'best' ? a.rank - b.rank : byTime(a, b)));
-        }
-        // A file that matches only by its title is one result, after all of those.
         const groups = new Map();
-        for (const r of rows) {
-            const own = ownHit(r);
-            const key = file === undefined ? r.file : own ? r.id : `title:${r.file}`;
+        for (const r of said) {
+            const key = file === undefined ? r.file : r.id;
             const g = groups.get(key);
-            if (!g) groups.set(key, own ? { best: r, hits: 1, others: [] } : { best: r, hits: 0, others: [], titleOnly: true });
+            if (!g) groups.set(key, { best: r, hits: 1, others: [] });
             // With nothing typed every turn is listed, not matched: no "other turns here match".
-            else if (own && parsed.match) {
+            else if (parsed.match) {
                 g.hits += 1;
                 if (g.others.length < SEARCH_LIMITS.others) g.others.push({ turn: r.turn, seq: r.seq });
             }
         }
         const ordered = [...groups.values()];
-        // One file's turns (the reading view's list): its title alone counts only when no turn says the words.
-        return file !== undefined && ordered.some((g) => !g.titleOnly) ? ordered.filter((g) => !g.titleOnly) : ordered;
+        if (!parsed.match || (file !== undefined && ordered.length > 0)) return ordered;
+        // A file with a turn that says the words is listed there: its turns that need the title are no hit of it.
+        const late = new Map();
+        for (const r of titled) {
+            if (groups.has(r.file) || (file !== undefined && r.file !== file)) continue;
+            const g = late.get(r.file);
+            // The titled rows come best first: a file's first one is the turn that says the most of the words.
+            if (!g) late.set(r.file, { best: r, hits: 0, others: [], ...((r.parts ?? 0) > 0 || ownHit(r) ? { titlePart: true } : { titleOnly: true }) });
+        }
+        const rest = [...late.values()];
+        if (sort === 'newest') rest.sort((a, b) => b.best.time - a.best.time || b.best.id - a.best.id);
+        return [...ordered, ...rest];
     }
 
     took(started) {
@@ -362,11 +417,13 @@ export class Engine {
             hits: g.hits,
             others: g.others.sort((a, b) => a.turn - b.turn),
             ...(g.titleOnly ? { titleOnly: true } : {}),
+            ...(g.titlePart ? { titlePart: true } : {}),
         };
     }
 
     /**
-     * A turn's state in one word: '' when it ended as it should (and for a note's section), 'running', or how it
+     * A turn's state in one word: '' when it ended as it should (and for a note's section), 'running', 'ending'
+     * (DSH said its session stopped, and its end is not read yet: DSH writes it a moment later), or how it
      * ended early: 'stopped' (someone or something stopped it), 'failed', 'cut-short' (the model's length
      * limit), 'blocked' (a plugin's check), or 'cut-off' (DSH stopped under it, by a crash or a restart).
      * @param {object} d - the row: kind, done.
@@ -379,8 +436,9 @@ export class Engine {
         // This DSH's session runs only while DSH says so; its end is read a moment after DSH says it stopped.
         if (d.kind === 'session' && f.own === 1 && this.liveKnown) {
             if (this.live.has(f.session)) return 'running';
+            // DSH said it stopped: how its turn ended comes with DSH's next write to the log, a moment later.
             const stopped = this.stoppedAt.get(f.session);
-            return stopped !== undefined && this.now() - stopped < END_GRACE_MS ? '' : 'cut-off';
+            return stopped !== undefined && this.now() - stopped < END_GRACE_MS ? 'ending' : 'cut-off';
         }
         // A transcript has no end mark: its last turn runs while it is written to (its own last time, else its
         // file's). So does another DSH's session, and when that log is quiet with a turn open, its DSH stopped under it.
@@ -389,10 +447,48 @@ export class Engine {
         return d.kind === 'session' ? 'cut-off' : '';
     }
 
+    /**
+     * A session DSH said stopped is cut off once half a minute passes with no end read for its turn: that changes
+     * a state with nothing read, so the change number moves then (the index thread calls this when it is due).
+     */
+    settle() {
+        if (this.graceDue === undefined || this.now() < this.graceDue) return;
+        const now = this.now();
+        let next;
+        for (const at of this.stoppedAt.values()) {
+            const due = at + END_GRACE_MS;
+            if (due > now && (next === undefined || due < next)) next = due;
+        }
+        this.graceDue = next;
+        this.version += 1;
+    }
+
     /** A row's state for an answer: its word, whether it runs, and why it ended early when DSH said. */
     stateFields(d, f) {
         const state = this.stateOf(d, f);
         return { state, running: state === 'running', ...(state && d.why ? { why: d.why } : {}) };
+    }
+
+    /**
+     * The states of the rows the page shows now, by their result ids (at most 100): `{ [id]: { state, running,
+     * why? } }`, or `{ gone: true }` for a row no longer in the index. A turn that ended since the search (or was
+     * cut off) says so without a search again.
+     */
+    states(ids) {
+        const out = {};
+        const files = new Map();
+        for (const id of (Array.isArray(ids) ? ids : []).slice(0, 100)) {
+            const m = /^(\d{1,12})\.(\d{1,9})$/.exec(typeof id === 'string' ? id : '');
+            if (!m) continue;
+            const d = this.store.rowState(Number(m[1]), Number(m[2]));
+            if (!d) {
+                out[id] = { gone: true };
+                continue;
+            }
+            if (!files.has(d.file)) files.set(d.file, this.store.fileById(d.file) ?? {});
+            out[id] = this.stateFields(d, files.get(d.file));
+        }
+        return { version: this.version, states: out };
     }
 
     /** One turn (or note section) in full, by its result id ("12.4"). */
@@ -446,12 +542,13 @@ export class Engine {
         return {
             ...ix,
             ...(batch ? { batch } : {}),
+            version: this.version,
             totals: this.store.totals(),
             bytes: this.store.bytes(),
             problems: this.store.problems(10),
             roots: ix.roots.map((r) => {
                 const t = byRoot.get(`${r.kind}:${r.root}`);
-                return { ...r, indexed: t?.files ?? 0, turns: t?.turns ?? 0, problems: t?.problems ?? 0, last: t?.last ?? 0 };
+                return { ...r, indexed: t?.files ?? 0, turns: t?.turns ?? 0, problems: t?.problems ?? 0, partial: t?.partial ?? 0, last: t?.last ?? 0 };
             }),
         };
     }
