@@ -24,10 +24,28 @@ that terminal in a tab beside the session. From then on:
   ends there: the agent comes back idle, *What happened* says which job
   was cut off, and your next message carries on.
 
+<!-- showcase:hero -->
+![The Coding agents page in dark mode: three agents running. One waits on you with a question and a recommendation, and one is building.](../../docs/screenshots/agent-terminals/page-dark.png)
+<!-- /showcase:hero -->
+
 It needs Session Watch, which carries each agent's state to its session's
 row and to Decisions. While Session Watch is off, Agent Terminals stays on
 but starts, reads and types nothing; its page says so, and switching
 Session Watch off reports no error.
+
+<!-- showcase:screenshots -->
+## Screenshots
+
+![The Coding agents page in light mode: three agents running. One waits on you with a question and a recommendation, and one is building.](../../docs/screenshots/agent-terminals/page-light.png)
+
+*The same page in light mode.*
+
+![A coding agent's terminal tab beside its DSH session, Gateway fix: the agent ran the tests, fixed a function and ran the tests again, all 12 passing.](../../docs/screenshots/agent-terminals/terminal-dark.png)
+
+*An agent in its terminal tab beside its own session.*
+
+Made by `npm run showcase` in a demo home; [docs/site.json](../../docs/site.json) lists them, with their words.
+<!-- /showcase:screenshots -->
 
 ## How a program starts and resumes
 

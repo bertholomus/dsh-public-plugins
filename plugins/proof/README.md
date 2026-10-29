@@ -10,6 +10,10 @@ test counts, metric changes, file hashes) and judges each claim:
 - **contradicted**: the turn's own output says otherwise ("pushed to main"
   when the push was rejected). The card quotes what the turn shows.
 
+<!-- showcase:hero -->
+![A chat in dark mode where the reply says all tests pass. Proof's card below it says the turn's own test run exited 1, with 6 passed and 1 failed.](../../docs/screenshots/proof/flag-dark.png)
+<!-- /showcase:hero -->
+
 Every claim, quiet or flagged, goes into the session's **claims ledger**
 (claim, evidence, verdict, check), which its page shows and exports as
 Markdown, CSV or JSON. When you want a second opinion, the **independent
@@ -23,6 +27,24 @@ session, and the card is there the moment the turn ends. It needs nothing
 else running. With Session Watch running, its page updates through the
 suite's one open request per window; without it, the page reads again every
 few seconds.
+
+<!-- showcase:screenshots -->
+## Screenshots
+
+![A chat in light mode where the reply says all tests pass. Proof's card below it says the turn's own test run exited 1, with 6 passed and 1 failed.](../../docs/screenshots/proof/flag-light.png)
+
+*The same card in light mode.*
+
+![A chat where the reply says v2.3.1 is deployed to staging. Proof's card says no deploy ran in the turn, and an independent check found v2.3.1 not even tagged.](../../docs/screenshots/proof/checked-light.png)
+
+*A claim with no evidence, after an independent read-only check.*
+
+![Proof's page: four sessions with claims, and the ledger of Report decimals with its contradicted claim and buttons to export it.](../../docs/screenshots/proof/ledger-dark.png)
+
+*The ledger: every claim of a session, flagged or shown, with export to Markdown, CSV or JSON.*
+
+Made by `npm run showcase` in a demo home; [docs/site.json](../../docs/site.json) lists them, with their words.
+<!-- /showcase:screenshots -->
 
 ## What counts as a claim
 

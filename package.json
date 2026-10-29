@@ -14,7 +14,9 @@
     "test:e2e:autopilot": "node scripts/e2e.mjs autopilot",
     "test:e2e:decisions": "node scripts/e2e.mjs decisions",
     "test:e2e:agent-terminals": "node scripts/e2e.mjs agent-terminals",
-    "sync:shared": "node scripts/sync-shared.mjs"
+    "sync:shared": "node scripts/sync-shared.mjs",
+    "showcase": "node scripts/showcase.mjs",
+    "showcase:readmes": "node scripts/showcase/readmes.mjs"
   },
   "engines": { "node": ">=20" }
 }

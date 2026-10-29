@@ -3,4 +3,8 @@ node_modules/
 .DS_Store
 ._*
 *.bak*
-.e2e/
+# The test runtimes (a folder, or a link to one).
+.e2e
+# npm run showcase: the record of its last run, and the contact sheet of the heroes for review.
+docs/screenshots/.last-run.json
+docs/screenshots/CONTACT.png

@@ -8,6 +8,10 @@ turns, with the words marked. Pick one and DSH opens that session at that
 turn, scrolled to it and marked. Agents search the same index with the
 `recall_search` tool.
 
+<!-- showcase:hero -->
+![Recall's page in dark mode: a search for connection resets finds three results, two sessions and a handoff note, with the words marked.](../../docs/screenshots/recall/search-dark.png)
+<!-- /showcase:hero -->
+
 The index is local and incremental:
 
 - One worker thread owns it: SQLite with FTS5, in DSH's data folder.
@@ -20,6 +24,24 @@ It needs nothing else running. With Session Watch running, its page
 updates through the suite's one open request per window. Without it, the
 page reads its own state every 3 seconds and never asks for Session
 Watch's endpoint.
+
+<!-- showcase:screenshots -->
+## Screenshots
+
+![Recall's page in light mode: a search for connection resets finds three results, two sessions and a handoff note, with the words marked.](../../docs/screenshots/recall/search-light.png)
+
+*The same search in light mode.*
+
+![A session opened from a Recall result at the turn it found, with a Found by Recall bar and a link back to the results.](../../docs/screenshots/recall/found-dark.png)
+
+*A result opens its session at that turn, marked, with a link back to the results.*
+
+![A chat where the agent searched past work for connection resets and answered from an earlier session and a handoff note.](../../docs/screenshots/recall/tool-light.png)
+
+*Agents search the same index with the recall_search tool.*
+
+Made by `npm run showcase` in a demo home; [docs/site.json](../../docs/site.json) lists them, with their words.
+<!-- /showcase:screenshots -->
 
 ## What it reads
 

@@ -4,6 +4,10 @@ A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (DSH)
 plugin that is the bot behind your Discord channels: you talk to DSH agent
 sessions from Discord.
 
+<!-- showcase:hero -->
+![A Discord thread in dark mode: Maya asks what changed in the gateway since 2.3, and DSH Bot answers with three changes and a draft for the changelog.](../../docs/screenshots/discord/thread-dark.png)
+<!-- /showcase:hero -->
+
 - A message in one of the bot's channels gets a **thread made from it**, and
   that thread gets **its own DSH session**. Every later message in the thread
   goes to the same session, also after DSH restarts.
@@ -21,6 +25,20 @@ sessions from Discord.
 
 It needs nothing beyond DSH: the Discord REST and gateway client is written
 on Node 22's `fetch` and `WebSocket`.
+
+<!-- showcase:screenshots -->
+## Screenshots
+
+![A Discord thread in light mode: Maya asks what changed in the gateway since 2.3, and DSH Bot answers with three changes and a draft for the changelog.](../../docs/screenshots/discord/thread-light.png)
+
+*The same drawn thread in light mode.*
+
+![The thread's DSH session, named Discord — Gateway changes since 2.3, where each turn sent its answer to the thread.](../../docs/screenshots/discord/session-light.png)
+
+*DSH's side: the thread has a session of its own, which you can open and read.*
+
+Made by `npm run showcase` in a demo home; [docs/site.json](../../docs/site.json) lists them, with their words.
+<!-- /showcase:screenshots -->
 
 ## Setup
 

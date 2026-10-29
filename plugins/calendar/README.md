@@ -2,6 +2,28 @@
 
 Your calendars in DSH, for you and for your agents: iCloud, Google, Microsoft 365, Outlook.com and Exchange Online, Fastmail, Nextcloud, Yahoo, mailbox.org, Zoho and any other CalDAV server, subscribed `.ics` feeds, and calendars kept in DSH itself. The plugin syncs them into a store of its own and sends every change to the server that holds the event, so your phone and your other apps see it too.
 
+<!-- showcase:hero -->
+![Calendar's week view in dark mode: work and personal events kept in DSH, with the Gateway 2.4 retro on Friday from 1:00 to 2:00 PM.](../../docs/screenshots/calendar/week-dark.png)
+<!-- /showcase:hero -->
+
+<!-- showcase:screenshots -->
+## Screenshots
+
+![Calendar's week view in light mode: work and personal events kept in DSH, with the Gateway 2.4 retro on Friday from 1:00 to 2:00 PM.](../../docs/screenshots/calendar/week-light.png)
+
+*The same week in light mode.*
+
+![Calendar's month view of October 2026, with the standup on each weekday and other work and personal events.](../../docs/screenshots/calendar/month-light.png)
+
+*The month view.*
+
+![A chat that found three free slots on Friday and asks to add the Gateway 2.4 retro to Work, with Reject and Allow once buttons.](../../docs/screenshots/calendar/approval-dark.png)
+
+*An agent asks before it changes your calendar: DSH's approval prompt says what the change does.*
+
+Made by `npm run showcase` in a demo home; [docs/site.json](../../docs/site.json) lists them, with their words.
+<!-- /showcase:screenshots -->
+
 ## Accounts
 
 | Service | How it connects | What you give it |

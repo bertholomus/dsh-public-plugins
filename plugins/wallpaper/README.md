@@ -4,11 +4,31 @@ Wallpaper and glass for DeepSeek Harness Desktop. A picture or a colour sits beh
 chat, right dock and composer become frosted glass over it. An optional headline replaces DSH's words on the
 new-chat page. Everything is set in one panel, opened from a button in the sidebar footer.
 
+<!-- showcase:hero -->
+![DSH in dark mode over a dusk gradient, with the sidebar, the open chat and the right dock as frosted glass.](../../docs/screenshots/wallpaper/chat-dark.png)
+<!-- /showcase:hero -->
+
 Wallpaper is DSH's one mod ([DESIGN.md](../../DESIGN.md)): it changes DSH's grounds, never DSH's text, icons or
 controls. The sidebar, the open chat and the dock become glass cards set 12px in from the window's edges, and the
 composer a glass card. Its one other layout change is DSH's panel list shown as tiles, which fold to a row of icons.
 
-![A chat and the right dock on glass](../../screenshots/wallpaper/chat-dock-light.png)
+<!-- showcase:screenshots -->
+## Screenshots
+
+![DSH in light mode over a sand gradient, with the sidebar, the open chat and the right dock as frosted glass.](../../docs/screenshots/wallpaper/chat-light.png)
+
+*Light mode, over a generated sand gradient.*
+
+![The Wallpaper and glass panel: colour mode, a collection of four gradients, colours, rotation and wallpaper opacity.](../../docs/screenshots/wallpaper/panel-light.png)
+
+*One panel for all of it: colour mode, pictures, colours, rotation and opacity.*
+
+![DSH's new-chat page with the headline What ships today? over the dusk gradient.](../../docs/screenshots/wallpaper/new-chat-dark.png)
+
+*An optional headline in place of DSH's words on the new-chat page.*
+
+Made by `npm run showcase` in a demo home; [docs/site.json](../../docs/site.json) lists them, with their words.
+<!-- /showcase:screenshots -->
 
 ## What it does
 
@@ -245,8 +265,8 @@ DSH's log or `wallpaper.log`.
   and dark: the new-chat page, a chat with the dock, the panel, the Trash question, a colour wall with the panel,
   reduced transparency, reduced motion (with the panel), 760px with and without the panel, folded tiles, switched
   off, after a restart, DSH's words over a dark and a light picture (`readable-*`), the neighbour's page; and in
-  light, a file that can't be shown and the composer over a dark picture. A set from the app's DSH is in
-  [`screenshots/wallpaper/`](../../screenshots/wallpaper).
+  light, a file that can't be shown and the composer over a dark picture. The pictures in this README come from a
+  demo home (`npm run showcase -- wallpaper`) and are in [`docs/screenshots/wallpaper/`](../../docs/screenshots/wallpaper).
 - **Safety:** the runner reads the live DSH's fingerprint (pid, start time, profile hash) before and after, and
   fails when it moved. `KEEP=1` keeps the throwaway folders.
 

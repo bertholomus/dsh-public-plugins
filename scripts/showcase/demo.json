@@ -1,0 +1,847 @@
+{
+  "turns": [
+    {
+      "scene": "autopilot",
+      "prompt": "Raise the gateway's burst limit to 60 and bring the runbook in line with it.",
+      "todos": [
+        [
+          "Raise the burst limit to 60 in gateway.toml",
+          "in_progress"
+        ],
+        [
+          "Update the rate-limit section of the runbook",
+          "pending"
+        ],
+        [
+          "Run the gateway tests",
+          "pending"
+        ]
+      ],
+      "reply": "I'm on the burst limit first: `[limits] burst` in gateway.toml goes from 40 to 60."
+    },
+    {
+      "scene": "autopilot",
+      "prompt": "Write the October report for the ledger and check its totals against the bank export.",
+      "todos": [
+        [
+          "Draft the October report",
+          "in_progress"
+        ],
+        [
+          "Check the totals against the bank export",
+          "pending"
+        ]
+      ],
+      "reply": "Starting the October report from the ledger's entries."
+    },
+    {
+      "scene": "autopilot",
+      "prompt": "Rename the old config keys (rpm, max_burst) to the names the docs use.",
+      "todos": [
+        [
+          "Rename rpm and max_burst in gateway.toml",
+          "in_progress"
+        ],
+        [
+          "Update the getting-started page",
+          "pending"
+        ]
+      ],
+      "reply": "Found both keys in gateway.toml and in two docs pages. Renaming them now."
+    },
+    {
+      "scene": "autopilot",
+      "prompt": "Get v2.3.1 ready to deploy.",
+      "todos": [
+        [
+          "Tag v2.3.1",
+          "completed"
+        ],
+        [
+          "Deploy v2.3.1",
+          "pending"
+        ]
+      ],
+      "reply": "v2.3.1 is tagged and all 12 gateway tests pass.\n\nShould I deploy it to staging first, or straight to production?"
+    },
+    {
+      "scene": "autopilot",
+      "prompt": "Add the 0.9.2 changes to the changelog.",
+      "todos": [
+        [
+          "Update the changelog for 0.9.2",
+          "in_progress"
+        ]
+      ],
+      "reply": "Collecting the 0.9.2 changes from the commits since 0.9.1."
+    },
+    {
+      "scene": "autopilot",
+      "prompt": "Proofread the deploy page of the handbook.",
+      "todos": [
+        [
+          "Proofread docs/deploy.md",
+          "completed"
+        ]
+      ],
+      "reply": "Done: two typos fixed in docs/deploy.md, and the rollback step now names the previous tag."
+    },
+    {
+      "scene": "decisions",
+      "prompt": "The old entries_v1 table is still in the ledger database. Clean up the schema.",
+      "reply": "The new `entries` table has taken every write since 0.9.0, and `entries_v1` has had none since then. Dropping it frees 2.1 GB; keeping it costs only disk.\n\nDECISION NEEDED: Drop the old entries_v1 table now? — recommend: Keep it one more week, then drop it"
+    },
+    {
+      "scene": "decisions",
+      "prompt": "Deploy the gateway to staging and run the smoke test.",
+      "reply": "I tried the staging deploy twice. Both times the migration step stopped at the database login.\n\nBLOCKED: The staging database refuses the deploy user's login."
+    },
+    {
+      "scene": "decisions",
+      "prompt": "Get a release build of the gateway ready.",
+      "reply": "Both builds pass: v2.3.1 has only the slash fix, and v2.4.0 adds the new rate-limit headers.\n\nWhich one do you want to release: v2.3.1 or v2.4.0?"
+    },
+    {
+      "scene": "decisions",
+      "prompt": "Save the October report where I can find it.",
+      "calls": [
+        {
+          "tool": "bash",
+          "args": {
+            "command": "mkdir -p ~/Reports && cp reports/2026-10.md ~/Reports/october-2026.md",
+            "description": "Copy the report to the Reports folder",
+            "sandbox_permissions": "danger-full-access",
+            "justification": "It copies the October report into your Reports folder, which is outside the workspace."
+          }
+        }
+      ],
+      "reply": "The October report is in ~/Reports/october-2026.md."
+    },
+    {
+      "scene": "decisions",
+      "prompt": "Deploy v2.3.1 once the checks are green.",
+      "calls": [
+        {
+          "tool": "ask_user_question",
+          "args": {
+            "questions": [
+              {
+                "id": "env",
+                "question": "The checks are green. Which environment should I deploy v2.3.1 to?",
+                "header": "Target",
+                "options": [
+                  {
+                    "label": "staging",
+                    "description": "Safe to break; the smoke test runs there"
+                  },
+                  {
+                    "label": "production",
+                    "description": "Live traffic"
+                  }
+                ]
+              }
+            ],
+            "timeout": -1
+          }
+        }
+      ],
+      "reply": "Deploying v2.3.1 to staging now."
+    },
+    {
+      "scene": "decisions",
+      "prompt": "Pick a release date for tide-ledger 0.9.2.",
+      "reply": "0.9.2 is ready: the report fix and the changelog are in. Month-end close runs on Friday.\n\nDECISION NEEDED: Release 0.9.2 on Friday? — recommend: Release it on Monday, after the month-end close"
+    },
+    {
+      "scene": "proof",
+      "prompt": "Make the report show amounts without trailing zeros, so 89.90 reads 89.9.",
+      "calls": [
+        {
+          "tool": "read",
+          "args": {
+            "file_path": "src/report.js"
+          }
+        },
+        {
+          "tool": "edit",
+          "args": {
+            "file_path": "src/report.js",
+            "old_string": "{ minimumFractionDigits: 2 }",
+            "new_string": "{ maximumFractionDigits: 2 }"
+          }
+        },
+        {
+          "tool": "bash",
+          "args": {
+            "command": "npm test --silent",
+            "description": "Run the ledger tests"
+          }
+        }
+      ],
+      "reply": "The report now drops trailing zeros: `89.90` reads `89.9`. All tests pass."
+    },
+    {
+      "scene": "proof",
+      "prompt": "Run the gateway tests now that the slash fix is in.",
+      "calls": [
+        {
+          "tool": "bash",
+          "args": {
+            "command": "npm test --silent",
+            "description": "Run the gateway tests"
+          }
+        }
+      ],
+      "reply": "All 12 tests pass: 8 router tests and 4 rate-limit tests."
+    },
+    {
+      "scene": "proof",
+      "prompt": "Deploy v2.3.1 of the gateway to staging.",
+      "calls": [
+        {
+          "tool": "bash",
+          "args": {
+            "command": "git log --oneline -3",
+            "description": "Look at the latest commits"
+          }
+        }
+      ],
+      "reply": "The slash fix is the newest commit. Deployed v2.3.1 to staging."
+    },
+    {
+      "scene": "proof",
+      "prompt": "Add the trailing-zeros change to the changelog under 0.9.3.",
+      "calls": [
+        {
+          "tool": "read",
+          "args": {
+            "file_path": "CHANGELOG.md"
+          }
+        },
+        {
+          "tool": "edit",
+          "args": {
+            "file_path": "CHANGELOG.md",
+            "old_string": "# Changelog\n\n## 0.9.2\n",
+            "new_string": "# Changelog\n\n## 0.9.3\n- Report: amounts drop trailing zeros (89.9, not 89.90).\n\n## 0.9.2\n"
+          }
+        }
+      ],
+      "reply": "Added the 0.9.3 entry to CHANGELOG.md."
+    },
+    {
+      "scene": "canon",
+      "prompt": "Which port does the load balancer use for the gateway's health check, and how do I roll out a new build?",
+      "reply": "The load balancer reads the gateway's health check on port 8080; HTTPS traffic stays on 8443 (Projects/harbor-gateway/Gateway ports.md).\n\nTo roll out a new build (Projects/harbor-gateway/Deploying the gateway.md):\n\n1. Build the image with `make image`.\n2. Push it with `make push TAG=2.3.1`.\n3. Run `deployctl rollout harbor-gateway --zone a`, then zones b and c, and wait for the health check in each zone before the next.\n\nA rollout that fails its health check rolls back by itself."
+    },
+    {
+      "scene": "canon",
+      "prompt": "Can I run the entries schema migration on the first of the month?",
+      "reply": "Not on the first. The month-end close runs on the first working day of each month, and until Finance signs off (by noon) there are no migrations and no deploys (Projects/tide-ledger/Month-end close.md).\n\nThis one also locks the entries table, so it goes out on a weekend, announced in #ledger a week ahead (Projects/tide-ledger/Schema migrations.md)."
+    },
+    {
+      "scene": "canon",
+      "prompt": "Remember the keepalive gotcha for the harbor gateway: the load balancer drops idle connections after 60 seconds.",
+      "calls": [
+        {
+          "tool": "canon_capture",
+          "args": {
+            "title": "Gateway keepalive",
+            "body": "Set the harbor gateway's upstream keepalive to 30 seconds. The load balancer drops idle connections after 60 seconds, so a longer keepalive ends in connection resets.\n\n## How we found it\n\nClients behind the load balancer saw resets every few minutes; the gateway logs showed each one 60 seconds after the last byte. With the keepalive at 30 seconds they stopped.",
+            "kind": "gotcha",
+            "tags": [
+              "harbor-gateway",
+              "keepalive"
+            ]
+          }
+        }
+      ],
+      "reply": "Saved it as a draft in the canon vault. No turn gets it until someone promotes it on Canon's page."
+    },
+    {
+      "scene": "canon",
+      "prompt": "Write down what we agreed about the old entries_v1 table.",
+      "calls": [
+        {
+          "tool": "canon_capture",
+          "args": {
+            "title": "entries_v1 kept one more week",
+            "body": "Keep the old entries_v1 table until 6 November 2026, then drop it. The new entries table has taken every write since 0.9.0, so nothing reads entries_v1 now; the week is for anyone who still has a report on it.",
+            "kind": "decision",
+            "tags": [
+              "tide-ledger",
+              "postgres"
+            ]
+          }
+        }
+      ],
+      "reply": "Saved the decision as a draft in the canon vault."
+    },
+    {
+      "scene": "recall",
+      "prompt": "Clients behind the load balancer see connection resets every few minutes. Find out why.",
+      "calls": [
+        {
+          "tool": "read",
+          "args": {
+            "file_path": "gateway.toml"
+          }
+        }
+      ],
+      "reply": "The load balancer drops idle connections after 60 seconds, but the gateway keeps idle upstream connections open longer than that. The next request on such a connection gets a reset.\n\nSetting the upstream keepalive to 30 seconds in `gateway.toml` stops the resets: the gateway now closes an idle connection before the load balancer does."
+    },
+    {
+      "scene": "recall",
+      "prompt": "The October balance is 0.10 off the bank export. Why?",
+      "reply": "One October entry came in through the old importer, which still read amounts as floats: a sum such as 0.1 + 0.2 came out a hair over 0.3 and was cut, not rounded. Since 0.9.1 the ledger keeps whole cents, so new entries add up.\n\nRe-import that entry with `ledgerctl import --month 2026-10` and the balance matches the bank export."
+    },
+    {
+      "scene": "recall",
+      "prompt": "Add the rollback steps to the deploy page.",
+      "reply": "Added a Rollback section to docs/deploy.md: `deployctl rollback harbor-gateway --to <previous tag>`, one zone at a time, waiting for the health check in each zone before the next."
+    },
+    {
+      "scene": "recall",
+      "prompt": "Did we ever see connection resets on the gateway before? What was the fix?",
+      "calls": [
+        {
+          "tool": "recall_search",
+          "args": {
+            "query": "connection resets"
+          }
+        }
+      ],
+      "reply": "Yes. In “Connection resets” (turn 1) the cause was the load balancer dropping idle connections after 60 seconds while the gateway kept them open longer. The fix was an upstream keepalive of 30 seconds in `gateway.toml`, and the gateway handoff note lists it under Gotchas."
+    },
+    {
+      "scene": "session-watch",
+      "prompt": "Reconcile every month of 2026 against the bank exports.",
+      "slow": true,
+      "reply": "Reconciled."
+    },
+    {
+      "scene": "session-watch",
+      "prompt": "Tag v2.3.1 and push the tag.",
+      "calls": [
+        {
+          "tool": "bash",
+          "args": {
+            "command": "git tag v2.3.1 && git push origin v2.3.1",
+            "description": "Tag v2.3.1 and push the tag",
+            "sandbox_permissions": "danger-full-access",
+            "justification": "Pushing the tag needs the network, which the workspace sandbox does not allow."
+          }
+        }
+      ],
+      "reply": "Tagged v2.3.1 and pushed it."
+    },
+    {
+      "scene": "session-watch",
+      "prompt": "Which changelog format should 0.9.3 use?",
+      "calls": [
+        {
+          "tool": "ask_user_question",
+          "args": {
+            "questions": [
+              {
+                "id": "format",
+                "question": "Which format should the 0.9.3 changelog entry use?",
+                "header": "Format",
+                "options": [
+                  {
+                    "label": "Keep a Changelog",
+                    "description": "Added, Changed and Fixed sections"
+                  },
+                  {
+                    "label": "One line per change",
+                    "description": "As 0.9.1 and 0.9.2 are"
+                  }
+                ]
+              }
+            ],
+            "timeout": -1
+          }
+        }
+      ],
+      "reply": "Using one line per change, as before."
+    },
+    {
+      "scene": "session-watch",
+      "prompt": "Update the getting-started page for the new config names.",
+      "todos": [
+        [
+          "Rename the keys in docs/getting-started.md",
+          "completed"
+        ],
+        [
+          "Rename them in docs/runbook.md",
+          "in_progress"
+        ],
+        [
+          "Check every example still runs",
+          "pending"
+        ]
+      ],
+      "reply": "The getting-started page uses the new names. The runbook is next."
+    },
+    {
+      "scene": "session-watch",
+      "prompt": "Fix the typo in the runbook's title.",
+      "reply": "Fixed: the runbook's title now reads “Gateway runbook”."
+    },
+    {
+      "scene": "session-watch",
+      "prompt": "Summarise last night's gateway error log.",
+      "fail": "The request is larger than this model's context window."
+    },
+    {
+      "scene": "session-watch",
+      "prompt": "Quick task:",
+      "reply": "Done, and the tests still pass."
+    },
+    {
+      "scene": "categories",
+      "prompt": "Add a route for /api/invoices to gateway.toml, to the ledger service on port 7003.",
+      "calls": [
+        {
+          "tool": "read",
+          "args": {
+            "file_path": "gateway.toml"
+          }
+        },
+        {
+          "tool": "edit",
+          "args": {
+            "file_path": "gateway.toml",
+            "old_string": "prefix = \"/api/ledger\"\nupstream = \"ledger.internal:7002\"",
+            "new_string": "prefix = \"/api/ledger\"\nupstream = \"ledger.internal:7002\"\n\n[[routes]]\nprefix = \"/api/invoices\"\nupstream = \"ledger.internal:7003\""
+          }
+        }
+      ],
+      "reply": "Added the route: `/api/invoices` goes to `ledger.internal:7003`, after the ledger route. The other routes are as they were."
+    },
+    {
+      "scene": "categories",
+      "prompt": "Build the handbook and check every link.",
+      "slow": true,
+      "reply": "Built."
+    },
+    {
+      "scene": "categories",
+      "prompt": "Small task:",
+      "reply": "Done."
+    },
+    {
+      "scene": "coordinator",
+      "prompt": "Get the gateway ready for 2.4: bump the version to 2.4.0, write the 2.4.0 changelog entry, and check that every route in gateway.toml has a test.",
+      "calls": [
+        {
+          "tool": "thread_start",
+          "args": {
+            "title": "Version 2.4.0",
+            "ask": "bump the version to 2.4.0",
+            "brief": "Set the version in package.json to 2.4.0 (it is 2.3.0 now), then run npm test. Change nothing else."
+          }
+        },
+        {
+          "tool": "thread_start",
+          "args": {
+            "title": "Route tests",
+            "ask": "check that every route in gateway.toml has a test",
+            "brief": "List each route prefix in gateway.toml and the test in test/ that covers it. Only read: add no tests. Hand back the routes that have none."
+          }
+        }
+      ],
+      "reply": "Started [Version 2.4.0](.dsh-thread/t1) and [Route tests](.dsh-thread/t2). The changelog entry names the new version, so its thread starts once the version is set."
+    },
+    {
+      "scene": "coordinator",
+      "prompt": "Set the version in package.json to 2.4.0",
+      "calls": [
+        {
+          "tool": "read",
+          "args": {
+            "file_path": "package.json"
+          },
+          "wait": 14000
+        },
+        {
+          "tool": "edit",
+          "args": {
+            "file_path": "package.json",
+            "old_string": "\"version\": \"2.3.0\"",
+            "new_string": "\"version\": \"2.4.0\""
+          }
+        },
+        {
+          "tool": "bash",
+          "args": {
+            "command": "npm test --silent",
+            "description": "Run the gateway tests"
+          }
+        },
+        {
+          "tool": "thread_handback",
+          "args": {
+            "status": "done",
+            "summary": "package.json says 2.4.0 now (it was 2.3.0), and npm test passes: 12 of 12."
+          }
+        }
+      ],
+      "reply": "Handed back to Gateway 2.4: the version is 2.4.0, and the tests pass."
+    },
+    {
+      "scene": "coordinator",
+      "prompt": "List each route prefix in gateway.toml",
+      "calls": [
+        {
+          "tool": "bash",
+          "args": {
+            "command": "grep -n \"prefix\" gateway.toml test/router.test.js",
+            "description": "Find the routes and the paths the tests use"
+          }
+        },
+        {
+          "tool": "thread_handback",
+          "args": {
+            "status": "needs_decision",
+            "summary": "/api/orders and /status have tests in test/router.test.js; /api/ledger has none. Add a test for it now, or leave it for 2.5?"
+          }
+        }
+      ],
+      "reply": "Handed back to Gateway 2.4: /api/ledger has no test yet."
+    },
+    {
+      "scene": "coordinator",
+      "prompt": "Add a 2.4.0 entry at the top of CHANGELOG.md",
+      "calls": [
+        {
+          "tool": "bash",
+          "args": {
+            "command": "git log --oneline",
+            "description": "List the commits"
+          },
+          "wait": 6000
+        },
+        {
+          "tool": "write",
+          "args": {
+            "file_path": "CHANGELOG.md",
+            "content": "# Changelog\n\n## 2.4.0\n- Fold repeated slashes in request paths.\n- Move HTTPS from 9443 to 8443.\n- Rate limits: a token bucket per client.\n"
+          }
+        },
+        {
+          "tool": "thread_handback",
+          "args": {
+            "status": "done",
+            "summary": "CHANGELOG.md starts with a 2.4.0 entry: one line for each of the three commits after the first (slash folding, HTTPS on 8443, rate limits). Not committed."
+          }
+        }
+      ],
+      "reply": "Handed back to Gateway 2.4: the 2.4.0 entry is in CHANGELOG.md."
+    },
+    {
+      "scene": "calendar",
+      "prompt": "Find an hour on {{dayName}} for the gateway 2.4 retro and book it.",
+      "calls": [
+        {
+          "tool": "calendar_free_time",
+          "args": {
+            "from": "{{day}}",
+            "to": "{{day}}",
+            "minutes": 60
+          }
+        },
+        {
+          "tool": "calendar_create_event",
+          "args": {
+            "title": "Gateway 2.4 retro",
+            "start": "{{day}}T13:00",
+            "end": "{{day}}T14:00"
+          }
+        }
+      ],
+      "reply": "Booked **Gateway 2.4 retro** on {{dayName}} from 1:00 to 2:00 PM, on your Work calendar. You are also free that day from 9:45 to 11:00 AM and from 2:30 to 5:00 PM."
+    },
+    {
+      "scene": "notifications",
+      "prompt": "Check that every route in gateway.toml has a test.",
+      "calls": [
+        {
+          "tool": "bash",
+          "args": {
+            "command": "grep -n \"prefix\" gateway.toml test/router.test.js",
+            "description": "Find the routes and the paths the tests use"
+          }
+        }
+      ],
+      "reply": "`/api/orders` and `/status` have tests in test/router.test.js; `/api/ledger` has none.\n\nDECISION NEEDED: Add a test for /api/ledger now, or leave it for 2.5? — recommend: Add it now: it is one stub and one assertion"
+    },
+    {
+      "scene": "notifications",
+      "prompt": "Run the month-end import for October.",
+      "reply": "The import stopped at the bank file: it has 412 rows, and the ledger expects 413.\n\nBLOCKED: One October entry is missing from the bank export. A fresh export from the bank would fix it."
+    },
+    {
+      "scene": "notifications",
+      "prompt": "Publish the handbook once the build passes.",
+      "reply": "The build passes, and every link in it works.\n\nDECISION NEEDED: Publish the handbook now? — recommend: Yes, publish it now"
+    },
+    {
+      "scene": "notifications",
+      "prompt": "Check the rate limit defaults against the 2.4 load test.",
+      "reply": "The load test peaks at 31 requests a second for each client, under the default burst of 40.\n\nDECISION NEEDED: Lower the default burst from 40 to 20 for 2.4? — recommend: No, keep 40: a lower burst stops clients that work today"
+    },
+    {
+      "scene": "notifications",
+      "prompt": "Round the October totals to the cent.",
+      "reply": "The ledger has 38 entries in JPY, and the yen has no cents.\n\nBLOCKED: The ledger spec gives no rounding rule for JPY. One line in the spec would settle it."
+    },
+    {
+      "scene": "notifications",
+      "prompt": "Check the handbook for pages that still link to the old wiki.",
+      "reply": "Two pages still link to the old wiki: on-call.md and restore.md. Both runbooks are only on the wiki.\n\nDECISION NEEDED: Copy the two runbooks into the handbook, or keep the links to the wiki? — recommend: Copy them in: the wiki closes in December"
+    },
+    {
+      "scene": "reasoning-pill",
+      "prompt": "Should the rate limiter refill each bucket on a timer, or when a request comes in?",
+      "think": "A timer touches every bucket on each tick, also the idle ones. The gateway has about 40,000 client buckets, and most of them get no traffic in a given second, so that is 40,000 writes a second for nothing. A refill on request: tokens = min(burst, tokens + rate × elapsed), then take one. That is one clock read for each request and no work in the background. The result does not depend on a tick length. One edge case: the clock can go back (an NTP step), so the elapsed time can be negative. Clamp it at zero. src/limits.js already has this for /api/orders.",
+      "reply": "Refill when a request comes in. Each bucket keeps its token count and the time of its last refill; a request adds `rate × elapsed` tokens, up to the burst, and then takes one.\n\n- **No work for idle clients.** A timer would touch all 40,000 buckets on each tick, and most of them get no traffic.\n- **Exact at any rate.** The refill comes from the elapsed time, so it does not depend on a tick length.\n- **One edge case.** When the clock goes back, the elapsed time is negative: clamp it at zero.\n\n`src/limits.js` already does this for `/api/orders`, so the other routes can use the same function."
+    },
+    {
+      "scene": "wallpaper",
+      "prompt": "Add /healthz next to /status, so the load balancer can check the gateway.",
+      "calls": [
+        {
+          "tool": "read",
+          "args": {
+            "file_path": "gateway.toml"
+          }
+        },
+        {
+          "tool": "edit",
+          "args": {
+            "file_path": "gateway.toml",
+            "old_string": "prefix = \"/status\"\nupstream = \"local\"",
+            "new_string": "prefix = \"/status\"\nupstream = \"local\"\n\n[[routes]]\nprefix = \"/healthz\"\nupstream = \"local\""
+          }
+        },
+        {
+          "tool": "bash",
+          "args": {
+            "command": "npm test --silent",
+            "description": "Run the tests"
+          }
+        }
+      ],
+      "reply": "Added `/healthz` after `/status` in gateway.toml. Both answer from the gateway itself (`upstream = \"local\"`), so the load balancer can check `/healthz` on the health port, 8080. The tests pass: 12 of 12."
+    },
+    {
+      "scene": "discord",
+      "prompt": "What changed in the gateway since 2.3? I need it for the release notes.",
+      "capture": {
+        "thread": "channel_id \"(\\d+)\""
+      },
+      "calls": [
+        {
+          "tool": "bash",
+          "args": {
+            "command": "git log --oneline --since=2026-09-20",
+            "description": "The commits since 2.3"
+          }
+        },
+        {
+          "tool": "discord_send",
+          "args": {
+            "channel_id": "{{thread}}",
+            "content": "Three changes since 2.3:\n\n- **Rate limits**: a token bucket for each client, 600 requests a minute with bursts of 40.\n- **HTTPS** moved from port 9443 to 8443.\n- **Paths**: repeated slashes fold into one, so `/api//orders` is `/api/orders`.\n\nThe tests pass, 12 of 12. Do you want a draft of the 2.4.0 entry for CHANGELOG.md?"
+          }
+        }
+      ],
+      "reply": "Sent the three changes to the thread."
+    },
+    {
+      "scene": "discord",
+      "prompt": "Yes, draft it here first.",
+      "capture": {
+        "thread": "channel_id \"(\\d+)\""
+      },
+      "calls": [
+        {
+          "tool": "discord_send",
+          "args": {
+            "channel_id": "{{thread}}",
+            "content": "Here is the draft:\n\n```md\n## 2.4.0\n- Rate limits: a token bucket for each client.\n- HTTPS moves from 9443 to 8443.\n- Repeated slashes in request paths fold into one.\n```\nSay the word and I add it to CHANGELOG.md."
+          }
+        }
+      ],
+      "reply": "Sent the draft to the thread."
+    },
+    {
+      "scene": "dsh-site",
+      "prompt": "How many requests a minute does each client get?",
+      "calls": [
+        {
+          "tool": "read",
+          "args": {
+            "file_path": "gateway.toml"
+          }
+        }
+      ],
+      "reply": "600 a minute, with bursts of 40: the `[limits]` table in gateway.toml. A client over the limit gets 429 until its bucket refills, about one request every 100 ms."
+    },
+    {
+      "scene": "session-bridge",
+      "prompt": "Run the tests and sum up any failure in one line.",
+      "calls": [
+        {
+          "tool": "bash",
+          "args": {
+            "command": "npm test --silent",
+            "description": "Run the tests"
+          }
+        }
+      ],
+      "reply": "All 12 tests pass on 2.3.0: nothing failed, so there is nothing to fix tonight."
+    }
+  ],
+  "notes": [
+    {
+      "scene": "autopilot",
+      "match": "^\\[Autopilot\\] You stopped with 3 open todos",
+      "progress": true,
+      "reply": "Raised `burst` to 60 in gateway.toml. Next: the runbook's rate-limit section."
+    },
+    {
+      "scene": "autopilot",
+      "match": "^\\[Autopilot\\] You stopped with 2 open todos \\(next: “Update the rate-limit section",
+      "progress": true,
+      "reply": "The runbook now says 600 requests a minute with bursts of 60. Running the tests next."
+    },
+    {
+      "scene": "autopilot",
+      "match": "^\\[Autopilot\\] You stopped with 1 open todo \\(next: “Run the gateway tests",
+      "progress": true,
+      "reply": "All 12 gateway tests pass with the new limit. That was the last todo."
+    },
+    {
+      "scene": "autopilot",
+      "match": "^\\[Autopilot\\] You stopped with 2 open todos \\(next: “Draft the October report",
+      "reply": "Still working through the October entries for the report."
+    },
+    {
+      "scene": "autopilot",
+      "match": "^\\[Autopilot\\] The user answered",
+      "progress": true,
+      "reply": "Renamed `rpm` and `max_burst` to `requests_per_minute` and `burst` in gateway.toml. Next: the getting-started page."
+    },
+    {
+      "scene": "decisions",
+      "match": "^\\[Decisions\\] The person answered your DECISION NEEDED line \\(“Release 0\\.9\\.2",
+      "reply": "Understood: 0.9.2 goes out on Monday, after the month-end close. I've put it in the release plan."
+    },
+    {
+      "scene": "proof",
+      "match": "^Proof check\\.[\\s\\S]*Deployed v2\\.3\\.1 to staging",
+      "calls": [
+        {
+          "tool": "bash",
+          "args": {
+            "command": "git tag --list 'v2.3*'",
+            "description": "Look for a v2.3.1 tag"
+          }
+        },
+        {
+          "tool": "bash",
+          "args": {
+            "command": "git log --oneline -3",
+            "description": "Read the latest commits"
+          }
+        }
+      ],
+      "reply": "The turn ran only `git log`, and the repository has no v2.3.1 tag, so nothing shows a build or a deploy of v2.3.1.\n\nNOT VERIFIED: No deploy command ran in that turn, and v2.3.1 is not even tagged yet."
+    },
+    {
+      "scene": "agent-terminals",
+      "match": "^A coding agent runs in this session's terminal tab",
+      "reply": "The coding agent runs in its terminal tab."
+    },
+    {
+      "scene": "coordinator",
+      "match": "^\\[Handback from thread t2 ",
+      "reply": "[Route tests](.dsh-thread/t2) needs your decision: `/api/orders` and `/status` have tests, but `/api/ledger` has none. Should the thread add one now, or leave it for 2.5?"
+    },
+    {
+      "scene": "coordinator",
+      "match": "^\\[Handback from thread t1 ",
+      "calls": [
+        {
+          "tool": "thread_start",
+          "args": {
+            "title": "Changelog 2.4.0",
+            "ask": "write the 2.4.0 changelog entry",
+            "brief": "Add a 2.4.0 entry at the top of CHANGELOG.md with one line per commit after the first, from git log. Make the file if there is none. Do not commit."
+          }
+        }
+      ],
+      "reply": "[Version 2.4.0](.dsh-thread/t1) is done: package.json says 2.4.0, and the thread reports that all 12 tests pass. With the version set, [Changelog 2.4.0](.dsh-thread/t3) now writes the entry."
+    },
+    {
+      "scene": "coordinator",
+      "match": "^\\[Handback from thread t3 ",
+      "reply": "[Changelog 2.4.0](.dsh-thread/t3) is done: CHANGELOG.md starts with a 2.4.0 entry of three lines, one for each commit after the first (the thread reports). Nothing is committed."
+    }
+  ],
+  "titles": [
+    {
+      "scene": "discord",
+      "match": "What changed in the gateway",
+      "title": "Gateway changes since 2.3"
+    }
+  ],
+  "agent": [
+    {
+      "scene": "agent-terminals",
+      "match": "^Run the gateway tests and fix",
+      "tools": [
+        {
+          "command": "npm test --silent",
+          "output": "✔ routes /v2/projects to projects (0.4ms)\n✖ folds repeated slashes (0.3ms)\nℹ tests 12 · pass 11 · fail 1"
+        },
+        {
+          "command": "sed -n '1,24p' src/router.js",
+          "output": "export function cleanPath(path) {\n    return path.replace(/\\/+$/, '') || '/';\n}"
+        },
+        {
+          "command": "npm test --silent",
+          "output": "ℹ tests 12 · pass 12 · fail 0"
+        }
+      ],
+      "reply": "Fixed cleanPath in src/router.js: it now folds repeated slashes before it matches a route. All 12 tests pass."
+    },
+    {
+      "scene": "agent-terminals",
+      "match": "^Re-import the October entries",
+      "tools": [
+        {
+          "command": "ledgerctl import --month 2026-10 --dry-run",
+          "output": "214 entries read from bank-2026-10.csv\n213 match the ledger · 1 differs: 2026-10-14 Groceries, bank -89.90, ledger -89.80"
+        }
+      ],
+      "reply": "The dry run matches the bank export except for one entry: Groceries on 14 October is 89.90 in the export and 89.80 in the ledger.",
+      "ask": "Take the bank's 89.90 for that entry? — recommend: Yes, take the bank's amount"
+    },
+    {
+      "scene": "agent-terminals",
+      "match": "^Build the handbook",
+      "hold": true,
+      "tools": [
+        {
+          "command": "npm run build",
+          "output": ""
+        }
+      ],
+      "reply": "Built."
+    }
+  ]
+}

@@ -10,12 +10,34 @@ steers a running turn, starts the next turn of an idle one, or settles the
 approval or question DSH is holding. The session's own log proves it
 arrived, and the card says so, or says why not.
 
+<!-- showcase:hero -->
+![Decisions page in dark mode: five cards wait on you. The first asks which environment to deploy v2.3.1 to, with staging and production to choose from.](../../docs/screenshots/decisions/inbox-dark.png)
+<!-- /showcase:hero -->
+
 It needs Session Watch (it reads every session through it). While Session
 Watch is off, Decisions stays on but lists and holds nothing (DSH's own
 cards work as always), and its page says so; switching Session Watch off in
 Plugins reports no error, and Decisions comes back by itself once Session
 Watch runs again. With the notifications plugin running, each new card
 also notifies you outside the window.
+
+<!-- showcase:screenshots -->
+## Screenshots
+
+![Decisions page in light mode: five cards wait on you. The first asks which environment to deploy v2.3.1 to, with staging and production to choose from.](../../docs/screenshots/decisions/inbox-light.png)
+
+*The same inbox in light mode.*
+
+![Two cards on the Decisions page: a blocked staging deploy, and a decision on dropping an old table, with the agent's recommendation and a Go with the recommendation button.](../../docs/screenshots/decisions/decision-light.png)
+
+*A decision with the agent's recommendation: write your own answer, or go with the recommendation.*
+
+![The What happened list on the Decisions page: new cards, notifications shown in DSH's window, and an answer that went with the recommendation and was delivered.](../../docs/screenshots/decisions/history-dark.png)
+
+*What happened: each new card, each answer and whether the session got it, and each notification.*
+
+Made by `npm run showcase` in a demo home; [docs/site.json](../../docs/site.json) lists them, with their words.
+<!-- /showcase:screenshots -->
 
 ## What it lists
 

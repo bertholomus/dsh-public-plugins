@@ -5,7 +5,27 @@ the composer and changes the session's reasoning effort. While it runs, DSH's ow
 the effort caption on the model button are hidden, so there is one reasoning control and nothing to disagree with
 it. The plugin keeps no data, has no settings and adds no routes.
 
-![The control in an open chat's composer, with its menu open above it](../../screenshots/reasoning-pill/chat-menu-open-light.png)
+<!-- showcase:hero -->
+![A chat in dark mode with the control Reasoning: High beside the model name, and its menu open: Default, Low, Medium, High, Xhigh and Max.](../../docs/screenshots/reasoning-pill/chat-dark.png)
+<!-- /showcase:hero -->
+
+<!-- showcase:screenshots -->
+## Screenshots
+
+![A chat in light mode with the control Reasoning: High beside the model name, and its menu open: Default, Low, Medium, High, Xhigh and Max.](../../docs/screenshots/reasoning-pill/chat-light.png)
+
+*The same control in light mode.*
+
+![DSH's model menu open above the composer, with a Model row and no Effort row.](../../docs/screenshots/reasoning-pill/model-menu-dark.png)
+
+*While the plugin runs, the model menu has no Effort row: there is one reasoning control.*
+
+![A new chat with Reasoning: High already set in its composer.](../../docs/screenshots/reasoning-pill/new-chat-light.png)
+
+*A new chat starts at your last pick.*
+
+Made by `npm run showcase` in a demo home; [docs/site.json](../../docs/site.json) lists them, with their words.
+<!-- /showcase:screenshots -->
 
 ## What it does
 
@@ -147,7 +167,8 @@ and says so).
   and dark, DSH's model menu with and without the plugin, a model with no levels, a chat in light and dark, two chats
   switched back, a subagent's chat, 760 px in light and dark, the icon-only composer, and a refused pick with DSH's
   banner.
-  A set from the app's DSH is in [`screenshots/reasoning-pill/`](../../screenshots/reasoning-pill).
+  The pictures in this README come from a demo home (`npm run showcase -- reasoning-pill`) and are in
+  [`docs/screenshots/reasoning-pill/`](../../docs/screenshots/reasoning-pill).
 - **Safety:** the runner reads the live DSH's fingerprint (pid, start time, profile hash) before and after, and
   fails when it moved. `KEEP=1` keeps the throwaway folder.
 

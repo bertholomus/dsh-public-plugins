@@ -18,10 +18,32 @@ default, writes nothing to it):
   Canon's settings allow it; or moves it to the vault's trash with
   **Discard**. Nothing promotes or discards a draft by itself.
 
+<!-- showcase:hero -->
+![Canon's page in dark mode: what the vault holds, and Try a prompt, which shows the two notes that a question about the harbor gateway's port would get, and why.](../../docs/screenshots/canon/page-dark.png)
+<!-- /showcase:hero -->
+
 Canon reads the vault on this computer, in DSH's own process: no model
 call, no network. It needs nothing else running. With Session Watch
 running, its page updates through the suite's one open request per window;
 without it, the page reads again every few seconds.
+
+<!-- showcase:screenshots -->
+## Screenshots
+
+![Canon's page in light mode: what the vault holds, and Try a prompt, which shows the two notes that a question about the harbor gateway's port would get, and why.](../../docs/screenshots/canon/page-light.png)
+
+*The same page in light mode.*
+
+![Two draft notes that agents saved, each with Promote and Discard buttons, and the What happened list below them.](../../docs/screenshots/canon/drafts-light.png)
+
+*Drafts wait for a person: Promote makes a draft an active note, and Discard moves it to the vault's trash.*
+
+![A chat about the gateway's health check and rollout, with Canon's card after the reply: 2 notes from the canon vault were added to this turn.](../../docs/screenshots/canon/turn-dark.png)
+
+*After the turn, a card names the notes that Canon added. One click turns Canon off for the session.*
+
+Made by `npm run showcase` in a demo home; [docs/site.json](../../docs/site.json) lists them, with their words.
+<!-- /showcase:screenshots -->
 
 ## Which notes count
 

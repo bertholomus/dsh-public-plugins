@@ -21,10 +21,52 @@ Each plugin is a normal DSH plugin package. You add it to a DSH profile's bundle
 | [`recall`](plugins/recall) | Searches everything already done: a local full-text index of DSH sessions, transcript folders and handoff notes, with filters by folder, model, date and kind. A result opens its session at that exact turn, and agents search the same index with the `recall_search` tool. |
 | [`wallpaper`](plugins/wallpaper) | Wallpaper and glass for DSH Desktop: a wallpaper library with rotation and colours, frosted glass on the sidebar, conversation, composer and right panel, motion, and an editable headline. Visual only. |
 | [`reasoning-pill`](plugins/reasoning-pill) | One reasoning control: a Reasoning pill beside the model name in the composer, in place of DSH's Effort row in the model menu. |
+| [`notifications`](plugins/notifications) | System notifications for DSH while you are not using it. The coordinator, Decisions, Agent Terminals and Autopilot send their news through it, a click brings DSH's window up on the chat the news is about, and its page lists what became of each one. |
 
 Session Watch, Autopilot, Decisions, Agent Terminals, Proof, Canon and Recall make up the DSH Plugin Suite: how they fit together, how to install all of them, and how each was tested and judged are in [SUITE.md](SUITE.md).
 
 These plugins are independent work. They are not made or endorsed by DeepSeek.
+
+<!-- showcase:gallery -->
+## Gallery
+
+One picture of each plugin, from a demo home. Each plugin's README has more.
+
+<table>
+<tr>
+<td width="50%" valign="top"><a href="plugins/coordinator"><img src="docs/screenshots/coordinator/chat-dark.png" alt="A coordinating chat, Gateway 2.4, in dark mode: its three threads are nested under it in the session list, and the handbacks of Version 2.4.0 and Changelog 2.4.0 say done."></a><br><a href="plugins/coordinator"><b>Coordinator</b></a> 0.1.0: Any chat can run its work in threads that report back to it.</td>
+<td width="50%" valign="top"><a href="plugins/decisions"><img src="docs/screenshots/decisions/inbox-dark.png" alt="Decisions page in dark mode: five cards wait on you. The first asks which environment to deploy v2.3.1 to, with staging and production to choose from."></a><br><a href="plugins/decisions"><b>Decisions</b></a> 1.0.1: One inbox for everything waiting on you. Answer in place.</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="plugins/recall"><img src="docs/screenshots/recall/search-dark.png" alt="Recall's page in dark mode: a search for connection resets finds three results, two sessions and a handoff note, with the words marked."></a><br><a href="plugins/recall"><b>Recall</b></a> 1.0.0: Search everything you already did, and open each result at its exact turn.</td>
+<td width="50%" valign="top"><a href="plugins/proof"><img src="docs/screenshots/proof/flag-dark.png" alt="A chat in dark mode where the reply says all tests pass. Proof's card below it says the turn's own test run exited 1, with 6 passed and 1 failed."></a><br><a href="plugins/proof"><b>Proof</b></a> 1.0.0: Checks each claim of done, passed, fixed or deployed against what its turn ran.</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="plugins/autopilot"><img src="docs/screenshots/autopilot/page-dark.png" alt="Autopilot's page in dark mode: a question waits for you about a session that stopped with open todos, one session it backed off from, and a rule for each session."></a><br><a href="plugins/autopilot"><b>Autopilot</b></a> 1.1.0: Keeps sessions moving when nobody is watching.</td>
+<td width="50%" valign="top"><a href="plugins/agent-terminals"><img src="docs/screenshots/agent-terminals/page-dark.png" alt="The Coding agents page in dark mode: three agents running. One waits on you with a question and a recommendation, and one is building."></a><br><a href="plugins/agent-terminals"><b>Agent Terminals</b></a> 1.0.0: Command-line coding agents in DSH, each in a terminal tab beside its own session.</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="plugins/canon"><img src="docs/screenshots/canon/page-dark.png" alt="Canon's page in dark mode: what the vault holds, and Try a prompt, which shows the two notes that a question about the harbor gateway's port would get, and why."></a><br><a href="plugins/canon"><b>Canon</b></a> 1.0.0: Shared long-term memory from an Obsidian vault, added to each turn as a short cited block.</td>
+<td width="50%" valign="top"><a href="plugins/calendar"><img src="docs/screenshots/calendar/week-dark.png" alt="Calendar's week view in dark mode: work and personal events kept in DSH, with the Gateway 2.4 retro on Friday from 1:00 to 2:00 PM."></a><br><a href="plugins/calendar"><b>Calendar</b></a> 0.1.0: Your calendars in DSH, for you and your agents.</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="plugins/discord"><img src="docs/screenshots/discord/thread-dark.png" alt="A Discord thread in dark mode: Maya asks what changed in the gateway since 2.3, and DSH Bot answers with three changes and a draft for the changelog."></a><br><a href="plugins/discord"><b>Discord</b></a> 0.2.0: A Discord bot for your own channels: each conversation gets a thread and its own DSH session.</td>
+<td width="50%" valign="top"><a href="plugins/session-watch"><img src="docs/screenshots/session-watch/watching-dark.png" alt="Session Watch's part in Plugins, in dark mode: 31 sessions, 1 running and 2 waiting on you, a button for each state, and the idle sessions listed."></a><br><a href="plugins/session-watch"><b>Session Watch</b></a> 1.1.0: The shared watcher behind Autopilot, Decisions and Agent Terminals.</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="plugins/categories"><img src="docs/screenshots/categories/page-dark.png" alt="The Categories page in dark mode: the categories Backend and Writing over their workspaces and chats, then Other workspaces, with the same headers in DSH's session list."></a><br><a href="plugins/categories"><b>Categories</b></a> 0.1.0: Group your workspaces into categories in DSH's session list.</td>
+<td width="50%" valign="top"><a href="plugins/reasoning-pill"><img src="docs/screenshots/reasoning-pill/chat-dark.png" alt="A chat in dark mode with the control Reasoning: High beside the model name, and its menu open: Default, Low, Medium, High, Xhigh and Max."></a><br><a href="plugins/reasoning-pill"><b>Reasoning pill</b></a> 0.1.0: One place to set reasoning: a Reasoning control beside the model name.</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="plugins/notifications"><img src="docs/screenshots/notifications/page-dark.png" alt="Notifications page in dark mode: six recent notifications, each shown on screen by DSH's window, each with an Open chat link."></a><br><a href="plugins/notifications"><b>Notifications</b></a> 0.1.0: System notifications while you are not using DSH's window.</td>
+<td width="50%" valign="top"><a href="plugins/wallpaper"><img src="docs/screenshots/wallpaper/chat-dark.png" alt="DSH in dark mode over a dusk gradient, with the sidebar, the open chat and the right dock as frosted glass."></a><br><a href="plugins/wallpaper"><b>Wallpaper</b></a> 0.1.0: Your wallpapers behind DSH, with frosted glass, colour mode and motion.</td>
+</tr>
+<tr>
+<td width="50%" valign="top"><a href="plugins/dsh-site"><img src="docs/screenshots/dsh-site/phone-dark.png" alt="Two phone screens in dark mode: DSH Site's sign-in page for a new device, and a DSH chat through DSH Site after the sign-in link."></a><br><a href="plugins/dsh-site"><b>DSH Site</b></a> 0.2.0: Opens this Mac's DSH window to the devices on your private network.</td>
+<td width="50%" valign="top"><a href="plugins/session-bridge"><img src="docs/screenshots/session-bridge/bridge-dark.png" alt="A terminal in dark mode that makes a DSH session through the bridge's socket and waits for its reply, in front of DSH's window with that session."></a><br><a href="plugins/session-bridge"><b>Session Bridge</b></a> 0.4.0: Lets scripts and scheduled jobs on this Mac start, prompt, steer and read DSH sessions.</td>
+</tr>
+</table>
+<!-- /showcase:gallery -->
 
 ## Install a plugin
 
@@ -47,6 +89,7 @@ DSH loads a plugin only when the profile lists its package in `dsh.profile.bundl
 | recall | `dsh-plugin-recall` | `recall` |
 | wallpaper | `dsh-plugin-wallpaper` | `wallpaper` |
 | reasoning-pill | `dsh-plugin-reasoning-pill` | `reasoning-pill` |
+| notifications | `dsh-plugin-notifications` | `notifications` |
 
 1. Clone this repository:
 
@@ -102,6 +145,7 @@ Or restore the backups from step 2 of the install.
 
 ```bash
 npm test                                  # dsh-site, session-bridge, coordinator (pure logic), the categories window, calendar, session-watch, autopilot, decisions
+npm run showcase                          # the pictures in docs/screenshots/, made in a demo home; npm test checks docs/site.json against them
 npm install --no-save @deepseek-ai/schemastery @deepseek-ai/dsh-llm@next @deepseek-ai/dsh-brand@next @deepseek-ai/dsh-tools@next
 node plugins/discord/test/smoke.mjs       # discord (no token needed)
 node plugins/coordinator/test/smoke.mjs   # coordinator (fake DSH host)

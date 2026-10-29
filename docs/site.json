@@ -1,0 +1,707 @@
+{
+  "about": "The plugins and their pictures, for the website and the READMEs. npm run showcase makes the pictures in a demo home; test/site-manifest.test.js checks this file against the plugin folders and their package.json.",
+  "plugins": [
+    {
+      "name": "coordinator",
+      "title": "Coordinator",
+      "version": "0.1.0",
+      "tagline": "Any chat can run its work in threads that report back to it.",
+      "summary": "Type /coordinate in a chat, and the chat can start threads. Each thread is a DSH session that does one task in the chat's folder and hands its result back to the chat. The chat keeps its model, its permission and your tools, and you can open any thread and talk to it.",
+      "features": [
+        "Turn it on with /coordinate or the Coordinate button; /coordinate off stops it.",
+        "Threads are ordinary DSH sessions, listed live under the chat that started them.",
+        "A thread hands back when it is done, blocked or needs a decision. The handback is the chat's next turn.",
+        "New threads start on the model and effort in the chat's Thread settings.",
+        "A thread that stops without a handback gets one nudge, then the chat gets a short note."
+      ],
+      "requires": [],
+      "platforms": [
+        "macOS"
+      ],
+      "screenshots": [
+        {
+          "file": "docs/screenshots/coordinator/chat-dark.png",
+          "alt": "A coordinating chat, Gateway 2.4, in dark mode: its three threads are nested under it in the session list, and the handbacks of Version 2.4.0 and Changelog 2.4.0 say done.",
+          "caption": "A chat that coordinates: each thread hands its result back as the chat's next turn, and the threads are listed under the chat.",
+          "theme": "dark"
+        },
+        {
+          "file": "docs/screenshots/coordinator/chat-light.png",
+          "alt": "A coordinating chat, Gateway 2.4, in light mode: its three threads are nested under it in the session list, and the handbacks of Version 2.4.0 and Changelog 2.4.0 say done.",
+          "caption": "The same chat in light mode.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/coordinator/menu-light.png",
+          "alt": "The threads menu of Gateway 2.4: one thread waits on you and two are done, with the model and the access for new threads, and Stop coordinating.",
+          "caption": "The threads menu: what waits on you, what is done, and the settings for new threads.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/coordinator/beside-dark.png",
+          "alt": "The thread Version 2.4.0 open in the right sidebar beside its chat: its brief from Gateway 2.4, its edit of package.json and its handback.",
+          "caption": "A thread open beside its chat, where you can read it and talk to it.",
+          "theme": "dark"
+        }
+      ],
+      "hero": "docs/screenshots/coordinator/chat-dark.png"
+    },
+    {
+      "name": "decisions",
+      "title": "Decisions",
+      "version": "1.0.1",
+      "tagline": "One inbox for everything waiting on you. Answer in place.",
+      "summary": "When a session needs you, Decisions shows it as a card: what is asked, what the agent recommends, which session and how long it has waited. Your answer goes into the session. The session's own log proves that it arrived, and the card says so.",
+      "features": [
+        "Cards for decision lines, tools waiting for approval, questions in DSH's question box and threads that need a decision.",
+        "Each card shows the question, the recommendation, the session (one click opens it) and the wait.",
+        "An answer steers a running turn, starts the next turn of an idle session, or settles the approval or question.",
+        "Each delivery is proven by the session's log, and the card says so, or says why not.",
+        "Optional: a short note for each new card to a webhook or a command."
+      ],
+      "requires": [
+        "Session Watch",
+        "Optional: Notifications, to hear of new cards outside the window"
+      ],
+      "platforms": [
+        "macOS"
+      ],
+      "screenshots": [
+        {
+          "file": "docs/screenshots/decisions/inbox-dark.png",
+          "alt": "Decisions page in dark mode: five cards wait on you. The first asks which environment to deploy v2.3.1 to, with staging and production to choose from.",
+          "caption": "The inbox: each card shows what is asked, which session asks it and how long it has waited. You answer on the card.",
+          "theme": "dark"
+        },
+        {
+          "file": "docs/screenshots/decisions/inbox-light.png",
+          "alt": "Decisions page in light mode: five cards wait on you. The first asks which environment to deploy v2.3.1 to, with staging and production to choose from.",
+          "caption": "The same inbox in light mode.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/decisions/decision-light.png",
+          "alt": "Two cards on the Decisions page: a blocked staging deploy, and a decision on dropping an old table, with the agent's recommendation and a Go with the recommendation button.",
+          "caption": "A decision with the agent's recommendation: write your own answer, or go with the recommendation.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/decisions/history-dark.png",
+          "alt": "The What happened list on the Decisions page: new cards, notifications shown in DSH's window, and an answer that went with the recommendation and was delivered.",
+          "caption": "What happened: each new card, each answer and whether the session got it, and each notification.",
+          "theme": "dark"
+        }
+      ],
+      "hero": "docs/screenshots/decisions/inbox-dark.png"
+    },
+    {
+      "name": "recall",
+      "title": "Recall",
+      "version": "1.0.0",
+      "tagline": "Search everything you already did, and open each result at its exact turn.",
+      "summary": "Recall keeps a full-text index of your past work on this computer: this DSH's sessions and, when you name them, other DSH homes, coding-agent transcript folders and Markdown handoff notes. Type a few words, and it lists the best turns with the words marked. A result opens its session at that turn.",
+      "features": [
+        "A local index that grows as you work. Nothing leaves this computer.",
+        "Filters by folder, model, date and kind.",
+        "A result opens its session at that exact turn, scrolled to it and marked.",
+        "Agents search the same index with the recall_search tool."
+      ],
+      "requires": [
+        "Node 22.15 or newer, DSH's own runtime (for SQLite and zstd)"
+      ],
+      "platforms": [
+        "macOS"
+      ],
+      "screenshots": [
+        {
+          "file": "docs/screenshots/recall/search-dark.png",
+          "alt": "Recall's page in dark mode: a search for connection resets finds three results, two sessions and a handoff note, with the words marked.",
+          "caption": "Search past work: the best turns first, with the words marked, and filters for kind, time, folder and model.",
+          "theme": "dark"
+        },
+        {
+          "file": "docs/screenshots/recall/search-light.png",
+          "alt": "Recall's page in light mode: a search for connection resets finds three results, two sessions and a handoff note, with the words marked.",
+          "caption": "The same search in light mode.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/recall/found-dark.png",
+          "alt": "A session opened from a Recall result at the turn it found, with a Found by Recall bar and a link back to the results.",
+          "caption": "A result opens its session at that turn, marked, with a link back to the results.",
+          "theme": "dark"
+        },
+        {
+          "file": "docs/screenshots/recall/tool-light.png",
+          "alt": "A chat where the agent searched past work for connection resets and answered from an earlier session and a handoff note.",
+          "caption": "Agents search the same index with the recall_search tool.",
+          "theme": "light"
+        }
+      ],
+      "hero": "docs/screenshots/recall/search-dark.png"
+    },
+    {
+      "name": "proof",
+      "title": "Proof",
+      "version": "1.0.0",
+      "tagline": "Checks each claim of done, passed, fixed or deployed against what its turn ran.",
+      "summary": "When a reply says that something is done, passing, fixed or deployed, Proof reads what that turn ran: tool output, exit codes, test counts, metric changes and file hashes. A claim that nothing shows, or that the turn's own output contradicts, gets a short card after the turn. Proof keeps every claim in a ledger that you can export.",
+      "features": [
+        "Shown: something in the turn shows the claim, and Proof stays quiet.",
+        "No evidence: nothing in the turn shows it, and a card says so.",
+        "Contradicted: the turn's own output says otherwise, and the card quotes it.",
+        "A ledger of every claim, which you can export.",
+        "Optional: an independent read-only check on a local model."
+      ],
+      "requires": [],
+      "platforms": [
+        "macOS"
+      ],
+      "screenshots": [
+        {
+          "file": "docs/screenshots/proof/flag-dark.png",
+          "alt": "A chat in dark mode where the reply says all tests pass. Proof's card below it says the turn's own test run exited 1, with 6 passed and 1 failed.",
+          "caption": "A contradicted claim: the reply says all tests pass, and the turn's own test run says otherwise.",
+          "theme": "dark"
+        },
+        {
+          "file": "docs/screenshots/proof/flag-light.png",
+          "alt": "A chat in light mode where the reply says all tests pass. Proof's card below it says the turn's own test run exited 1, with 6 passed and 1 failed.",
+          "caption": "The same card in light mode.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/proof/checked-light.png",
+          "alt": "A chat where the reply says v2.3.1 is deployed to staging. Proof's card says no deploy ran in the turn, and an independent check found v2.3.1 not even tagged.",
+          "caption": "A claim with no evidence, after an independent read-only check.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/proof/ledger-dark.png",
+          "alt": "Proof's page: four sessions with claims, and the ledger of Report decimals with its contradicted claim and buttons to export it.",
+          "caption": "The ledger: every claim of a session, flagged or shown, with export to Markdown, CSV or JSON.",
+          "theme": "dark"
+        }
+      ],
+      "hero": "docs/screenshots/proof/flag-dark.png"
+    },
+    {
+      "name": "autopilot",
+      "title": "Autopilot",
+      "version": "1.1.0",
+      "tagline": "Keeps sessions moving when nobody is watching.",
+      "summary": "When a restart, a crash or a reload cuts off a running turn, Autopilot tells the session to carry on. When a session goes quiet with open todos, it gives one nudge, and it backs off when nudges bring no progress. When a turn fails, it tells the session to carry on after a wait, and it starts a stopped goal again. Every action says what it did and why.",
+      "features": [
+        "A carry-on note after a restart, a crash or a reload cuts off a turn.",
+        "One nudge for a quiet session with open todos, and a back-off when nudges bring no progress.",
+        "Starts an active goal again after a restart or an error stopped it.",
+        "Leaves a session alone while it waits on you.",
+        "Every action has a Why line, is proven by the session's own log, and has a kill switch."
+      ],
+      "requires": [
+        "Session Watch",
+        "Optional: Notifications, to hear when it backs off or asks you something"
+      ],
+      "platforms": [
+        "macOS"
+      ],
+      "screenshots": [
+        {
+          "file": "docs/screenshots/autopilot/page-dark.png",
+          "alt": "Autopilot's page in dark mode: a question waits for you about a session that stopped with open todos, one session it backed off from, and a rule for each session.",
+          "caption": "Its page: what waits for you, what it backed off from, and a rule for each session: Auto, Ask first or Off.",
+          "theme": "dark"
+        },
+        {
+          "file": "docs/screenshots/autopilot/page-light.png",
+          "alt": "Autopilot's page in light mode: a question waits for you about a session that stopped with open todos, one session it backed off from, and a rule for each session.",
+          "caption": "The same page in light mode.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/autopilot/log-light.png",
+          "alt": "What Autopilot did, newest first: notes that told sessions to carry on, each delivered, a back-off, and a question to you, each with a Why line.",
+          "caption": "Its log: every action with a Why line, and whether the session shows that it arrived.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/autopilot/chat-dark.png",
+          "alt": "A chat, Rate limit tuning, that Autopilot's notes kept going turn by turn until the reply said that was the last todo.",
+          "caption": "A session that its notes kept going until the work was done: 3 todos completed.",
+          "theme": "dark"
+        }
+      ],
+      "hero": "docs/screenshots/autopilot/page-dark.png"
+    },
+    {
+      "name": "agent-terminals",
+      "title": "Agent Terminals",
+      "version": "1.0.0",
+      "tagline": "Command-line coding agents in DSH, each in a terminal tab beside its own session.",
+      "summary": "Name a program and the folder it works in. Agent Terminals gives it a DSH session of its own, starts it in a terminal of that session, and shows the terminal in a tab beside the session. Your messages go in one at a time, and the agent's own transcript proves that it read them.",
+      "features": [
+        "The agent's state (working, idle, waiting on you, stopped) on the Coding agents page, on its session's row and in Decisions.",
+        "Your messages go in one at a time, and are delivered only when the transcript shows them.",
+        "It presses no key while a tool call or an approval prompt is open in the agent.",
+        "After DSH restarts, each agent starts again under the same name and resumes its conversation."
+      ],
+      "requires": [
+        "Session Watch",
+        "A command-line coding agent that you run in a terminal"
+      ],
+      "platforms": [
+        "macOS"
+      ],
+      "screenshots": [
+        {
+          "file": "docs/screenshots/agent-terminals/page-dark.png",
+          "alt": "The Coding agents page in dark mode: three agents running. One waits on you with a question and a recommendation, and one is building.",
+          "caption": "The Coding agents page: what each agent is doing, its messages and whether each one was delivered, and the question it waits on.",
+          "theme": "dark"
+        },
+        {
+          "file": "docs/screenshots/agent-terminals/page-light.png",
+          "alt": "The Coding agents page in light mode: three agents running. One waits on you with a question and a recommendation, and one is building.",
+          "caption": "The same page in light mode.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/agent-terminals/terminal-dark.png",
+          "alt": "A coding agent's terminal tab beside its DSH session, Gateway fix: the agent ran the tests, fixed a function and ran the tests again, all 12 passing.",
+          "caption": "An agent in its terminal tab beside its own session.",
+          "theme": "dark"
+        }
+      ],
+      "hero": "docs/screenshots/agent-terminals/page-dark.png"
+    },
+    {
+      "name": "canon",
+      "title": "Canon",
+      "version": "1.0.0",
+      "tagline": "Shared long-term memory from an Obsidian vault, added to each turn as a short cited block.",
+      "summary": "Canon reads a vault of canon notes. When a turn starts, it finds the few active notes that fit the prompt and the session's folder, and adds them after the prompt as one short block that names the path of each note. When you allow drafts, agents can save draft notes, and only a person promotes a draft.",
+      "features": [
+        "Recall: at most 3 notes and 2,000 characters by default, and you can turn it off for one session.",
+        "Capture: agents save drafts only when you allow it. Drafts are never added to a turn.",
+        "Promote or Discard a draft on Canon's page. Nothing promotes a draft by itself.",
+        "It reads the vault on this computer: no model call, no network."
+      ],
+      "requires": [
+        "An Obsidian vault: a folder of Markdown notes"
+      ],
+      "platforms": [
+        "macOS"
+      ],
+      "screenshots": [
+        {
+          "file": "docs/screenshots/canon/page-dark.png",
+          "alt": "Canon's page in dark mode: what the vault holds, and Try a prompt, which shows the two notes that a question about the harbor gateway's port would get, and why.",
+          "caption": "Its page: what the vault holds, and Try a prompt, which shows the notes a prompt would get, and why, without sending it.",
+          "theme": "dark"
+        },
+        {
+          "file": "docs/screenshots/canon/page-light.png",
+          "alt": "Canon's page in light mode: what the vault holds, and Try a prompt, which shows the two notes that a question about the harbor gateway's port would get, and why.",
+          "caption": "The same page in light mode.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/canon/drafts-light.png",
+          "alt": "Two draft notes that agents saved, each with Promote and Discard buttons, and the What happened list below them.",
+          "caption": "Drafts wait for a person: Promote makes a draft an active note, and Discard moves it to the vault's trash.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/canon/turn-dark.png",
+          "alt": "A chat about the gateway's health check and rollout, with Canon's card after the reply: 2 notes from the canon vault were added to this turn.",
+          "caption": "After the turn, a card names the notes that Canon added. One click turns Canon off for the session.",
+          "theme": "dark"
+        }
+      ],
+      "hero": "docs/screenshots/canon/page-dark.png"
+    },
+    {
+      "name": "calendar",
+      "title": "Calendar",
+      "version": "0.1.0",
+      "tagline": "Your calendars in DSH, for you and your agents.",
+      "summary": "Calendar syncs iCloud, Google, Microsoft 365, Fastmail, Nextcloud and other CalDAV calendars, subscribed .ics feeds, and calendars kept in DSH. It sends each change to the server that holds the event, so your phone and your other apps see it too. Agents read your calendars and change them as their permission allows.",
+      "features": [
+        "iCloud, Google, Microsoft 365, Outlook.com, Fastmail, Nextcloud, Yahoo and any other CalDAV server.",
+        "Subscribed .ics feeds, read only, and calendars kept in DSH itself.",
+        "Passwords and sign-ins stay in DSH's credential store, never in the plugin's files or its log.",
+        "Agents change events as the chat's permission allows. DSH's approval prompt asks you first on Workspace Write.",
+        "A change that emails someone always asks you first, and says who gets what."
+      ],
+      "requires": [
+        "An account with a calendar service, or none for calendars kept in DSH",
+        "For Google or Microsoft: an OAuth client or app registration of your own"
+      ],
+      "platforms": [
+        "macOS"
+      ],
+      "screenshots": [
+        {
+          "file": "docs/screenshots/calendar/week-dark.png",
+          "alt": "Calendar's week view in dark mode: work and personal events kept in DSH, with the Gateway 2.4 retro on Friday from 1:00 to 2:00 PM.",
+          "caption": "The week: work and personal calendars kept in DSH, with the retro that a chat booked on Friday.",
+          "theme": "dark"
+        },
+        {
+          "file": "docs/screenshots/calendar/week-light.png",
+          "alt": "Calendar's week view in light mode: work and personal events kept in DSH, with the Gateway 2.4 retro on Friday from 1:00 to 2:00 PM.",
+          "caption": "The same week in light mode.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/calendar/month-light.png",
+          "alt": "Calendar's month view of October 2026, with the standup on each weekday and other work and personal events.",
+          "caption": "The month view.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/calendar/approval-dark.png",
+          "alt": "A chat that found three free slots on Friday and asks to add the Gateway 2.4 retro to Work, with Reject and Allow once buttons.",
+          "caption": "An agent asks before it changes your calendar: DSH's approval prompt says what the change does.",
+          "theme": "dark"
+        }
+      ],
+      "hero": "docs/screenshots/calendar/week-dark.png"
+    },
+    {
+      "name": "discord",
+      "title": "Discord",
+      "version": "0.2.0",
+      "tagline": "A Discord bot for your own channels: each conversation gets a thread and its own DSH session.",
+      "summary": "A message in one of the bot's channels gets a thread made from it, and that thread gets its own DSH session. Every later message in the thread goes to the same session, also after DSH restarts. The agent answers in the thread with the discord_send tool.",
+      "features": [
+        "One thread, one DSH session, kept across restarts.",
+        "Every turn ends with an answer in the thread: a turn that forgets is reminded once.",
+        "It answers only in the channels and to the people that you allow.",
+        "Slash commands in the thread: /status, /stop, /new, /reset, /rename, /model and /effort."
+      ],
+      "requires": [
+        "A Discord application with a bot token of your own"
+      ],
+      "platforms": [
+        "macOS"
+      ],
+      "screenshots": [
+        {
+          "file": "docs/screenshots/discord/thread-dark.png",
+          "alt": "A Discord thread in dark mode: Maya asks what changed in the gateway since 2.3, and DSH Bot answers with three changes and a draft for the changelog.",
+          "caption": "Drawn: the thread as a server on this computer kept it in this run, in place of Discord. In use, Discord shows the thread in its own app.",
+          "theme": "dark"
+        },
+        {
+          "file": "docs/screenshots/discord/thread-light.png",
+          "alt": "A Discord thread in light mode: Maya asks what changed in the gateway since 2.3, and DSH Bot answers with three changes and a draft for the changelog.",
+          "caption": "The same drawn thread in light mode.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/discord/session-light.png",
+          "alt": "The thread's DSH session, named Discord — Gateway changes since 2.3, where each turn sent its answer to the thread.",
+          "caption": "DSH's side: the thread has a session of its own, which you can open and read.",
+          "theme": "light"
+        }
+      ],
+      "hero": "docs/screenshots/discord/thread-dark.png"
+    },
+    {
+      "name": "session-watch",
+      "title": "Session Watch",
+      "version": "1.1.0",
+      "tagline": "The shared watcher behind Autopilot, Decisions and Agent Terminals.",
+      "summary": "Session Watch reads the state of every session once, from DSH's own events, and serves it to the other suite plugins, so they never read session logs or poll. It has no page of its own. Its part in Plugins shows what it watches: how many sessions there are, how many run, and how many wait on you.",
+      "features": [
+        "Each session's state: running, waiting for approval, waiting for your answer, cut off, idle and more.",
+        "Choose a state in Plugins to list its sessions.",
+        "Delivery of a message, proven by the session's own log, for the plugins that send one.",
+        "One reader of DSH's events for the whole suite."
+      ],
+      "requires": [],
+      "platforms": [
+        "macOS"
+      ],
+      "screenshots": [
+        {
+          "file": "docs/screenshots/session-watch/watching-dark.png",
+          "alt": "Session Watch's part in Plugins, in dark mode: 31 sessions, 1 running and 2 waiting on you, a button for each state, and the idle sessions listed.",
+          "caption": "What it watches: how many sessions are in each state. The idle ones are listed here.",
+          "theme": "dark"
+        },
+        {
+          "file": "docs/screenshots/session-watch/watching-light.png",
+          "alt": "Session Watch's part in Plugins, in light mode: 31 sessions, 1 running and 2 waiting on you, a button for each state, and the idle sessions listed.",
+          "caption": "The same part in light mode.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/session-watch/list-dark.png",
+          "alt": "Session Watch with the state waiting for your answer chosen: one session, Changelog format, which the session list also marks Answer.",
+          "caption": "Choose a state to list its sessions: here, the one that waits for your answer.",
+          "theme": "dark"
+        }
+      ],
+      "hero": "docs/screenshots/session-watch/watching-dark.png"
+    },
+    {
+      "name": "categories",
+      "title": "Categories",
+      "version": "0.1.0",
+      "tagline": "Group your workspaces into categories in DSH's session list.",
+      "summary": "Categories puts a header for each category over its workspaces in DSH's session list, then Other workspaces for the rest. You make and arrange categories from the list or from the Categories page. With the coordinator plugin on too, a coordinating chat and its threads stay in their workspace, and the workspace stays in its category.",
+      "features": [
+        "A header for each category over its workspaces, and Other workspaces for the rest.",
+        "Make, rename, move and delete categories from the session list or the Categories page.",
+        "Works with DSH's own rows, and with the coordinator's threads.",
+        "It needs no settings."
+      ],
+      "requires": [],
+      "platforms": [
+        "macOS"
+      ],
+      "screenshots": [
+        {
+          "file": "docs/screenshots/categories/page-dark.png",
+          "alt": "The Categories page in dark mode: the categories Backend and Writing over their workspaces and chats, then Other workspaces, with the same headers in DSH's session list.",
+          "caption": "Category headers over their workspaces, on the Categories page and in DSH's session list. A folded category still shows the dot of a chat that runs in it.",
+          "theme": "dark"
+        },
+        {
+          "file": "docs/screenshots/categories/page-light.png",
+          "alt": "The Categories page in light mode: the categories Backend and Writing over their workspaces and chats, then Other workspaces, with the same headers in DSH's session list.",
+          "caption": "The same page in light mode.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/categories/menu-light.png",
+          "alt": "The menu of the Backend header, open at Add a workspace: Notes, in no category, and atlas-docs, in Writing.",
+          "caption": "A header's menu: add a workspace, make one, move the category, rename it or delete it.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/categories/chip-dark.png",
+          "alt": "A chat, Invoices route, with the chip Backend / harbor-gateway at its top, and the session list under its category headers.",
+          "caption": "At the top of a chat, a chip names its category and its workspace.",
+          "theme": "dark"
+        }
+      ],
+      "hero": "docs/screenshots/categories/page-dark.png"
+    },
+    {
+      "name": "reasoning-pill",
+      "title": "Reasoning pill",
+      "version": "0.1.0",
+      "tagline": "One place to set reasoning: a Reasoning control beside the model name.",
+      "summary": "A Reasoning control sits beside the model name in the composer and changes the session's reasoning effort. While it runs, DSH's own Effort row in the model menu is hidden, so there is one reasoning control. The plugin keeps no data, has no settings and adds no routes.",
+      "features": [
+        "The model's levels, in DSH's words, in a menu above the control.",
+        "The session's log records each pick, and the next request to the model carries it.",
+        "New chats start at your last pick.",
+        "Switched off, DSH's Effort row comes back at once."
+      ],
+      "requires": [
+        "A model with reasoning levels"
+      ],
+      "platforms": [
+        "macOS"
+      ],
+      "screenshots": [
+        {
+          "file": "docs/screenshots/reasoning-pill/chat-dark.png",
+          "alt": "A chat in dark mode with the control Reasoning: High beside the model name, and its menu open: Default, Low, Medium, High, Xhigh and Max.",
+          "caption": "The Reasoning control beside the model name, with the model's levels in a menu above it.",
+          "theme": "dark"
+        },
+        {
+          "file": "docs/screenshots/reasoning-pill/chat-light.png",
+          "alt": "A chat in light mode with the control Reasoning: High beside the model name, and its menu open: Default, Low, Medium, High, Xhigh and Max.",
+          "caption": "The same control in light mode.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/reasoning-pill/model-menu-dark.png",
+          "alt": "DSH's model menu open above the composer, with a Model row and no Effort row.",
+          "caption": "While the plugin runs, the model menu has no Effort row: there is one reasoning control.",
+          "theme": "dark"
+        },
+        {
+          "file": "docs/screenshots/reasoning-pill/new-chat-light.png",
+          "alt": "A new chat with Reasoning: High already set in its composer.",
+          "caption": "A new chat starts at your last pick.",
+          "theme": "light"
+        }
+      ],
+      "hero": "docs/screenshots/reasoning-pill/chat-dark.png"
+    },
+    {
+      "name": "notifications",
+      "title": "Notifications",
+      "version": "0.1.0",
+      "tagline": "System notifications while you are not using DSH's window.",
+      "summary": "Other plugins send their news through it: the coordinator when a thread hands back, Decisions for each new card, Agent Terminals when an agent waits on you, Autopilot when it backs off. It shows news while you are not using DSH, and a click brings DSH's window up on the chat that the news is about.",
+      "features": [
+        "Shows with DSH's icon, from DSH's own window, while its window is hidden, behind others or idle.",
+        "A click brings DSH's window up on the chat that the news is about.",
+        "Built for long runs: you leave DSH working, and the news finds you.",
+        "Its page lists the recent notifications and what happened to each."
+      ],
+      "requires": [
+        "The DSH Desktop app, for notifications on macOS"
+      ],
+      "platforms": [
+        "macOS",
+        "Linux and Windows (their senders have unit tests only)"
+      ],
+      "screenshots": [
+        {
+          "file": "docs/screenshots/notifications/page-dark.png",
+          "alt": "Notifications page in dark mode: six recent notifications, each shown on screen by DSH's window, each with an Open chat link.",
+          "caption": "Its page: the recent notifications, what became of each one, and a link to its chat.",
+          "theme": "dark"
+        },
+        {
+          "file": "docs/screenshots/notifications/page-light.png",
+          "alt": "Notifications page in light mode: six recent notifications, each shown on screen by DSH's window, each with an Open chat link.",
+          "caption": "The same page in light mode.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/notifications/banners-dark.png",
+          "alt": "Three notification banners from DeepSeek Harness: two sessions need a decision and one is blocked.",
+          "caption": "Drawn from the newest 3 of the 6 notifications that DSH's window showed in this run. Your system draws its own banners.",
+          "theme": "dark"
+        }
+      ],
+      "hero": "docs/screenshots/notifications/page-dark.png"
+    },
+    {
+      "name": "wallpaper",
+      "title": "Wallpaper",
+      "version": "0.1.0",
+      "tagline": "Your wallpapers behind DSH, with frosted glass, colour mode and motion.",
+      "summary": "A picture or a colour sits behind DSH, and DSH's sidebar, open chat, right dock and composer become frosted glass over it. An optional headline replaces DSH's words on the new-chat page. You set everything in one panel, from a button in the sidebar footer.",
+      "features": [
+        "A wallpaper library with collections, rotation and colours.",
+        "Frosted glass on the sidebar, the open chat, the right dock and the composer.",
+        "Colour mode: Dark, Light or System.",
+        "An optional headline on the new-chat page.",
+        "Visual only: it changes DSH's grounds, never DSH's text, icons or controls."
+      ],
+      "requires": [
+        "The DSH Desktop app"
+      ],
+      "platforms": [
+        "macOS"
+      ],
+      "screenshots": [
+        {
+          "file": "docs/screenshots/wallpaper/chat-dark.png",
+          "alt": "DSH in dark mode over a dusk gradient, with the sidebar, the open chat and the right dock as frosted glass.",
+          "caption": "A generated dusk gradient behind DSH, with frosted glass on the sidebar, the chat and the right dock.",
+          "theme": "dark"
+        },
+        {
+          "file": "docs/screenshots/wallpaper/chat-light.png",
+          "alt": "DSH in light mode over a sand gradient, with the sidebar, the open chat and the right dock as frosted glass.",
+          "caption": "Light mode, over a generated sand gradient.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/wallpaper/panel-light.png",
+          "alt": "The Wallpaper and glass panel: colour mode, a collection of four gradients, colours, rotation and wallpaper opacity.",
+          "caption": "One panel for all of it: colour mode, pictures, colours, rotation and opacity.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/wallpaper/new-chat-dark.png",
+          "alt": "DSH's new-chat page with the headline What ships today? over the dusk gradient.",
+          "caption": "An optional headline in place of DSH's words on the new-chat page.",
+          "theme": "dark"
+        }
+      ],
+      "hero": "docs/screenshots/wallpaper/chat-dark.png"
+    },
+    {
+      "name": "dsh-site",
+      "title": "DSH Site",
+      "version": "0.2.0",
+      "tagline": "Opens this Mac's DSH window to the devices on your private network.",
+      "summary": "Your phone, tablet or laptop on your tailnet opens this Mac's address on port 8443 and gets the same DSH: the same sessions, workspaces and tools. Nothing is copied or synced. DSH Site lets in only the devices that you list, checks every request the way DSH does, and passes it on to DSH's own server.",
+      "features": [
+        "The same DSH on every device of your tailnet: no copy, no sync.",
+        "An address gate: only the devices and networks that you list get in.",
+        "DSH's own cross-site and DNS-rebinding checks on every request.",
+        "A device signs in once with DSH's sign-in link and stays signed in for up to 30 days."
+      ],
+      "requires": [
+        "A private network, such as a Tailscale tailnet"
+      ],
+      "platforms": [
+        "macOS"
+      ],
+      "screenshots": [
+        {
+          "file": "docs/screenshots/dsh-site/phone-dark.png",
+          "alt": "Two phone screens in dark mode: DSH Site's sign-in page for a new device, and a DSH chat through DSH Site after the sign-in link.",
+          "caption": "Drawn side by side: a browser 390 pixels wide on the Mac, with a made-up tailnet name, before and after DSH's sign-in link.",
+          "theme": "dark"
+        },
+        {
+          "file": "docs/screenshots/dsh-site/phone-light.png",
+          "alt": "Two phone screens in light mode: DSH Site's sign-in page for a new device, and a DSH chat through DSH Site after the sign-in link.",
+          "caption": "The same two screens in light mode.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/dsh-site/plugins-light.png",
+          "alt": "DSH's Plugins page with DSH Site switched on under Installed plugins.",
+          "caption": "DSH Site among the installed plugins on DSH's Plugins page.",
+          "theme": "light"
+        }
+      ],
+      "hero": "docs/screenshots/dsh-site/phone-dark.png"
+    },
+    {
+      "name": "session-bridge",
+      "title": "Session Bridge",
+      "version": "0.4.0",
+      "tagline": "Lets scripts and scheduled jobs on this Mac start, prompt, steer and read DSH sessions.",
+      "summary": "Session Bridge is a small JSON API for the running DSH, on a Unix socket that only your user can open. Scripts, cron jobs and other agents create, prompt, steer, cancel and read sessions, and wait for a reply without polling. A session made through the bridge shows live in the DSH window, where you can take over.",
+      "features": [
+        "A Unix socket only, mode 600: no TCP port.",
+        "Safe retries with your own request id: one session for each create, and no prompt sent twice.",
+        "Wait for the end of a turn in one call, with its reply.",
+        "Steer a running turn, or queue a follow-up.",
+        "The log records actions and sizes, never a prompt's text."
+      ],
+      "requires": [],
+      "platforms": [
+        "macOS"
+      ],
+      "screenshots": [
+        {
+          "file": "docs/screenshots/session-bridge/bridge-dark.png",
+          "alt": "A terminal in dark mode that makes a DSH session through the bridge's socket and waits for its reply, in front of DSH's window with that session.",
+          "caption": "Drawn: the terminal shows what bash printed when it ran these commands against the bridge in this run. Behind it is DSH's window from the same run, made smaller.",
+          "theme": "dark"
+        },
+        {
+          "file": "docs/screenshots/session-bridge/bridge-light.png",
+          "alt": "A terminal in light mode that makes a DSH session through the bridge's socket and waits for its reply, in front of DSH's window with that session.",
+          "caption": "The same drawn picture in light mode.",
+          "theme": "light"
+        },
+        {
+          "file": "docs/screenshots/session-bridge/session-light.png",
+          "alt": "The Nightly test run session in DSH, with its test run open: 12 tests, all of them passing.",
+          "caption": "The session that the script made, in DSH's window, where you can read it and take over.",
+          "theme": "light"
+        }
+      ],
+      "hero": "docs/screenshots/session-bridge/bridge-dark.png"
+    }
+  ]
+}

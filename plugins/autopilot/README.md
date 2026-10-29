@@ -8,12 +8,34 @@ a few times, and starts a goal the error stopped once a turn ends without
 an error. Every action says what it did and why, and is proven by the
 session's own log, never reported on hope.
 
+<!-- showcase:hero -->
+![Autopilot's page in dark mode: a question waits for you about a session that stopped with open todos, one session it backed off from, and a rule for each session.](../../docs/screenshots/autopilot/page-dark.png)
+<!-- /showcase:hero -->
+
 It needs Session Watch (it reads every session through it). While Session
 Watch is off, Autopilot stays on but does nothing, and its page says so;
 switching Session Watch off in Plugins reports no error, and Autopilot
 carries on by itself once Session Watch runs again. With the notifications
 plugin running, it also tells you outside the window when it backs off,
 gives up or asks you something.
+
+<!-- showcase:screenshots -->
+## Screenshots
+
+![Autopilot's page in light mode: a question waits for you about a session that stopped with open todos, one session it backed off from, and a rule for each session.](../../docs/screenshots/autopilot/page-light.png)
+
+*The same page in light mode.*
+
+![What Autopilot did, newest first: notes that told sessions to carry on, each delivered, a back-off, and a question to you, each with a Why line.](../../docs/screenshots/autopilot/log-light.png)
+
+*Its log: every action with a Why line, and whether the session shows that it arrived.*
+
+![A chat, Rate limit tuning, that Autopilot's notes kept going turn by turn until the reply said that was the last todo.](../../docs/screenshots/autopilot/chat-dark.png)
+
+*A session that its notes kept going until the work was done: 3 todos completed.*
+
+Made by `npm run showcase` in a demo home; [docs/site.json](../../docs/site.json) lists them, with their words.
+<!-- /showcase:screenshots -->
 
 ## What it does
 

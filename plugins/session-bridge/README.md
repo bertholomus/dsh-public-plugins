@@ -2,9 +2,27 @@
 
 `dsh-plugin-session-bridge`: a small JSON API for the running DSH. Scripts, cron jobs and other agents on this Mac use it to create, prompt, steer, cancel and read DSH sessions, and to wait for a reply without polling.
 
+<!-- showcase:hero -->
+![A terminal in dark mode that makes a DSH session through the bridge's socket and waits for its reply, in front of DSH's window with that session.](../../docs/screenshots/session-bridge/bridge-dark.png)
+<!-- /showcase:hero -->
+
 It drives DSH's own `sessionController`, the same code path the window uses. A session you create or prompt through the bridge shows up live in the DSH window, where you can watch it and take over.
 
 What it does for this stack: it lets work on local models run unattended, driven from outside the window. A cron job or a coordinator makes a session and sends a prompt, waits for its turn to end in one call, and reads the reply. After a timeout or a DSH restart it asks what became of the prompt and simply tries again with the same request id: a create retried that way makes one session, a prompt DSH already has is not sent again, and a prompt that DSH dropped, or whose turn was cut off before it finished, is sent again once. DSH Test (`dsh-test prompt`, `dsh-test bridge`), scripts that speak this API (such as `dshb --sock <socket>`) and this repository's real-DSH tests all drive DSH through it.
+
+<!-- showcase:screenshots -->
+## Screenshots
+
+![A terminal in light mode that makes a DSH session through the bridge's socket and waits for its reply, in front of DSH's window with that session.](../../docs/screenshots/session-bridge/bridge-light.png)
+
+*The same drawn picture in light mode.*
+
+![The Nightly test run session in DSH, with its test run open: 12 tests, all of them passing.](../../docs/screenshots/session-bridge/session-light.png)
+
+*The session that the script made, in DSH's window, where you can read it and take over.*
+
+Made by `npm run showcase` in a demo home; [docs/site.json](../../docs/site.json) lists them, with their words.
+<!-- /showcase:screenshots -->
 
 ## Security
 

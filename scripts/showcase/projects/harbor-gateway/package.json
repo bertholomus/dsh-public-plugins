@@ -1,0 +1,11 @@
+{
+  "name": "harbor-gateway",
+  "version": "2.3.0",
+  "private": true,
+  "type": "module",
+  "description": "The edge gateway in front of the Harbor services: routing, rate limits and health checks.",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test --test-reporter=spec"
+  }
+}

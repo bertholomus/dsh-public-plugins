@@ -1,0 +1,4 @@
+2026-09-14T10:02:00|Start the gateway: routes and a health port
+2026-09-22T15:40:00|Rate limits: a token bucket per client
+2026-10-03T11:18:00|Move HTTPS from 9443 to 8443
+2026-10-19T16:55:00|Fold repeated slashes in request paths

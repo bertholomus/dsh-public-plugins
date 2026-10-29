@@ -1,0 +1,21 @@
+# Harbor gateway settings
+
+[listen]
+https = 8443
+health = 8080
+
+[limits]
+requests_per_minute = 600
+burst = 40
+
+[[routes]]
+prefix = "/api/orders"
+upstream = "orders.internal:7001"
+
+[[routes]]
+prefix = "/api/ledger"
+upstream = "ledger.internal:7002"
+
+[[routes]]
+prefix = "/status"
+upstream = "local"

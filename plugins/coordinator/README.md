@@ -2,7 +2,29 @@
 
 Any DSH chat can run its work in threads. Type `/coordinate` in a chat (or click **Coordinate** at the top of it, or under the message box of a new chat), and from then on the chat can start **threads**: separate DSH sessions that each do one task in the chat's folder and **hand back** their results to it. The chat stays yours: it keeps its model, its permission and your tools, and you keep working in it as before. `/coordinate off` stops it.
 
+<!-- showcase:hero -->
+![A coordinating chat, Gateway 2.4, in dark mode: its three threads are nested under it in the session list, and the handbacks of Version 2.4.0 and Changelog 2.4.0 say done.](../../docs/screenshots/coordinator/chat-dark.png)
+<!-- /showcase:hero -->
+
 Every thread is an ordinary DSH session in the chat's folder, made through the Host's own `sessionController`. Threads show live in DSH's session list under the chat that started them, and you can open any thread and talk to it directly.
+
+<!-- showcase:screenshots -->
+## Screenshots
+
+![A coordinating chat, Gateway 2.4, in light mode: its three threads are nested under it in the session list, and the handbacks of Version 2.4.0 and Changelog 2.4.0 say done.](../../docs/screenshots/coordinator/chat-light.png)
+
+*The same chat in light mode.*
+
+![The threads menu of Gateway 2.4: one thread waits on you and two are done, with the model and the access for new threads, and Stop coordinating.](../../docs/screenshots/coordinator/menu-light.png)
+
+*The threads menu: what waits on you, what is done, and the settings for new threads.*
+
+![The thread Version 2.4.0 open in the right sidebar beside its chat: its brief from Gateway 2.4, its edit of package.json and its handback.](../../docs/screenshots/coordinator/beside-dark.png)
+
+*A thread open beside its chat, where you can read it and talk to it.*
+
+Made by `npm run showcase` in a demo home; [docs/site.json](../../docs/site.json) lists them, with their words.
+<!-- /showcase:screenshots -->
 
 ## At a glance
 

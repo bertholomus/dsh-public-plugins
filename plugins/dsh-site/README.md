@@ -6,10 +6,28 @@ gets the same DSH: the same sessions, workspaces and tools as the window on the
 Mac. Nothing is copied or synced; every request goes to the DSH that is running
 here.
 
+<!-- showcase:hero -->
+![Two phone screens in dark mode: DSH Site's sign-in page for a new device, and a DSH chat through DSH Site after the sign-in link.](../../docs/screenshots/dsh-site/phone-dark.png)
+<!-- /showcase:hero -->
+
 DSH serves its window on `127.0.0.1` only, and answers only requests that carry
 its sign-in cookie and a loopback address. dsh-site runs inside DSH as a plugin,
 opens a second port, lets in only the devices you list, checks every request the
 way DSH itself does, and passes it on to DSH's loopback server.
+
+<!-- showcase:screenshots -->
+## Screenshots
+
+![Two phone screens in light mode: DSH Site's sign-in page for a new device, and a DSH chat through DSH Site after the sign-in link.](../../docs/screenshots/dsh-site/phone-light.png)
+
+*The same two screens in light mode.*
+
+![DSH's Plugins page with DSH Site switched on under Installed plugins.](../../docs/screenshots/dsh-site/plugins-light.png)
+
+*DSH Site among the installed plugins on DSH's Plugins page.*
+
+Made by `npm run showcase` in a demo home; [docs/site.json](../../docs/site.json) lists them, with their words.
+<!-- /showcase:screenshots -->
 
 ## What it does
 

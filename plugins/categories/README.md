@@ -2,6 +2,28 @@
 
 Categories group your DSH workspaces in DSH's session list: a header for each category over its workspaces, then **Other workspaces** for the rest. The plugin works on its own; with the coordinator plugin on too, each decorates DSH's own rows, so a coordinating chat and its threads stay in their workspace and the workspace sits in its category.
 
+<!-- showcase:hero -->
+![The Categories page in dark mode: the categories Backend and Writing over their workspaces and chats, then Other workspaces, with the same headers in DSH's session list.](../../docs/screenshots/categories/page-dark.png)
+<!-- /showcase:hero -->
+
+<!-- showcase:screenshots -->
+## Screenshots
+
+![The Categories page in light mode: the categories Backend and Writing over their workspaces and chats, then Other workspaces, with the same headers in DSH's session list.](../../docs/screenshots/categories/page-light.png)
+
+*The same page in light mode.*
+
+![The menu of the Backend header, open at Add a workspace: Notes, in no category, and atlas-docs, in Writing.](../../docs/screenshots/categories/menu-light.png)
+
+*A header's menu: add a workspace, make one, move the category, rename it or delete it.*
+
+![A chat, Invoices route, with the chip Backend / harbor-gateway at its top, and the session list under its category headers.](../../docs/screenshots/categories/chip-dark.png)
+
+*At the top of a chat, a chip names its category and its workspace.*
+
+Made by `npm run showcase` in a demo home; [docs/site.json](../../docs/site.json) lists them, with their words.
+<!-- /showcase:screenshots -->
+
 ## In the window
 
 ### Session list
