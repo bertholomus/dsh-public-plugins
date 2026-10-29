@@ -6,7 +6,8 @@
  * The window's Web Notifications are a recorder here, as in the plugin's
  * end-to-end test, so nothing reaches this computer's screen: a picture of
  * the system's banners would show this computer. The other side is drawn
- * instead, from the notifications the window showed, and says so.
+ * instead, from the notifications the window sent, and says so. The page
+ * marks each one shown, as the recorder reports it the way the system would.
  */
 import { waitFor } from '../stage.mjs';
 
@@ -33,7 +34,7 @@ const BANNERS = 3;
 
 const escape = (text) => String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
-/** The newest banners as a desktop shows them, newest first, drawn from what the window showed. */
+/** The newest banners as a desktop shows them, newest first, drawn from what the window sent. */
 function banners(notes, icon) {
     const items = notes.slice(-BANNERS).reverse().map((n) => `
         <div class="note"><img src="${icon}" alt=""><div class="text">
@@ -55,7 +56,7 @@ function banners(notes, icon) {
         .label { position: absolute; left: 28px; bottom: 24px; font-size: 13px; color: rgba(255, 255, 255, 0.72); }
     </style></head><body data-ds-dark-theme>
         <div class="stack">${items}</div>
-        <div class="label">Drawn from the newest ${Math.min(BANNERS, notes.length)} of the ${notes.length} notifications DSH's window showed in this run. Your system draws its own banners.</div>
+        <div class="label">Drawn from the newest ${Math.min(BANNERS, notes.length)} of the ${notes.length} notifications DSH's window sent in this run. Your system draws its own banners.</div>
     </body></html>`;
 }
 
@@ -99,7 +100,7 @@ export default async function notifications(scene) {
     });
     await scene.shoot('page', { prepare: frame });
 
-    // The other side: the banners, drawn from what the window showed, with DSH's own icon.
+    // The other side: the banners, drawn from what the window sent, with DSH's own icon.
     const notes = await page.evaluate(() => window.__notes);
     const icon = await page.evaluate(async () => {
         const link = document.querySelector('link[rel~="icon"]')?.href;

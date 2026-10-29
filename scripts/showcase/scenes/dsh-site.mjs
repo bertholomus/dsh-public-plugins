@@ -16,16 +16,16 @@ import { dismissNotices } from '../../../test/e2e/harness.mjs';
 /** The name the phone uses for the Mac: made up, and mapped to 127.0.0.1 in the phone's browser only. */
 const NAME = 'dsh-mac.tailnet.example';
 
-/** `port` when nothing listens on it here, else a free one. */
-const portFor = (port) => new Promise((resolve) => {
+/**
+ * The edge's port in the demo: the pictures show it in the address, so it is always this one. DSH Site's own
+ * default is 8443; the demo keeps off it, so it never meets a DSH Site that runs on this Mac.
+ */
+const PORT = 18443;
+
+/** `port`, when nothing listens on it here. */
+const portFree = (port) => new Promise((resolve, reject) => {
     const probe = createServer();
-    probe.once('error', () => {
-        const any = createServer();
-        any.listen(0, '127.0.0.1', () => {
-            const free = any.address().port;
-            any.close(() => resolve(free));
-        });
-    });
+    probe.once('error', () => reject(new Error(`port ${port} is busy: the pictures show it in the address, so free it and run again`)));
     probe.listen(port, '127.0.0.1', () => probe.close(() => resolve(port)));
 });
 
@@ -54,7 +54,7 @@ function phones(signIn, window, dark) {
 }
 
 export default async function dshSite(scene) {
-    const port = await portFor(18443);
+    const port = await portFree(PORT);
     const run = await scene.start({
         plugins: ['dsh-site'],
         before: (r) => {

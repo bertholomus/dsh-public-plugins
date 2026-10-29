@@ -2,7 +2,7 @@
  * Session Watch: its page in Plugins, with what it watches: sessions
  * running, waiting for approval, waiting for an answer, failed, and a month
  * of finished work; the idle ones listed, twelve more at a time, and then
- * the one that waits for your answer.
+ * the ones that wait for your answer.
  */
 import { waitFor } from '../stage.mjs';
 
@@ -15,6 +15,12 @@ const DONE = [
     ['harbor-gateway', '429 response body'], ['tide-ledger', 'Year-end checklist'], ['atlas-docs', 'Search box'],
     ['harbor-gateway', 'Header size limit'], ['tide-ledger', 'Duplicate entries'], ['atlas-docs', 'Page footer'],
     ['harbor-gateway', 'Graceful shutdown'], ['tide-ledger', 'Index on entry dates'], ['atlas-docs', 'Deploy page table'],
+];
+
+const ASKS = [
+    ['harbor-gateway', 'Retry policy', 'Add retries'], ['atlas-docs', 'Handbook sidebar', 'Reorder the handbook'],
+    ['tide-ledger', 'Fiscal year', 'Set the fiscal year'], ['harbor-gateway', 'Log retention', 'Choose how long'],
+    ['atlas-docs', 'Deprecation notices', 'Mark the old API pages'],
 ];
 
 export default async function sessionWatch(scene) {
@@ -51,13 +57,17 @@ export default async function sessionWatch(scene) {
         const batch = await Promise.all(DONE.slice(i, i + 6).map(([project, title]) => run.newSession({ project, title, prompt: `Quick task: ${title}.` })));
         for (const id of batch) await run.idle(id);
     }
+    // Questions that wait for an answer, in each project: the state the second picture lists.
+    const asks = [];
+    for (const [project, title, start] of ASKS) asks.push(await run.newSession({ project, title, prompt: say(start) }));
     ids.question = await run.newSession({ project: 'tide-ledger', title: 'Changelog format', prompt: say('Which changelog format') });
     ids.approval = await run.newSession({ project: 'harbor-gateway', title: 'Tag 2.3.1', prompt: say('Tag v2.3.1') });
     ids.running = await run.newSession({ project: 'tide-ledger', title: '2026 reconciliation', prompt: say('Reconcile every month') });
     const words = async () => new Map(((await scene.api('dsh-plugin-session-watch/sessions')).items ?? []).map((r) => [r.sessionId, r.word]));
     await waitFor(async () => {
         const w = await words();
-        return w.get(ids.running) === 'running' && /approval/.test(w.get(ids.approval) ?? '') && /answer/.test(w.get(ids.question) ?? '') && w.size >= 6;
+        return w.get(ids.running) === 'running' && /approval/.test(w.get(ids.approval) ?? '')
+            && [ids.question, ...asks].every((id) => /answer/.test(w.get(id) ?? '')) && w.size >= 6;
     }, 'each session in its state', 60000, 500);
 
     const page = await scene.open({ entry: 'Plugins' });
@@ -75,18 +85,34 @@ export default async function sessionWatch(scene) {
     await watching.locator('[data-session-watch-more]').click();
     await waitFor(async () => (await watching.locator('[data-session-watch-chosen] li').count()) >= 24, 'twelve more sessions', 10000, 200);
     await scene.shoot('watching', { prepare: atTop });
-    // Another state: the session that waits for your answer, as its row in the session list says too. The page
-    // is short now, so an empty block under it lets the section scroll to the top: above it, the page names the
-    // folder this demo's plugins are linked from.
+    // Where that picture has the page's Current version row (the row under the plugin's folder): the next has it
+    // there too.
+    const versionAt = await watching.evaluate((el) => {
+        let pane = el.parentElement;
+        while (pane && !/auto|scroll/.test(getComputedStyle(pane).overflowY)) pane = pane.parentElement;
+        const label = pane && [...pane.querySelectorAll('*')].find((n) => n.childElementCount === 0 && n.textContent.trim() === 'Current version');
+        return label ? label.getBoundingClientRect().top - pane.getBoundingClientRect().top : null;
+    });
+    // Another state: the sessions that wait for your answer, as their rows in the session list say too. The page
+    // is shorter now, so the pane gets just the room it needs at its end to scroll as far as the first picture.
     await choose((await words()).get(ids.question));
     await scene.shoot('list', {
         themes: ['dark'],
-        prepare: () => watching.evaluate((el) => {
-            const room = document.createElement('div');
-            room.style.height = '100vh';
-            el.parentElement.append(room);
-            el.scrollIntoView({ block: 'start' });
-        }),
+        prepare: () => watching.evaluate((el, at) => {
+            let pane = el.parentElement;
+            while (pane && !/auto|scroll/.test(getComputedStyle(pane).overflowY)) pane = pane.parentElement;
+            if (!pane) return el.scrollIntoView({ block: 'start' });
+            const label = [...pane.querySelectorAll('*')].find((n) => n.childElementCount === 0 && n.textContent.trim() === 'Current version');
+            const [mark, offset] = label && at !== null ? [label, at] : [el, 0];
+            const target = pane.scrollTop + mark.getBoundingClientRect().top - pane.getBoundingClientRect().top - offset;
+            const short = Math.ceil(target + pane.clientHeight - pane.scrollHeight);
+            if (short > 0) {
+                const room = document.createElement('div');
+                room.style.cssText = `height:${short}px;flex:none`;
+                pane.append(room);
+            }
+            pane.scrollTop = target;
+        }, versionAt),
     });
     prompts.close();
 }

@@ -367,6 +367,156 @@
     },
     {
       "scene": "session-watch",
+      "prompt": "Add retries to the upstream client.",
+      "calls": [
+        {
+          "tool": "ask_user_question",
+          "args": {
+            "questions": [
+              {
+                "id": "retries",
+                "question": "How often should the gateway retry a failed upstream call?",
+                "header": "Retries",
+                "options": [
+                  {
+                    "label": "Twice, with backoff",
+                    "description": "Waits 200 ms, then 400 ms"
+                  },
+                  {
+                    "label": "Never",
+                    "description": "Fails at once; the caller retries"
+                  }
+                ]
+              }
+            ],
+            "timeout": -1
+          }
+        }
+      ],
+      "reply": "Retrying twice, with backoff."
+    },
+    {
+      "scene": "session-watch",
+      "prompt": "Reorder the handbook sidebar.",
+      "calls": [
+        {
+          "tool": "ask_user_question",
+          "args": {
+            "questions": [
+              {
+                "id": "order",
+                "question": "How should the handbook sidebar be ordered?",
+                "header": "Order",
+                "options": [
+                  {
+                    "label": "By topic",
+                    "description": "Setup, Daily work, Releases"
+                  },
+                  {
+                    "label": "A to Z",
+                    "description": "By page title"
+                  }
+                ]
+              }
+            ],
+            "timeout": -1
+          }
+        }
+      ],
+      "reply": "Ordered by topic."
+    },
+    {
+      "scene": "session-watch",
+      "prompt": "Set the fiscal year for the reports.",
+      "calls": [
+        {
+          "tool": "ask_user_question",
+          "args": {
+            "questions": [
+              {
+                "id": "start",
+                "question": "When does the fiscal year start?",
+                "header": "Fiscal year",
+                "options": [
+                  {
+                    "label": "January",
+                    "description": "The calendar year"
+                  },
+                  {
+                    "label": "April",
+                    "description": "April to March"
+                  }
+                ]
+              }
+            ],
+            "timeout": -1
+          }
+        }
+      ],
+      "reply": "The fiscal year starts in January."
+    },
+    {
+      "scene": "session-watch",
+      "prompt": "Choose how long access logs are kept.",
+      "calls": [
+        {
+          "tool": "ask_user_question",
+          "args": {
+            "questions": [
+              {
+                "id": "days",
+                "question": "How long should the gateway keep its access logs?",
+                "header": "Retention",
+                "options": [
+                  {
+                    "label": "30 days",
+                    "description": "About 2 GB at today’s traffic"
+                  },
+                  {
+                    "label": "90 days",
+                    "description": "About 6 GB"
+                  }
+                ]
+              }
+            ],
+            "timeout": -1
+          }
+        }
+      ],
+      "reply": "Access logs are kept for 30 days."
+    },
+    {
+      "scene": "session-watch",
+      "prompt": "Mark the old API pages as deprecated.",
+      "calls": [
+        {
+          "tool": "ask_user_question",
+          "args": {
+            "questions": [
+              {
+                "id": "notice",
+                "question": "How should a deprecated page say so?",
+                "header": "Notice",
+                "options": [
+                  {
+                    "label": "A banner at the top",
+                    "description": "Links to the page that replaces it"
+                  },
+                  {
+                    "label": "A line in the footer",
+                    "description": "Quieter; easy to miss"
+                  }
+                ]
+              }
+            ],
+            "timeout": -1
+          }
+        }
+      ],
+      "reply": "Each old page has a banner at the top."
+    },
+    {
+      "scene": "session-watch",
       "prompt": "Update the getting-started page for the new config names.",
       "todos": [
         [

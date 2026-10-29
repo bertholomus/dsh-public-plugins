@@ -20,19 +20,19 @@ reload, a question in DSH's question box included: a chosen state stays
 open when its last session leaves it, and says so.
 
 <!-- showcase:hero -->
-![Session Watch's part in Plugins, in dark mode: 31 sessions, 1 running and 2 waiting on you, a button for each state, and the idle sessions listed.](../../docs/screenshots/session-watch/watching-dark.png)
+![Session Watch's part in Plugins, in dark mode: 36 sessions, 1 running and 7 waiting on you, a button for each state, and the idle sessions listed.](../../docs/screenshots/session-watch/watching-dark.png)
 <!-- /showcase:hero -->
 
 <!-- showcase:screenshots -->
 ## Screenshots
 
-![Session Watch's part in Plugins, in light mode: 31 sessions, 1 running and 2 waiting on you, a button for each state, and the idle sessions listed.](../../docs/screenshots/session-watch/watching-light.png)
+![Session Watch's part in Plugins, in light mode: 36 sessions, 1 running and 7 waiting on you, a button for each state, and the idle sessions listed.](../../docs/screenshots/session-watch/watching-light.png)
 
 *The same part in light mode.*
 
-![Session Watch with the state waiting for your answer chosen: one session, Changelog format, which the session list also marks Answer.](../../docs/screenshots/session-watch/list-dark.png)
+![Session Watch with the state waiting for your answer chosen: six sessions, newest first, each with Open. The session list marks two of them, Changelog format and Fiscal year, Answer.](../../docs/screenshots/session-watch/list-dark.png)
 
-*Choose a state to list its sessions: here, the one that waits for your answer.*
+*Choose a state to list its sessions: here, the ones that wait for your answer.*
 
 Made by `npm run showcase` in a demo home; [docs/site.json](../../docs/site.json) lists them, with their words.
 <!-- /showcase:screenshots -->

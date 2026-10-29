@@ -9,7 +9,7 @@ clears. It is built for long unattended runs: you leave DSH working, and the
 news finds you.
 
 <!-- showcase:hero -->
-![Notifications page in dark mode: six recent notifications, each shown on screen by DSH's window, each with an Open chat link.](../../docs/screenshots/notifications/page-dark.png)
+![Notifications page in dark mode: six recent notifications, each marked shown, each with an Open chat link.](../../docs/screenshots/notifications/page-dark.png)
 <!-- /showcase:hero -->
 
 - **It shows with DSH's icon**, from DSH's own window, while you are not
@@ -38,13 +38,13 @@ news finds you.
 <!-- showcase:screenshots -->
 ## Screenshots
 
-![Notifications page in light mode: six recent notifications, each shown on screen by DSH's window, each with an Open chat link.](../../docs/screenshots/notifications/page-light.png)
+![Notifications page in light mode: six recent notifications, each marked shown, each with an Open chat link.](../../docs/screenshots/notifications/page-light.png)
 
 *The same page in light mode.*
 
 ![Three notification banners from DeepSeek Harness: two sessions need a decision and one is blocked.](../../docs/screenshots/notifications/banners-dark.png)
 
-*Drawn from the newest 3 of the 6 notifications that DSH's window showed in this run. Your system draws its own banners.*
+*Drawn from the newest 3 of the 6 notifications that DSH's window sent in this run. Your system draws its own banners.*
 
 Made by `npm run showcase` in a demo home; [docs/site.json](../../docs/site.json) lists them, with their words.
 <!-- /showcase:screenshots -->

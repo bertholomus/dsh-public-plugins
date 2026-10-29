@@ -51,14 +51,14 @@ One picture of each plugin, from a demo home. Each plugin's README has more.
 </tr>
 <tr>
 <td width="50%" valign="top"><a href="plugins/discord"><img src="docs/screenshots/discord/thread-dark.png" alt="A Discord thread in dark mode: Maya asks what changed in the gateway since 2.3, and DSH Bot answers with three changes and a draft for the changelog."></a><br><a href="plugins/discord"><b>Discord</b></a> 0.2.0: A Discord bot for your own channels: each conversation gets a thread and its own DSH session.</td>
-<td width="50%" valign="top"><a href="plugins/session-watch"><img src="docs/screenshots/session-watch/watching-dark.png" alt="Session Watch's part in Plugins, in dark mode: 31 sessions, 1 running and 2 waiting on you, a button for each state, and the idle sessions listed."></a><br><a href="plugins/session-watch"><b>Session Watch</b></a> 1.1.0: The shared watcher behind Autopilot, Decisions and Agent Terminals.</td>
+<td width="50%" valign="top"><a href="plugins/session-watch"><img src="docs/screenshots/session-watch/watching-dark.png" alt="Session Watch's part in Plugins, in dark mode: 36 sessions, 1 running and 7 waiting on you, a button for each state, and the idle sessions listed."></a><br><a href="plugins/session-watch"><b>Session Watch</b></a> 1.1.0: The shared watcher behind Autopilot, Decisions and Agent Terminals.</td>
 </tr>
 <tr>
 <td width="50%" valign="top"><a href="plugins/categories"><img src="docs/screenshots/categories/page-dark.png" alt="The Categories page in dark mode: the categories Backend and Writing over their workspaces and chats, then Other workspaces, with the same headers in DSH's session list."></a><br><a href="plugins/categories"><b>Categories</b></a> 0.1.0: Group your workspaces into categories in DSH's session list.</td>
 <td width="50%" valign="top"><a href="plugins/reasoning-pill"><img src="docs/screenshots/reasoning-pill/chat-dark.png" alt="A chat in dark mode with the control Reasoning: High beside the model name, and its menu open: Default, Low, Medium, High, Xhigh and Max."></a><br><a href="plugins/reasoning-pill"><b>Reasoning pill</b></a> 0.1.0: One place to set reasoning: a Reasoning control beside the model name.</td>
 </tr>
 <tr>
-<td width="50%" valign="top"><a href="plugins/notifications"><img src="docs/screenshots/notifications/page-dark.png" alt="Notifications page in dark mode: six recent notifications, each shown on screen by DSH's window, each with an Open chat link."></a><br><a href="plugins/notifications"><b>Notifications</b></a> 0.1.0: System notifications while you are not using DSH's window.</td>
+<td width="50%" valign="top"><a href="plugins/notifications"><img src="docs/screenshots/notifications/page-dark.png" alt="Notifications page in dark mode: six recent notifications, each marked shown, each with an Open chat link."></a><br><a href="plugins/notifications"><b>Notifications</b></a> 0.1.0: System notifications while you are not using DSH's window.</td>
 <td width="50%" valign="top"><a href="plugins/wallpaper"><img src="docs/screenshots/wallpaper/chat-dark.png" alt="DSH in dark mode over a dusk gradient, with the sidebar, the open chat and the right dock as frosted glass."></a><br><a href="plugins/wallpaper"><b>Wallpaper</b></a> 0.1.0: Your wallpapers behind DSH, with frosted glass, colour mode and motion.</td>
 </tr>
 <tr>
@@ -171,6 +171,13 @@ npm run test:e2e:decisions
 # any suite plugin (autopilot, decisions, agent-terminals, proof, canon, recall) on every DSH under .e2e/ and the installed app's
 node scripts/e2e.mjs proof
 ```
+
+`npm run showcase` needs ImageMagick 7 (`magick`), `git`, `script`, `curl` and
+`jq`, Playwright with its Chromium (`PLAYWRIGHT_MODULE`, else `.e2e/tools`, else
+an installed `playwright` or `playwright-core`; see `test/e2e/harness.mjs`) and a
+DSH to run: the installed app's, else the newest under `.e2e/`, or the one that
+`--dsh <version>` names. `npm run showcase -- recall decisions` takes only those
+plugins' pictures.
 
 ## License
 

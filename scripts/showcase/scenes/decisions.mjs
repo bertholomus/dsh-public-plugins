@@ -58,7 +58,20 @@ export default async function decisions(scene) {
     });
     await scene.shoot('history', {
         themes: ['dark'],
-        prepare: (p) => p.locator('[data-decisions-history]').evaluate((el) => el.scrollIntoView({ block: 'start' })),
+        // What happened as far up as the page scrolls. The page ends before it reaches the top, so a line of the card
+        // above may sit across the window's top edge: the window then starts just above that line instead.
+        prepare: (p) => p.locator('[data-decisions-history]').evaluate((el) => {
+            el.scrollIntoView({ block: 'start' });
+            let box = el.parentElement;
+            while (box && !/auto|scroll/.test(getComputedStyle(box).overflowY)) box = box.parentElement;
+            if (!box) return;
+            const edge = box.getBoundingClientRect().top;
+            const cut = [...document.querySelectorAll('[data-decisions-card] p')].find((line) => {
+                const r = line.getBoundingClientRect();
+                return r.top < edge && r.bottom > edge;
+            });
+            if (cut) box.scrollTop += cut.getBoundingClientRect().top - edge - 4;
+        }),
     });
     prompts.close();
 }

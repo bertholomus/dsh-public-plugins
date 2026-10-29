@@ -35,7 +35,7 @@ on Node 22's `fetch` and `WebSocket`.
 
 ![The thread's DSH session, named Discord — Gateway changes since 2.3, where each turn sent its answer to the thread.](../../docs/screenshots/discord/session-light.png)
 
-*DSH's side: the thread has a session of its own, which you can open and read.*
+*DSH's side: the thread has a session of its own, which you can open and read. Each Discord message comes in as an Execution requested row; open one to read it.*
 
 Made by `npm run showcase` in a demo home; [docs/site.json](../../docs/site.json) lists them, with their words.
 <!-- /showcase:screenshots -->

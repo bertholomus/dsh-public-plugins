@@ -402,7 +402,7 @@
         {
           "file": "docs/screenshots/discord/session-light.png",
           "alt": "The thread's DSH session, named Discord — Gateway changes since 2.3, where each turn sent its answer to the thread.",
-          "caption": "DSH's side: the thread has a session of its own, which you can open and read.",
+          "caption": "DSH's side: the thread has a session of its own, which you can open and read. Each Discord message comes in as an Execution requested row; open one to read it.",
           "theme": "light"
         }
       ],
@@ -427,20 +427,20 @@
       "screenshots": [
         {
           "file": "docs/screenshots/session-watch/watching-dark.png",
-          "alt": "Session Watch's part in Plugins, in dark mode: 31 sessions, 1 running and 2 waiting on you, a button for each state, and the idle sessions listed.",
+          "alt": "Session Watch's part in Plugins, in dark mode: 36 sessions, 1 running and 7 waiting on you, a button for each state, and the idle sessions listed.",
           "caption": "What it watches: how many sessions are in each state. The idle ones are listed here.",
           "theme": "dark"
         },
         {
           "file": "docs/screenshots/session-watch/watching-light.png",
-          "alt": "Session Watch's part in Plugins, in light mode: 31 sessions, 1 running and 2 waiting on you, a button for each state, and the idle sessions listed.",
+          "alt": "Session Watch's part in Plugins, in light mode: 36 sessions, 1 running and 7 waiting on you, a button for each state, and the idle sessions listed.",
           "caption": "The same part in light mode.",
           "theme": "light"
         },
         {
           "file": "docs/screenshots/session-watch/list-dark.png",
-          "alt": "Session Watch with the state waiting for your answer chosen: one session, Changelog format, which the session list also marks Answer.",
-          "caption": "Choose a state to list its sessions: here, the one that waits for your answer.",
+          "alt": "Session Watch with the state waiting for your answer chosen: six sessions, newest first, each with Open. The session list marks two of them, Changelog format and Fiscal year, Answer.",
+          "caption": "Choose a state to list its sessions: here, the ones that wait for your answer.",
           "theme": "dark"
         }
       ],
@@ -466,7 +466,7 @@
         {
           "file": "docs/screenshots/categories/page-dark.png",
           "alt": "The Categories page in dark mode: the categories Backend and Writing over their workspaces and chats, then Other workspaces, with the same headers in DSH's session list.",
-          "caption": "Category headers over their workspaces, on the Categories page and in DSH's session list. A folded category still shows the dot of a chat that runs in it.",
+          "caption": "Category headers over their workspaces, on the Categories page and in DSH's session list. A folded category still shows the dot of a chat that runs in it. The page writes a folder in your home as ~/…; for these pictures, the demo's throwaway home is written that way too.",
           "theme": "dark"
         },
         {
@@ -549,7 +549,7 @@
         "Its page lists the recent notifications and what happened to each."
       ],
       "requires": [
-        "The DSH Desktop app, for notifications on macOS"
+        "A DSH window that can show notifications: the Desktop app, or DSH's web profile in a browser tab"
       ],
       "platforms": [
         "macOS",
@@ -558,20 +558,20 @@
       "screenshots": [
         {
           "file": "docs/screenshots/notifications/page-dark.png",
-          "alt": "Notifications page in dark mode: six recent notifications, each shown on screen by DSH's window, each with an Open chat link.",
-          "caption": "Its page: the recent notifications, what became of each one, and a link to its chat.",
+          "alt": "Notifications page in dark mode: six recent notifications, each marked shown, each with an Open chat link.",
+          "caption": "Its page: the recent notifications, what became of each one, and a link to its chat. In this demo a recorder stood in for the system, so each one reads as shown.",
           "theme": "dark"
         },
         {
           "file": "docs/screenshots/notifications/page-light.png",
-          "alt": "Notifications page in light mode: six recent notifications, each shown on screen by DSH's window, each with an Open chat link.",
+          "alt": "Notifications page in light mode: six recent notifications, each marked shown, each with an Open chat link.",
           "caption": "The same page in light mode.",
           "theme": "light"
         },
         {
           "file": "docs/screenshots/notifications/banners-dark.png",
           "alt": "Three notification banners from DeepSeek Harness: two sessions need a decision and one is blocked.",
-          "caption": "Drawn from the newest 3 of the 6 notifications that DSH's window showed in this run. Your system draws its own banners.",
+          "caption": "Drawn from the newest 3 of the 6 notifications that DSH's window sent in this run. Your system draws its own banners.",
           "theme": "dark"
         }
       ],
@@ -646,7 +646,7 @@
         {
           "file": "docs/screenshots/dsh-site/phone-dark.png",
           "alt": "Two phone screens in dark mode: DSH Site's sign-in page for a new device, and a DSH chat through DSH Site after the sign-in link.",
-          "caption": "Drawn side by side: a browser 390 pixels wide on the Mac, with a made-up tailnet name, before and after DSH's sign-in link.",
+          "caption": "Drawn side by side: a browser 390 pixels wide on the Mac, with a made-up tailnet name, before and after DSH's sign-in link. The demo uses port 18443; DSH Site listens on 8443 unless you set another.",
           "theme": "dark"
         },
         {
